@@ -1,0 +1,83 @@
+# Operating system
+.DS_Store
+.AppleDouble
+._*
+Thumbs.db
+Desktop.ini
+
+# Editors and IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.sample
+!.env.*.sample
+!.env.template
+!.env.*.template
+.envrc.local
+/.secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+
+# Local Spring Boot configuration
+application-local.properties
+application-local.yml
+application-local.yaml
+application-secret.properties
+application-secret.yml
+application-secret.yaml
+application-secrets.properties
+application-secrets.yml
+application-secrets.yaml
+
+# Logs
+*.log
+/npm-debug.log*
+/npm-error.log*
+/logs/
+
+# React, Vite and npm
+node_modules/
+.npm/
+.vite/
+.eslintcache
+/*-web/dist/
+/*-web/dist-ssr/
+/*-web/coverage/
+
+# Spring Boot and Gradle
+.gradle/
+/*-api/build/
+/*-api/out/
+/*-api/bin/
+*.class
+
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+/worker/build/
+/worker/dist/
+*.egg-info/
