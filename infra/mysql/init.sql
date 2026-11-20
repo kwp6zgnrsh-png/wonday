@@ -1,0 +1,5 @@
+CREATE DATABASE IF NOT EXISTS farm_db CHARACTER SET utf8mb4;
+CREATE DATABASE IF NOT EXISTS insurance_db CHARACTER SET utf8mb4;
+
+GRANT ALL PRIVILEGES ON farm_db.* TO 'wonday'@'%';
+GRANT ALL PRIVILEGES ON insurance_db.* TO 'wonday'@'%';
