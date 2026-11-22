@@ -115,6 +115,7 @@ jobs:
       group: wonday-production
     permissions:
       contents: read
+      actions: read
       id-token: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -128,19 +129,29 @@ jobs:
           test -s release/user-web/index.html
           test -s release/admin-web/index.html
           tar -C release -czf "$RUNNER_TEMP/wonday.tar.gz" .
+      - name: Store deployment bundle
+        id: deployment-bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: wonday-deploy-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/wonday.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
       - name: Connect to Tailscale
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           audience: ${{ secrets.TS_AUDIENCE }}
           tags: tag:wonday-ci
-      - name: Upload and activate release
+      - name: Download on Ubuntu and activate release
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          ARTIFACT_ID: ${{ steps.deployment-bundle.outputs.artifact-id }}
         run: |
           set -euo pipefail
           [[ "$DEPLOY_HOST" =~ ^100\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -152,10 +163,42 @@ jobs:
           ssh_args=(-i "$ssh_dir/key" -o "UserKnownHostsFile=$ssh_dir/known_hosts" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15)
           target="wonday@$DEPLOY_HOST"
           remote_bundle="/srv/wonday/app/incoming/$RELEASE_ID.tar.gz"
-          scp "${ssh_args[@]}" "$RUNNER_TEMP/wonday.tar.gz" "$target:$remote_bundle"
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          artifact_url="$(curl -fsS --max-time 15 -D - -o /dev/null \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            | awk 'tolower($1) == "location:" { sub(/\r$/, "", $2); print $2 }')"
+          [[ "$artifact_url" == https://* ]]
+          printf '::add-mask::%s\n' "$artifact_url"
+          archive_sha="$(sha256sum "$RUNNER_TEMP/wonday.tar.gz" | cut -d ' ' -f1)"
+
+          echo 'Downloading release bundle from GitHub on Ubuntu'
+          {
+            printf 'artifact_url=%q\n' "$artifact_url"
+            printf 'archive_sha=%q\n' "$archive_sha"
+            printf 'remote_bundle=%q\n' "$remote_bundle"
+            cat <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          workdir="$(mktemp -d /srv/wonday/app/incoming/.download.XXXXXX)"
+          trap 'rm -rf -- "$workdir"' EXIT
+
+          curl -fsSL --proto '=https' --proto-redir '=https' \
+            --connect-timeout 10 --max-time 300 \
+            --output "$workdir/artifact.zip" \
+            --write-out 'Downloaded %{size_download} bytes in %{time_total}s\n' \
+            "$artifact_url"
+          python3 -m zipfile -e "$workdir/artifact.zip" "$workdir"
+          printf '%s  %s\n' "$archive_sha" "$workdir/wonday.tar.gz" | sha256sum -c - >/dev/null
+          mv -- "$workdir/wonday.tar.gz" "$remote_bundle"
+          REMOTE
+          } | ssh "${ssh_args[@]}" "$target" 'bash -s'
+
           if [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" != "$GITHUB_SHA" ]]; then
             echo 'A newer commit is on main. Skipping this release.'
             ssh "${ssh_args[@]}" "$target" "rm -f '$remote_bundle'"
             exit 0
           fi
+          echo 'Activating release on Ubuntu'
           ssh "${ssh_args[@]}" "$target" "/usr/local/bin/wonday-release '$RELEASE_ID'"
