@@ -1,3 +1,17 @@
+server:
+  port: 8081
+
 spring:
+  config:
+    import:
+      - "optional:file:../.env[.properties]"
+      - "optional:file:./.env[.properties]"
   application:
     name: farm-api
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/farm_db
+    username: ${MYSQL_USER:wonday}
+    password: ${MYSQL_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate

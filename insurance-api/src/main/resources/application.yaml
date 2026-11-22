@@ -1,3 +1,17 @@
+server:
+  port: 8080
+
 spring:
+  config:
+    import:
+      - "optional:file:../.env[.properties]"
+      - "optional:file:./.env[.properties]"
   application:
     name: insurance-api
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/insurance_db
+    username: ${MYSQL_USER:wonday}
+    password: ${MYSQL_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
