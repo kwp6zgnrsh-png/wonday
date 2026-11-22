@@ -8,6 +8,9 @@ spring:
       - "optional:file:./.env[.properties]"
   application:
     name: insurance-api
+  rabbitmq:
+    username: wonday
+    password: ${RABBITMQ_PASSWORD}
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/insurance_db
     username: ${MYSQL_USER:wonday}
