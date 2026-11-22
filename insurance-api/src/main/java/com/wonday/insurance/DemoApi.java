@@ -10,4 +10,9 @@ public class DemoApi {
 	public String home() {
 		return "보험 API 실행 중";
 	}
+
+	@GetMapping("/test")
+	public String test() {
+		return "배포 TEST";
+	}
 }
