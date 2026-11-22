@@ -37,18 +37,41 @@ Git에는 `.env.example`만 공유한다.
 
 ---
 
-#### Node 버전 맞추기
+## nvm 설치
 
-wonday 디렉토리로 이동해 아래 명령어를 실행한다.
+### Windows
+```bash
+# 1. NVM for Windows 설치
+winget install --id CoreyButler.NVMforWindows --exact
 
-| 윈도우(**PowerShell**), 맥 OS | 결과 |
-| --- | --- |
-| `node -v` | 26.13.1 버전은 아래 생략 |
-| `nvm install 26.13.1` | 26.13.1 설치 |
-| `nvm use 26.13.1` | 26.13.1 사용 |
-| `node -v` | 26.13.1 버전 확인 |
+#PowerShell을 닫고 관리자 권한으로 다시 열기
 
----
+# 2. Node.js 26.13.1 설치 및 사용
+nvm install 26.13.1
+nvm use 26.13.1
+
+# 3. Node.js와 npm 버전 확인
+node -v   # v26.13.1
+npm -v    # 11.20.0
+```
+
+### macOS
+```bash
+# 1. nvm 다운로드 및 설치
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+
+# 2. 현재 터미널에서 nvm 불러오기
+source "$HOME/.nvm/nvm.sh"
+
+# 3. Node.js 26.13.1 다운로드 및 설치
+nvm install 26.13.1
+
+# 4. 사용 중인 Node.js 버전 확인
+node -v       # v26.13.1
+nvm current   # v26.13.1
+```
+
+
 
 ## **실행 순서**
 
