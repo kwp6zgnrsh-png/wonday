@@ -1,0 +1,161 @@
+name: WON데이 CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Test and build ${{ matrix.app }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - app: farm-api
+            name: farm
+            database: farm_db
+          - app: insurance-api
+            name: insurance
+            database: insurance_db
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root
+          MYSQL_DATABASE: ${{ matrix.database }}
+          MYSQL_USER: wonday
+          MYSQL_PASSWORD: ci-mysql
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="MYSQL_PWD=ci-mysql mysql -h127.0.0.1 -uwonday -Nse 'SELECT 1'"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            ${{ matrix.app }}/*.gradle
+            ${{ matrix.app }}/gradle/wrapper/gradle-wrapper.properties
+      - name: Run tests and build executable JAR
+        working-directory: ${{ matrix.app }}
+        env:
+          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
+          MYSQL_PASSWORD: ci-mysql
+          RABBITMQ_PASSWORD: ci-rabbitmq
+        run: ./gradlew --no-daemon test bootJar
+      - name: Name release artifact
+        working-directory: ${{ matrix.app }}
+        env:
+          APP: ${{ matrix.app }}
+          RELEASE_NAME: ${{ matrix.name }}
+        run: |
+          mkdir -p release
+          cp build/libs/"$APP"-*.jar "release/$RELEASE_NAME.jar"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: github.event_name != 'pull_request'
+        with:
+          name: ${{ matrix.app }}
+          path: ${{ matrix.app }}/release/
+          if-no-files-found: error
+          retention-days: 7
+
+  frontend:
+    name: Lint and build ${{ matrix.app }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        app: [user-web, admin-web]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26.13.1'
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - name: Install, lint and build
+        working-directory: ${{ matrix.app }}
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: github.event_name != 'pull_request'
+        with:
+          name: ${{ matrix.app }}
+          path: ${{ matrix.app }}/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to Ubuntu
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.WONDAY_DEPLOY_ENABLED == 'true'
+    needs: [backend, frontend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    concurrency:
+      group: wonday-production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: artifacts
+      - name: Package release
+        run: |
+          mkdir -p release
+          cp artifacts/farm-api/farm.jar artifacts/insurance-api/insurance.jar release/
+          mv artifacts/user-web artifacts/admin-web release/
+          test -s release/user-web/index.html
+          test -s release/admin-web/index.html
+          tar -C release -czf "$RUNNER_TEMP/wonday.tar.gz" .
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:wonday-ci
+      - name: Upload and activate release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_HOST" =~ ^100\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          umask 077
+          ssh_dir="$(mktemp -d)"
+          trap 'rm -rf "$ssh_dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          ssh_args=(-i "$ssh_dir/key" -o "UserKnownHostsFile=$ssh_dir/known_hosts" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15)
+          target="wonday@$DEPLOY_HOST"
+          remote_bundle="/srv/wonday/app/incoming/$RELEASE_ID.tar.gz"
+          scp "${ssh_args[@]}" "$RUNNER_TEMP/wonday.tar.gz" "$target:$remote_bundle"
+          if [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" != "$GITHUB_SHA" ]]; then
+            echo 'A newer commit is on main. Skipping this release.'
+            ssh "${ssh_args[@]}" "$target" "rm -f '$remote_bundle'"
+            exit 0
+          fi
+          ssh "${ssh_args[@]}" "$target" "/usr/local/bin/wonday-release '$RELEASE_ID'"
