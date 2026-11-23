@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 DEFAULT_STATION = "477802A001"  # 경기도 가평군 가평읍
 STEP_MINUTES = 10
 DAY_END = 24 * 60
@@ -17,6 +18,7 @@ WORK_START = 8 * 60
 WORK_END = 17 * 60
 WORK_INTERVALS = (WORK_END - WORK_START) // STEP_MINUTES
 PRIOR_INTERVALS = DAY_END // STEP_MINUTES
+DAILY_RAIN_FILENAME = "gyeonggi_daily_rainfall.csv"
 
 INPUT_COLUMNS = (
     "station_code", "날짜", "기온( ℃ )", "습도( % )", "풍속( m/s )", "강수량( mm )",
@@ -104,8 +106,25 @@ def load_station(files: list[Path], station_code: str) -> dict[date, dict[int, O
     return by_day
 
 
+def load_daily_rain(path: Path, station_code: str) -> dict[date, float]:
+    totals = {}
+    with path.open(encoding="utf-8-sig", newline="") as source:
+        reader = csv.DictReader(source)
+        required = {"station_code", "work_date", "daily_rain_mm"}
+        if not required.issubset(reader.fieldnames or []):
+            raise ValueError(f"{path.name}: expected station_code,work_date,daily_rain_mm")
+        for row in reader:
+            if row["station_code"].strip() != station_code:
+                continue
+            day = date.fromisoformat(row["work_date"].strip())
+            total = parse_number(row["daily_rain_mm"])
+            if total is not None and total >= 0 and totals.setdefault(day, total) != total:
+                raise ValueError(f"{path.name}:{reader.line_num}: conflicting daily rainfall for {day}")
+    return totals
+
+
 def rain_increments(
-    observations: dict[int, Observation], start: int, end: int
+    observations: dict[int, Observation], start: int, end: int, daily_total: float | None = None,
 ) -> Iterator[float]:
     # Daily accumulation starts at zero at midnight. Later windows need a real baseline.
     baseline = observations.get(start)
@@ -113,13 +132,20 @@ def rain_increments(
     for minute in range(start + STEP_MINUTES, end + 1, STEP_MINUTES):
         observation = observations.get(minute)
         current = observation.daily_rain if observation else None
+        if minute == DAY_END:
+            # A zero at 24:00 can be a counter reset. Prefer the reported daily total.
+            if daily_total is not None:
+                current = daily_total
+            elif current == 0:
+                current = None
         if previous is not None and current is not None and 0 <= previous <= current:
             yield current - previous
         previous = current
 
 
 def summarize_workday(
-    day: date, station_code: str, today: dict[int, Observation], yesterday: dict[int, Observation]
+    day: date, station_code: str, today: dict[int, Observation], yesterday: dict[int, Observation],
+    yesterday_rain: float | None = None,
 ) -> tuple:
     shift = [
         today[minute]
@@ -128,7 +154,7 @@ def summarize_workday(
     ]
     work_rain = list(rain_increments(today, WORK_START, WORK_END))
     prior_rain = [
-        *rain_increments(yesterday, WORK_START, DAY_END),
+        *rain_increments(yesterday, WORK_START, DAY_END, yesterday_rain),
         *rain_increments(today, 0, WORK_START),
     ]
     temperatures = [point.temperature for point in shift if point.temperature is not None]
@@ -154,7 +180,8 @@ def summarize_workday(
 
 
 def write_workdays(
-    output: Path, by_day: dict[date, dict[int, Observation]], station_code: str
+    output: Path, by_day: dict[date, dict[int, Observation]], station_code: str,
+    daily_rain: dict[date, float],
 ) -> int:
     start, end = min(by_day), max(by_day)
     day_count = (end - start).days + 1
@@ -170,8 +197,12 @@ def write_workdays(
             writer.writerow(OUTPUT_COLUMNS)
             for offset in range(day_count):
                 day = start + timedelta(days=offset)
+                yesterday = day - one_day
                 writer.writerow(
-                    summarize_workday(day, station_code, by_day.get(day, {}), by_day.get(day - one_day, {}))
+                    summarize_workday(
+                        day, station_code, by_day.get(day, {}), by_day.get(yesterday, {}),
+                        daily_rain.get(yesterday),
+                    )
                 )
         temp_path.replace(output)
     finally:
@@ -182,10 +213,23 @@ def write_workdays(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-dir", type=Path, required=True, help="folder of raw CSV files")
-    parser.add_argument("--output", type=Path, required=True, help="destination CSV path")
+    parser.add_argument(
+        "--input-dir", type=Path, default=DATA_DIR / "gyeonggi-2016-2026-csv",
+        help="raw CSV folder (default: wonday/data/gyeonggi-2016-2026-csv)",
+    )
+    parser.add_argument(
+        "--output", type=Path,
+        help="destination CSV (default: wonday/data/gyeonggi_processed/weather_workday_features_<station>.csv)",
+    )
     parser.add_argument("--station-code", default=DEFAULT_STATION, help="default: Gapyeong-eup")
+    parser.add_argument(
+        "--daily-rain", type=Path,
+        help=f"RDA daily rainfall CSV (default: {DAILY_RAIN_FILENAME} beside the input folder)",
+    )
     args = parser.parse_args()
+    output = args.output or (
+        DATA_DIR / "gyeonggi_processed" / f"weather_workday_features_{args.station_code}.csv"
+    )
 
     try:
         files = sorted(
@@ -193,14 +237,20 @@ def main() -> None:
         )
         if not files:
             raise ValueError(f"no CSV files in {args.input_dir}")
-        if args.output.resolve() in {path.resolve() for path in files}:
+        if output.resolve() in {path.resolve() for path in files}:
             raise ValueError("choose an output path outside the raw CSV files")
+        daily_path = args.daily_rain or args.input_dir.parent / DAILY_RAIN_FILENAME
+        if output.resolve() == daily_path.resolve():
+            raise ValueError("choose an output path different from the daily rainfall file")
+        daily_rain = load_daily_rain(daily_path, args.station_code) if args.daily_rain or daily_path.is_file() else {}
         by_day = load_station(files, args.station_code)
-        count = write_workdays(args.output, by_day, args.station_code)
+        if args.output is None:
+            output.parent.mkdir(parents=True, exist_ok=True)
+        count = write_workdays(output, by_day, args.station_code, daily_rain)
     except (OSError, ValueError, csv.Error) as exc:
         parser.exit(1, f"Error: {exc}\n")
     print(f"{args.station_code}: {count:,} workdays from {len(files):,} CSV files")
-    print(args.output.resolve())
+    print(output.resolve())
 
 
 if __name__ == "__main__":
