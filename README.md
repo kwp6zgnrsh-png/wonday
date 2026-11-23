@@ -115,6 +115,23 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 | 사용자 웹 | `cd user-web` | `npm ci` | `npm run dev` | localhost:5173 |
 | 관리자 웹 | `cd admin-web` | `npm ci` | `npm run dev` | localhost:5174 |
 
+#### 로컬 보험 인증 API
+
+사용자 웹(5173)과 관리자 웹(5174)에서는 보험 인증 요청에 상대 경로 `/api/insurance/auth/`를 사용한다. Vite 개발 서버가 이 경로를 보험 API의 `http://127.0.0.1:8080/api/auth/`로 전달한다. 운영 환경에서 웹과 API를 같은 출처로 제공할 때는 해당 환경에 설정된 보험 인증 경로를 사용한다.
+
+1. `GET /api/insurance/auth/csrf` 응답의 `headerName`과 `token`을 이후 POST 요청 헤더에 넣는다.
+2. `POST /api/insurance/auth/signup`에는 `loginId`, `name`, `password`를 JSON으로 보낸다.
+3. `POST /api/insurance/auth/login`에는 `loginId`와 `password`를 `application/x-www-form-urlencoded` 본문으로 보낸다. 로그인 URL에는 쿼리 문자열을 붙이지 않는다.
+4. 로그인 후 `GET /api/insurance/auth/me`로 세션의 회원을 확인한다. 다시 POST 할 때는 새 CSRF 토큰을 사용한다.
+
+브라우저 스모크 테스트는 위 세 서버를 실행한 상태에서 저장소 루트에서 실행한다. 테스트가 두 웹에서 각각 시연용 보험 계정을 생성하므로 로컬 개발 DB를 사용한다.
+
+```bash
+python -m pip install playwright
+python -m playwright install chromium
+python scripts/test_insurance_auth_browser.py
+```
+
 `worker/`는 Python 분석 워커를 위한 자리다. 현재 실행할 워커 코드는 없다.
 
 ## **종료와 문제 해결**

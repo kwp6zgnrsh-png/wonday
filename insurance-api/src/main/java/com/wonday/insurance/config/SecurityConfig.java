@@ -1,5 +1,6 @@
 package com.wonday.insurance.config;
 
+import com.wonday.insurance.member.LoginFormRequestFilter;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,6 +12,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler;
 
 @Configuration
@@ -28,6 +30,7 @@ public class SecurityConfig {
 			.exceptionHandling(exceptions -> exceptions
 				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
 			.requestCache(AbstractHttpConfigurer::disable)
+			.addFilterBefore(new LoginFormRequestFilter(), UsernamePasswordAuthenticationFilter.class)
 			.formLogin(login -> login
 				.loginPage("/api/auth/login")
 				.loginProcessingUrl("/api/auth/login")

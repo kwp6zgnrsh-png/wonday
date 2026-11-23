@@ -7,5 +7,11 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
+    proxy: {
+      '/api/insurance/auth/': {
+        target: 'http://127.0.0.1:8080',
+        rewrite: (path) => path.replace('/api/insurance/auth/', '/api/auth/'),
+      },
+    },
   },
 })

@@ -96,6 +96,43 @@ class MemberAuthApiTests {
 	}
 
 	@Test
+	void controlCharactersAreRejectedWithoutSavingAMember() throws Exception {
+		long before = members.count();
+		mvc.perform(signup("\\u0000\\u001f", PASSWORD).with(SecurityMockMvcRequestPostProcessors.csrf()))
+			.andExpect(status().isBadRequest());
+		mvc.perform(signup(newLoginId() + "\\u007f", PASSWORD).with(SecurityMockMvcRequestPostProcessors.csrf()))
+			.andExpect(status().isBadRequest());
+		assertThat(members.count()).isEqualTo(before);
+	}
+
+	@Test
+	void loginRejectsQueryParametersBeforeAuthentication() throws Exception {
+		String loginId = newLoginId();
+		members.saveAndFlush(new Member(loginId, passwordEncoder.encode(PASSWORD), "Test Worker", MemberRole.WORKER));
+		CsrfRequest request = csrf(new MockHttpSession());
+
+		mvc.perform(request.authorize(login(loginId, PASSWORD).queryParam("loginId", "query-value")))
+			.andExpect(status().isBadRequest());
+		mvc.perform(request.authorize(login(loginId, PASSWORD).queryParam("password", "query-value")))
+			.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/auth/me").session(request.session())).andExpect(status().isUnauthorized());
+
+		mvc.perform(request.authorize(login(loginId, PASSWORD)))
+			.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void loginRequiresFormContentType() throws Exception {
+		CsrfRequest request = csrf(new MockHttpSession());
+		mvc.perform(request.authorize(post("/api/auth/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}")))
+			.andExpect(status().isUnsupportedMediaType());
+		mvc.perform(request.authorize(post("/api/auth/login")))
+			.andExpect(status().isUnsupportedMediaType());
+	}
+
+	@Test
 	void authenticationWritesRequireCsrf() throws Exception {
 		String loginId = newLoginId();
 		mvc.perform(signup(loginId, PASSWORD)).andExpect(status().isForbidden());
@@ -132,7 +169,7 @@ class MemberAuthApiTests {
 
 	private static MockHttpServletRequestBuilder login(String loginId, String password) {
 		return post("/api/auth/login").contentType(MediaType.APPLICATION_FORM_URLENCODED)
-			.param("loginId", loginId).param("password", password);
+			.formField("loginId", loginId).formField("password", password);
 	}
 
 	private static String newLoginId() {

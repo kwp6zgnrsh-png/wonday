@@ -25,12 +25,16 @@ class MemberService implements UserDetailsService {
 
 	@Transactional
 	public Member register(String loginId, String name, String password) {
+		String normalizedLoginId = loginId.trim();
+		if (normalizedLoginId.isBlank() || loginId.codePoints().anyMatch(Character::isISOControl)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid login ID");
+		}
 		if (password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_PASSWORD_BYTES) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must be at most 72 UTF-8 bytes");
 		}
 
 		try {
-			return members.saveAndFlush(new Member(loginId.trim(), passwordEncoder.encode(password),
+			return members.saveAndFlush(new Member(normalizedLoginId, passwordEncoder.encode(password),
 				name.strip(), MemberRole.WORKER));
 		} catch (DataIntegrityViolationException exception) {
 			if (exception.getCause() instanceof ConstraintViolationException violation) {
