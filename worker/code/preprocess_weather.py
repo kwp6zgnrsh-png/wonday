@@ -12,6 +12,8 @@ from tempfile import NamedTemporaryFile
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 DEFAULT_STATION = "477802A001"  # 경기도 가평군 가평읍
+DEFAULT_HEAT_THRESHOLD_C = 33.0
+DEFAULT_WIND_THRESHOLD_MPS = 10.0
 STEP_MINUTES = 10
 DAY_END = 24 * 60
 WORK_START = 8 * 60
@@ -35,6 +37,10 @@ OUTPUT_COLUMNS = (
     "work_observation_count",
     "work_rain_interval_count",
     "prior_rain_interval_count",
+    "work_heat_minutes",
+    "work_wind_minutes",
+    "heat_threshold_c",
+    "wind_threshold_mps",
 )
 
 
@@ -146,6 +152,9 @@ def rain_increments(
 def summarize_workday(
     day: date, station_code: str, today: dict[int, Observation], yesterday: dict[int, Observation],
     yesterday_rain: float | None = None,
+    *,
+    heat_threshold_c: float = DEFAULT_HEAT_THRESHOLD_C,
+    wind_threshold_mps: float = DEFAULT_WIND_THRESHOLD_MPS,
 ) -> tuple:
     shift = [
         today[minute]
@@ -176,12 +185,23 @@ def summarize_workday(
         len(shift),
         len(work_rain),
         len(prior_rain),
+        STEP_MINUTES * sum(value >= heat_threshold_c for value in temperatures)
+        if len(temperatures) == WORK_INTERVALS
+        else None,
+        STEP_MINUTES * sum(value >= wind_threshold_mps for value in winds)
+        if len(winds) == WORK_INTERVALS
+        else None,
+        heat_threshold_c,
+        wind_threshold_mps,
     )
 
 
 def write_workdays(
     output: Path, by_day: dict[date, dict[int, Observation]], station_code: str,
     daily_rain: dict[date, float],
+    *,
+    heat_threshold_c: float = DEFAULT_HEAT_THRESHOLD_C,
+    wind_threshold_mps: float = DEFAULT_WIND_THRESHOLD_MPS,
 ) -> int:
     start, end = min(by_day), max(by_day)
     day_count = (end - start).days + 1
@@ -202,6 +222,8 @@ def write_workdays(
                     summarize_workday(
                         day, station_code, by_day.get(day, {}), by_day.get(yesterday, {}),
                         daily_rain.get(yesterday),
+                        heat_threshold_c=heat_threshold_c,
+                        wind_threshold_mps=wind_threshold_mps,
                     )
                 )
         temp_path.replace(output)
@@ -226,7 +248,19 @@ def main() -> None:
         "--daily-rain", type=Path,
         help=f"RDA daily rainfall CSV (default: {DAILY_RAIN_FILENAME} beside the input folder)",
     )
+    parser.add_argument(
+        "--heat-threshold-c", type=float, default=DEFAULT_HEAT_THRESHOLD_C,
+        help="temperature threshold in Celsius (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--wind-threshold-mps", type=float, default=DEFAULT_WIND_THRESHOLD_MPS,
+        help="wind speed threshold in m/s (default: %(default)s)",
+    )
     args = parser.parse_args()
+    if not math.isfinite(args.heat_threshold_c):
+        parser.error("--heat-threshold-c must be finite")
+    if not math.isfinite(args.wind_threshold_mps) or args.wind_threshold_mps < 0:
+        parser.error("--wind-threshold-mps must be finite and nonnegative")
     output = args.output or (
         DATA_DIR / "gyeonggi_processed" / f"weather_workday_features_{args.station_code}.csv"
     )
@@ -246,7 +280,11 @@ def main() -> None:
         by_day = load_station(files, args.station_code)
         if args.output is None:
             output.parent.mkdir(parents=True, exist_ok=True)
-        count = write_workdays(output, by_day, args.station_code, daily_rain)
+        count = write_workdays(
+            output, by_day, args.station_code, daily_rain,
+            heat_threshold_c=args.heat_threshold_c,
+            wind_threshold_mps=args.wind_threshold_mps,
+        )
     except (OSError, ValueError, csv.Error) as exc:
         parser.exit(1, f"Error: {exc}\n")
     print(f"{args.station_code}: {count:,} workdays from {len(files):,} CSV files")
