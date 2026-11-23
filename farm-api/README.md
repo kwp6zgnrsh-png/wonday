@@ -26,4 +26,12 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 
 ## 테스트와 커버리지
 
-MySQL을 켠 상태에서 데모 프로필을 설정하지 않은 터미널로 `farm-api` 폴더에서 `.\gradlew.bat test`를 실행한다. 로그인 HTTP 테스트는 설정된 MySQL을 사용하며, 데모 프로필 테스트는 전용 인메모리 H2에서 계정을 등록한다. 테스트 후 JaCoCo 리포트는 `build/reports/jacoco/test/html/index.html`, XML은 `build/reports/jacoco/test/jacocoTestReport.xml`에서 확인한다.
+MySQL을 켠 상태에서 데모 프로필을 설정하지 않은 터미널로 `farm-api` 폴더에서 `.\gradlew.bat test`를 실행한다. `test`는 단위 테스트와 통합 테스트를 모두 실행하고, 라인 커버리지가 기준에 못 미치면 빌드를 실패시킨다.
+
+| 종류 | 구분 | 단독 실행 | 라인 기준 | 리포트 |
+| --- | --- | --- | --- | --- |
+| 단위 | `@Tag("integration")`이 없는 테스트, Spring 컨텍스트 없음 | `.\gradlew.bat unitTest` | 90% 이상 | `build/reports/jacoco/jacocoUnitTestReport/html/index.html` |
+| 통합 | `@Tag("integration")` + `@SpringBootTest` | `.\gradlew.bat integrationTest` | 80% 이상 | `build/reports/jacoco/jacocoIntegrationTestReport/html/index.html` |
+| 합산 | 두 실행 결과 | `.\gradlew.bat test` | — | `build/reports/jacoco/test/html/index.html` |
+
+새 Spring 통합 테스트 클래스에는 `@Tag("integration")`을 붙인다. 태그가 없으면 단위 테스트로 실행된다. 로그인 HTTP 테스트는 설정된 MySQL을 사용하며, 데모 프로필 테스트는 전용 인메모리 H2에서 계정을 등록한다. 두 측정 모두 `FarmApiApplication`을 제외하고, 단위 측정은 필터 체인 조립만 하는 `SecurityConfig`도 제외한다. 각 리포트 폴더 옆에 같은 이름의 XML 파일도 만들어진다.

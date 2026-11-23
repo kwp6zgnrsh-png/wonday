@@ -77,6 +77,25 @@ class AuthHttpTests {
 		}
 	}
 
+	@Test
+	void logoutInvalidatesSessionOnServer() throws Exception {
+		String password = "logout-test";
+		Member account = register(password);
+		try (var client = new FarmAuthClient(port); var replay = new FarmAuthClient(port)) {
+			assertThat(client.login(account.getLoginId(), password, client.csrf()).statusCode()).isEqualTo(204);
+			String sessionId = client.sessionId();
+			// 대조군: 로그아웃 전에는 다른 클라이언트가 같은 세션 쿠키를 보내도 본인 조회에 성공한다.
+			assertThat(replay.getWithSession("/api/auth/me", sessionId).statusCode()).isEqualTo(200);
+
+			assertThat(client.postForm("/api/auth/logout", "", client.csrf()).statusCode()).isEqualTo(204);
+
+			// 로그아웃 후 같은 세션 쿠키를 다시 보내면 서버가 세션을 폐기했으므로 401이어야 한다.
+			assertThat(replay.getWithSession("/api/auth/me", sessionId).statusCode()).isEqualTo(401);
+		} finally {
+			members.deleteById(account.getId());
+		}
+	}
+
 	private Member register(String password) {
 		// 실제 HTTP 요청은 별도 트랜잭션에서 실행되므로 테스트 계정을 먼저 저장한다.
 		return members.save(new Member("http-test-" + UUID.randomUUID(), encoder.encode(password),

@@ -17,7 +17,10 @@ import org.springframework.http.MediaType;
 
 // 실제 HTTP 테스트에서 브라우저처럼 CSRF 토큰과 세션 쿠키를 요청 사이에 유지한다.
 public final class FarmAuthClient implements AutoCloseable {
-	private final HttpClient client = HttpClient.newBuilder().cookieHandler(new CookieManager()).build();
+	public static final String SESSION_COOKIE = "FARMSESSION";
+
+	private final CookieManager cookies = new CookieManager();
+	private final HttpClient client = HttpClient.newBuilder().cookieHandler(cookies).build();
 	private final URI baseUri;
 
 	public FarmAuthClient(int port) {
@@ -26,6 +29,20 @@ public final class FarmAuthClient implements AutoCloseable {
 
 	public HttpResponse<String> get(String path) throws IOException, InterruptedException {
 		return client.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
+	}
+
+	// 다른 클라이언트가 받은 세션 쿠키를 그대로 재전송해, 서버가 그 세션을 아직 인정하는지 확인한다.
+	public HttpResponse<String> getWithSession(String path, String sessionId) throws IOException, InterruptedException {
+		return client.send(request(path).header("Cookie", SESSION_COOKIE + "=" + sessionId).GET().build(),
+			HttpResponse.BodyHandlers.ofString());
+	}
+
+	public String sessionId() {
+		return cookies.getCookieStore().getCookies().stream()
+			.filter(cookie -> SESSION_COOKIE.equals(cookie.getName()))
+			.map(cookie -> cookie.getValue())
+			.findFirst()
+			.orElseThrow(() -> new AssertionError(SESSION_COOKIE + " cookie not set"));
 	}
 
 	public CsrfHeader csrf() throws IOException, InterruptedException {
