@@ -11,13 +11,13 @@ CREATE TABLE member (
 CREATE TABLE platform_link (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     member_id BIGINT NOT NULL,
-    platform_worker_id BIGINT NOT NULL,
+    platform_worker_id BIGINT,
     consent_version VARCHAR(64) NOT NULL,
     consented_at DATETIME(6) NOT NULL,
     revoked_at DATETIME(6),
-    UNIQUE KEY uq_link_owner (id, member_id),
-    -- NULL allows multiple historical consents after revocation.
-    UNIQUE KEY uq_active_link (member_id, platform_worker_id, ((CASE WHEN revoked_at IS NULL THEN 1 END))),
+    -- A member can consent before confirming a farm identity. Revoked rows retain their history.
+    UNIQUE KEY uq_active_member (member_id, ((CASE WHEN revoked_at IS NULL THEN 1 END))),
+    UNIQUE KEY uq_active_worker (platform_worker_id, ((CASE WHEN revoked_at IS NULL THEN 1 END))),
     FOREIGN KEY (member_id) REFERENCES member (id),
     CHECK (revoked_at IS NULL OR revoked_at >= consented_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -38,7 +38,10 @@ CREATE TABLE product_version (
     sales_start_at DATETIME(6) NOT NULL,
     sales_end_at DATETIME(6),
     terms_text LONGTEXT NOT NULL,
+    premium_terms JSON NOT NULL,
     eligible_work_groups_json JSON NOT NULL,
+    station_selection_rule JSON NOT NULL,
+    window_rule JSON NOT NULL,
     index_rules_json JSON NOT NULL,
     payout_rules_json JSON NOT NULL,
     UNIQUE KEY uq_product_version (product_id, version_no),
@@ -61,28 +64,14 @@ CREATE TABLE weather_station (
 CREATE TABLE insurance_contract (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     member_id BIGINT NOT NULL,
-    platform_link_id BIGINT NOT NULL,
     product_version_id BIGINT NOT NULL,
-    platform_assignment_id BIGINT NOT NULL,
-    agreed_crop_code VARCHAR(40) NOT NULL,
-    agreed_work_type_code VARCHAR(40) NOT NULL,
-    agreed_work_group VARCHAR(64) NOT NULL,
-    agreed_work_location VARCHAR(500) NOT NULL,
-    agreed_start_at DATETIME(6) NOT NULL,
-    agreed_end_at DATETIME(6) NOT NULL,
-    agreed_daily_wage BIGINT NOT NULL,
-    station_id BIGINT NOT NULL,
-    weather_window_start_at DATETIME(6) NOT NULL,
-    weather_window_end_at DATETIME(6) NOT NULL,
     accepted_at DATETIME(6) NOT NULL,
+    coverage_from DATETIME(6) NOT NULL,
+    coverage_to DATETIME(6) NOT NULL,
     status VARCHAR(32) NOT NULL,
-    UNIQUE KEY uq_contract_assignment (platform_assignment_id),
     FOREIGN KEY (member_id) REFERENCES member (id),
-    FOREIGN KEY (platform_link_id, member_id) REFERENCES platform_link (id, member_id),
     FOREIGN KEY (product_version_id) REFERENCES product_version (id),
-    FOREIGN KEY (station_id) REFERENCES weather_station (id),
-    CHECK (agreed_daily_wage > 0 AND agreed_start_at < agreed_end_at),
-    CHECK (weather_window_start_at < weather_window_end_at)
+    CHECK (coverage_to > coverage_from)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE weather_observation (
@@ -103,31 +92,35 @@ CREATE TABLE weather_observation (
 
 CREATE TABLE platform_work_event (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    contract_id BIGINT NOT NULL,
-    source_event_key VARCHAR(160) NOT NULL,
+    platform_link_id BIGINT NOT NULL,
+    source_change_id BIGINT NOT NULL,
+    source_version VARCHAR(100) NOT NULL,
+    platform_assignment_id BIGINT NOT NULL,
     event_type VARCHAR(40) NOT NULL,
     occurred_at DATETIME(6) NOT NULL,
     reason_code VARCHAR(40) NOT NULL,
     reason_detail TEXT,
     source_updated_at DATETIME(6) NOT NULL,
     received_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    UNIQUE KEY uq_event_source (source_event_key),
-    UNIQUE KEY uq_event_contract (id, contract_id),
-    FOREIGN KEY (contract_id) REFERENCES insurance_contract (id)
+    work_snapshot JSON,
+    UNIQUE KEY uq_event_source (source_change_id, source_version),
+    UNIQUE KEY uq_event_assignment (id, platform_assignment_id),
+    FOREIGN KEY (platform_link_id) REFERENCES platform_link (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE claim_case (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     contract_id BIGINT NOT NULL,
-    trigger_event_id BIGINT,
+    platform_assignment_id BIGINT NOT NULL,
+    trigger_event_id BIGINT NOT NULL,
     opened_via VARCHAR(32) NOT NULL,
+    work_snapshot JSON NOT NULL,
     status VARCHAR(40) NOT NULL,
-    current_assessment_id BIGINT,
     opened_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    UNIQUE KEY uq_case_contract (contract_id),
+    UNIQUE KEY uq_case_contract_assignment (contract_id, platform_assignment_id),
     FOREIGN KEY (contract_id) REFERENCES insurance_contract (id),
-    FOREIGN KEY (trigger_event_id, contract_id) REFERENCES platform_work_event (id, contract_id)
+    FOREIGN KEY (trigger_event_id, platform_assignment_id) REFERENCES platform_work_event (id, platform_assignment_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE claim_submission (
@@ -146,30 +139,26 @@ CREATE TABLE risk_assessment (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     claim_case_id BIGINT NOT NULL,
     revision_no INT NOT NULL,
-    work_event_id BIGINT,
+    work_event_id BIGINT NOT NULL,
+    station_id BIGINT NOT NULL,
+    window_start_at DATETIME(6) NOT NULL,
+    window_end_at DATETIME(6) NOT NULL,
     weather_features_json JSON NOT NULL,
     data_quality_json JSON NOT NULL,
-    r1_score DECIMAL(7,4) NOT NULL,
-    r2_score DECIMAL(7,4) NOT NULL,
-    r1_payout_rate DECIMAL(7,6) NOT NULL,
-    r2_payout_rate DECIMAL(7,6) NOT NULL,
-    applied_payout_rate DECIMAL(7,6) NOT NULL,
+    rule_version VARCHAR(64) NOT NULL,
+    index_results_json JSON NOT NULL,
+    applied_rates_json JSON,
     calculated_amount BIGINT NOT NULL,
-    calculated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    decision_reason TEXT NOT NULL,
+    calculated_at DATETIME(6) NOT NULL,
     UNIQUE KEY uq_assessment_revision (claim_case_id, revision_no),
     UNIQUE KEY uq_assessment_case (id, claim_case_id),
     FOREIGN KEY (claim_case_id) REFERENCES claim_case (id),
     FOREIGN KEY (work_event_id) REFERENCES platform_work_event (id),
+    FOREIGN KEY (station_id) REFERENCES weather_station (id),
     CHECK (revision_no > 0 AND calculated_amount >= 0),
-    CHECK (r1_score BETWEEN 0 AND 100 AND r2_score BETWEEN 0 AND 100),
-    CHECK (r1_payout_rate BETWEEN 0 AND 1 AND r2_payout_rate BETWEEN 0 AND 1),
-    CHECK (applied_payout_rate = GREATEST(r1_payout_rate, r2_payout_rate))
+    CHECK (window_end_at > window_start_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- A case is opened first and can later select only one of its own assessments.
-ALTER TABLE claim_case
-    ADD CONSTRAINT fk_case_current_assessment
-    FOREIGN KEY (current_assessment_id, id) REFERENCES risk_assessment (id, claim_case_id);
 
 CREATE TABLE claim_history (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
