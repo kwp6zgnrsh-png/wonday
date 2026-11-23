@@ -1,5 +1,6 @@
 package com.wonday.farm.auth;
 
+import com.wonday.farm.member.MemberRole;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,7 +17,7 @@ public class AuthApi {
 		return new CsrfResponse(csrfToken.getHeaderName(), csrfToken.getToken());
 	}
 
-	// Windows PowerShell 5.1에서 한글 이름을 올바르게 읽도록. 응답에 UTF-8을 명시한다
+	// Windows PowerShell 5.1에서 한글 이름을 올바르게 읽도록 응답에 UTF-8을 명시한다.
 	@GetMapping(value = "/me", produces = "application/json;charset=UTF-8")
 	public MemberResponse me(@AuthenticationPrincipal FarmPrincipal member) {
 		// 로그인 세션의 사용자로 본인을 식별하며, 응답은 회원 ID·이름·역할로 제한한다.

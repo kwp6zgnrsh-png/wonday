@@ -1,6 +1,9 @@
-package com.wonday.farm.auth;
+package com.wonday.farm.demo;
 
-import java.nio.charset.StandardCharsets;
+import com.wonday.farm.auth.PasswordPolicy;
+import com.wonday.farm.member.Member;
+import com.wonday.farm.member.MemberRepository;
+import com.wonday.farm.member.MemberRole;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
@@ -34,8 +37,9 @@ class DemoAccounts {
 
 	private static String encode(PasswordEncoder encoder, String password, String property) {
 		// BCrypt는 UTF-8로 인코딩한 비밀번호를 최대 72바이트까지 처리한다.
-		if (password.isBlank() || password.getBytes(StandardCharsets.UTF_8).length > 72) {
-			throw new IllegalStateException(property + " must be non-blank and at most 72 UTF-8 bytes");
+		if (password.isBlank() || PasswordPolicy.exceedsBcryptLimit(password)) {
+			throw new IllegalStateException(property + " must be non-blank and at most "
+				+ PasswordPolicy.BCRYPT_MAX_BYTES + " UTF-8 bytes");
 		}
 		return encoder.encode(password);
 	}

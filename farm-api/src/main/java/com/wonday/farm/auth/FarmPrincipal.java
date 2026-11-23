@@ -2,6 +2,7 @@ package com.wonday.farm.auth;
 
 import java.util.List;
 
+import com.wonday.farm.member.MemberRole;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 

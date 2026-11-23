@@ -1,4 +1,4 @@
-package com.wonday.farm;
+package com.wonday.farm.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
@@ -12,9 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import com.jayway.jsonpath.JsonPath;
-import com.wonday.farm.auth.Member;
-import com.wonday.farm.auth.MemberRepository;
-import com.wonday.farm.auth.MemberRole;
+import com.wonday.farm.member.Member;
+import com.wonday.farm.member.MemberRepository;
+import com.wonday.farm.member.MemberRole;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +28,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
+@Tag("integration")
 @SpringBootTest
 @AutoConfigureMockMvc
 // 테스트용 회원 행은 테스트가 끝나면 롤백한다.
@@ -99,7 +101,7 @@ class AuthApiTests {
 
 	private static MockHttpServletRequestBuilder login(String loginId, String password) {
 		return post("/api/auth/login").contentType(MediaType.APPLICATION_FORM_URLENCODED)
-			.param("loginId", loginId).param("password", password);
+			.formField("loginId", loginId).formField("password", password);
 	}
 
 	private CsrfRequest csrf(MockHttpSession session) throws Exception {

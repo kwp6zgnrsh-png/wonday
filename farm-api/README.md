@@ -18,8 +18,12 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 | 요청 | 처리 |
 | --- | --- |
 | `GET /api/auth/csrf` | `headerName`, `token`을 받는다. |
-| `POST /api/auth/login` | `application/x-www-form-urlencoded`로 `loginId`, `password`를 보내고 반환받은 이름과 값으로 CSRF 헤더를 설정한다. 성공은 `204`, 자격 증명 오류는 `401`이다. |
+| `POST /api/auth/login` | `application/x-www-form-urlencoded` 본문에 `loginId`, `password`를 보내고 CSRF 헤더를 설정한다. URL에 쿼리 문자열이 있으면 `400`, 본문 형식이 다르면 `415`다. 성공은 `204`, 자격 증명 오류나 UTF-8 기준 72바이트를 넘는 비밀번호는 `401`이다. |
 | `GET /api/auth/me` | 세션의 계정 ID, 이름, 역할을 받는다. 로그인하지 않았으면 `401`이다. |
 | `POST /api/auth/logout` | 로그인 후 새로 발급받은 CSRF 토큰을 헤더에 보내면 현재 세션이 종료된다. 성공은 `204`다. |
 
 요청 사이에 `FARMSESSION` 쿠키를 전달한다. 로그인과 로그아웃 이후에는 다음 `POST` 전에 CSRF 토큰을 다시 받는다. 다른 역할을 확인하려면 로그아웃 후 새 토큰을 받아 다시 로그인한다.
+
+## 테스트와 커버리지
+
+MySQL을 켠 상태에서 데모 프로필을 설정하지 않은 터미널로 `farm-api` 폴더에서 `.\gradlew.bat test`를 실행한다. 로그인 HTTP 테스트는 설정된 MySQL을 사용하며, 데모 프로필 테스트는 전용 인메모리 H2에서 계정을 등록한다. 테스트 후 JaCoCo 리포트는 `build/reports/jacoco/test/html/index.html`, XML은 `build/reports/jacoco/test/jacocoTestReport.xml`에서 확인한다.

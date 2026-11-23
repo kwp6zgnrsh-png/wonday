@@ -1,4 +1,4 @@
-package com.wonday.farm.auth;
+package com.wonday.farm.member;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -18,7 +18,7 @@ public class Member {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	@Column(name = "login_id", nullable = false, length = 100)
+	@Column(name = "login_id", nullable = false, unique = true, length = 100)
 	private String loginId;
 
 	@Column(name = "password_hash", nullable = false, length = 255)
@@ -51,15 +51,15 @@ public class Member {
 		return loginId;
 	}
 
-	String passwordHash() {
+	public String passwordHash() {
 		return passwordHash;
 	}
 
-	String displayName() {
+	public String displayName() {
 		return name;
 	}
 
-	Optional<MemberRole> memberRole() {
+	public Optional<MemberRole> memberRole() {
 		// 기존 DB의 값도 읽을 수 있게 문자열로 매핑하고, 인증할 때 허용된 역할 코드인지 확인한다.
 		return Arrays.stream(MemberRole.values())
 			.filter(candidate -> candidate.name().equals(role))

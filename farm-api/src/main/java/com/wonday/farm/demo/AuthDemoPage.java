@@ -1,4 +1,4 @@
-package com.wonday.farm.auth;
+package com.wonday.farm.demo;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.ClassPathResource;

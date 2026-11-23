@@ -1,4 +1,4 @@
-package com.wonday.farm.auth;
+package com.wonday.farm.member;
 
 import java.util.Optional;
 

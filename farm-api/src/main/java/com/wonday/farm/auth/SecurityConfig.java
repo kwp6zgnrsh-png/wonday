@@ -1,4 +1,4 @@
-package com.wonday.farm.config;
+package com.wonday.farm.auth;
 
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +12,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler;
 
 @Configuration
@@ -30,7 +31,7 @@ public class SecurityConfig {
 				}
 				// 로그인 전에 토큰을 발급할 수 있게 하고, 본인 조회는 농업 계정 역할로 제한한다.
 				auth.requestMatchers(HttpMethod.GET, "/", "/api/auth/csrf").permitAll()
-					.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+					.requestMatchers(HttpMethod.POST, LoginRequestFilter.LOGIN_PATH).permitAll()
 					.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("EMPLOYER", "WORKER")
 					.anyRequest().denyAll();
 			})
@@ -38,11 +39,13 @@ public class SecurityConfig {
 			.exceptionHandling(exceptions -> exceptions
 				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
 			.requestCache(AbstractHttpConfigurer::disable)
+			.addFilterBefore(new LoginRequestFilter(), UsernamePasswordAuthenticationFilter.class)
 			// 폼의 loginId와 password를 검증하고, 성공하면 세션에 인증 정보를 저장한다.
 			.formLogin(login -> login
-				.loginPage("/api/auth/login")
-				.loginProcessingUrl("/api/auth/login")
+				.loginPage(LoginRequestFilter.LOGIN_PATH)
+				.loginProcessingUrl(LoginRequestFilter.LOGIN_PATH)
 				.usernameParameter("loginId")
+				.passwordParameter(LoginRequestFilter.PASSWORD_PARAMETER)
 				.successHandler((request, response, authentication) ->
 					response.setStatus(HttpStatus.NO_CONTENT.value()))
 				.failureHandler((request, response, exception) ->
