@@ -81,3 +81,7 @@ htmlcov/
 /worker/build/
 /worker/dist/
 *.egg-info/
+
+# Local weather datasets
+/data/
+/worker/data/
