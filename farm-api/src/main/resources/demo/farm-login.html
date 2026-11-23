@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>농업 로그인 데모 · WON데이</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, 'Malgun Gothic', sans-serif; color: #173328; background: #edf4ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 3rem 1rem; }
+    main { max-width: 29rem; margin: auto; padding: clamp(1.25rem, 5vw, 2.5rem); background: white; border: 1px solid #cddfd3; border-radius: 1rem; }
+    .brand { margin: 0 0 .5rem; color: #216345; font-weight: 700; }
+    h1 { margin: 0 0 .75rem; font-size: 1.9rem; letter-spacing: -.04em; }
+    p { line-height: 1.55; }
+    .hint { margin: 0 0 1.25rem; color: #3e594d; }
+    label { display: block; font-size: .9rem; font-weight: 650; margin: 0 0 .4rem; }
+    input, button { font: inherit; border-radius: .5rem; min-height: 2.75rem; }
+    input { width: 100%; padding: .6rem .75rem; border: 1px solid #839c8d; margin: 0 0 1rem; color: inherit; }
+    button { padding: .55rem .8rem; border: 1px solid #a0b8a8; color: #18492f; background: #f0f7f2; font-weight: 650; cursor: pointer; }
+    button:hover { background: #dcece1; }
+    button[type=submit], #logout { width: 100%; border-color: #1b5e3e; background: #1b5e3e; color: white; }
+    button[type=submit]:hover, #logout:hover { background: #12462d; }
+    button:disabled { opacity: .65; cursor: default; }
+    :focus-visible { outline: 3px solid #28754e; outline-offset: 3px; }
+    #status { margin: 1.25rem 0 0; min-height: 1.55em; color: #235d40; }
+    #status[data-error=true] { color: #a12c26; }
+    #welcome { margin: 1.25rem 0 .75rem; font-size: 1.35rem; }
+    dl { margin: 0 0 1.25rem; padding: .75rem 1rem; background: #f0f7f2; border-radius: .5rem; }
+    dl div { display: flex; justify-content: space-between; gap: .75rem; padding: .35rem 0; }
+    dd { margin: 0; font-weight: 650; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="brand">WON데이 농업 플랫폼</p>
+    <h1>로그인 데모</h1>
+    <!-- 로그인 상태를 확인하면 입력 폼과 본인 정보 중 해당 영역을 표시한다. -->
+    <form id="login-form" method="post" action="/api/auth/login" hidden>
+      <p class="hint">데모 아이디와 비밀번호를 입력하세요.</p>
+      <label for="login-id">아이디</label>
+      <input id="login-id" name="loginId" autocomplete="username" required>
+      <label for="password">비밀번호</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">로그인</button>
+    </form>
+    <section id="member" aria-labelledby="welcome" hidden>
+      <h2 id="welcome" tabindex="-1"></h2>
+      <dl>
+        <div><dt>이름</dt><dd id="member-name"></dd></div>
+        <div><dt>회원 ID</dt><dd id="member-id"></dd></div>
+        <div><dt>역할</dt><dd id="member-role"></dd></div>
+      </dl>
+      <button type="button" id="logout">로그아웃</button>
+    </section>
+    <p id="status" role="status">로그인 상태를 확인하는 중입니다.</p>
+  </main>
+  <script>
+    const api = '/api/auth';
+    const form = document.querySelector('#login-form');
+    const loginId = document.querySelector('#login-id');
+    const password = document.querySelector('#password');
+    const submit = form.querySelector('[type=submit]');
+    const member = document.querySelector('#member');
+    const welcome = document.querySelector('#welcome');
+    const logout = document.querySelector('#logout');
+    const status = document.querySelector('#status');
+    const roles = { EMPLOYER: '고용주', WORKER: '근로자' };
+
+    function showStatus(message, error = false) {
+      status.textContent = message;
+      status.dataset.error = error;
+    }
+
+    function showLogin(message, error = false) {
+      member.hidden = true;
+      form.hidden = false;
+      showStatus(message, error);
+    }
+
+    // 현재 세션의 /me 응답으로 로그인 상태와 본인의 역할을 확인한다.
+    async function readMember() {
+      const response = await fetch(`${api}/me`);
+      if (response.status === 401) return null;
+      if (!response.ok) throw new Error('Member request failed');
+      return response.json();
+    }
+
+    // 서버가 반환한 계정의 역할 코드에 맞춰 환영 문구를 표시한다.
+    function showMember(account) {
+      const roleName = roles[account.role];
+      welcome.textContent = roleName ? `${roleName}님, 반갑습니다.` : '반갑습니다.';
+      document.querySelector('#member-name').textContent = account.name;
+      document.querySelector('#member-id').textContent = account.id;
+      document.querySelector('#member-role').textContent = roleName ? `${roleName} (${account.role})` : account.role;
+      form.hidden = true;
+      member.hidden = false;
+      showStatus('');
+    }
+
+    // 로그인과 로그아웃 때 토큰이 갱신되므로 POST 요청 전에 새 CSRF 토큰을 받는다.
+    async function post(path, body) {
+      const tokenResponse = await fetch(`${api}/csrf`);
+      if (!tokenResponse.ok) throw new Error('CSRF request failed');
+      const { headerName, token } = await tokenResponse.json();
+      return fetch(`${api}/${path}`, { method: 'POST', headers: { [headerName]: token }, body });
+    }
+
+    // 아이디와 비밀번호를 폼 데이터로 보내고, 로그인 성공 후 본인 정보를 요청한다.
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      submit.disabled = true;
+      showStatus('로그인 중입니다.');
+      try {
+        const response = await post('login', new URLSearchParams(new FormData(form)));
+        password.value = '';
+        if (response.status === 401) {
+          showStatus('아이디 또는 비밀번호를 확인해 주세요.', true);
+          password.focus();
+          return;
+        }
+        if (response.status !== 204) throw new Error('Login request failed');
+        const account = await readMember();
+        if (!account) throw new Error('Session missing after login');
+        showMember(account);
+        welcome.focus();
+      } catch {
+        showStatus('로그인 상태를 확인할 수 없습니다. 다시 시도해 주세요.', true);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    // 서버가 세션 종료를 확인하면 입력 폼을 비우고 다시 표시한다.
+    logout.addEventListener('click', async () => {
+      logout.disabled = true;
+      try {
+        const response = await post('logout');
+        if (response.status !== 204) throw new Error('Logout request failed');
+        form.reset();
+        showLogin('로그아웃되었습니다. 다른 계정으로 로그인할 수 있습니다.');
+        loginId.focus();
+      } catch {
+        showStatus('로그아웃에 실패했습니다. 다시 시도해 주세요.', true);
+      } finally {
+        logout.disabled = false;
+      }
+    });
+
+    // 새로고침할 때도 브라우저가 보관한 세션 쿠키로 로그인 상태를 확인한다.
+    readMember().then((account) => {
+      if (account) showMember(account);
+      else showLogin('');
+    }).catch(() => showLogin('서버 연결 상태를 확인해 주세요.', true));
+  </script>
+</body>
+</html>
