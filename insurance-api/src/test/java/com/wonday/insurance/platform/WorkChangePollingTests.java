@@ -83,7 +83,7 @@ class WorkChangePollingTests {
 		PlatformWorkEvent stored = events.findBySourceChangeIdAndSourceVersion(9001, "1").orElseThrow();
 		assertThat(stored.getOccurredAt()).isEqualTo(LocalDateTime.of(2026, 11, 23, 22, 0));
 		assertThat(stored.getSourcePayload()).contains("weatherReasonCode", "recordedAt");
-		assertThat(stored.getWorkSnapshot()).contains("Asia/Seoul", "120000", "agreedWorkDate");
+		assertThat(stored.getWorkSnapshot()).contains("GMT+9", "120000", "agreedWorkDate");
 		assertThat(cursors.findById(123L).orElseThrow().getCursor()).isEqualTo("c2");
 		verify(farm, times(2)).assignment(123, 7001);
 	}
@@ -285,7 +285,7 @@ class WorkChangePollingTests {
 	}
 
 	static Assignment assignment(long id) {
-		return new Assignment(id,123L,TIME.minusDays(3),LocalDate.of(2026,11,24),"Asia/Seoul",
+		return new Assignment(id,123L,TIME.minusDays(3),LocalDate.of(2026,11,24),"GMT+9",
 			"farm","CABBAGE","HARVEST",TIME.plusHours(1),TIME.plusHours(10),
 			TIME.plusHours(5),TIME.plusHours(6),120000L);
 	}

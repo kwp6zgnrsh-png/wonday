@@ -54,6 +54,7 @@ class PlatformWorkEvent {
 	@Column(name = "received_at", nullable = false)
 	private LocalDateTime receivedAt;
 
+	// 수신 당시의 확정 약정이다. 원본 시간대·오프셋을 보존해 접수 근거를 재현한다.
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(name = "work_snapshot", columnDefinition = "JSON")
 	private String workSnapshot;
@@ -105,6 +106,7 @@ class PlatformWorkEvent {
 	}
 
 	boolean matchesStoredFields(FarmWorkResponse.Change change) {
+		// 원본 JSON이 없는 이전 행은 확인 가능한 컬럼만 비교한다. 없는 필드를 수신값으로 덮어쓰지 않는다.
 		return eventType.equals(change.changeType().name())
 			&& reasonCode.equals(change.reasonCode().name())
 			&& Objects.equals(reasonDetail, change.reasonDetail())
@@ -113,6 +115,7 @@ class PlatformWorkEvent {
 	}
 
 	private static LocalDateTime utcMicros(OffsetDateTime value) {
+		// 시간대가 없는 DATETIME(6) 컬럼에는 UTC로 정규화한 일시만 저장한다.
 		return value.withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime().truncatedTo(ChronoUnit.MICROS);
 	}
 }

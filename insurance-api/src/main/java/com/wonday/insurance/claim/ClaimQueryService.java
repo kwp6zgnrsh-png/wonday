@@ -22,8 +22,10 @@ class ClaimQueryService {
 	}
 
 	ClaimDetail detail(long memberId, long claimId) {
+		// 타인 기록과 없는 기록 모두 404로 응답해 다른 회원의 접수 존재 여부를 노출하지 않는다.
 		ClaimRepository.ClaimRow row = claims.findOwned(memberId, claimId).stream().findFirst()
 			.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Claim does not exist"));
+		// 현재 농업 서버를 다시 조회하지 않고 최초 접수에 연결된 이벤트와 약정 스냅샷을 반환한다.
 		return new ClaimDetail(summary(row), new IntakeSource(row.getSourceChangeId(), row.getSourceVersion(),
 			row.getEventType(), row.getReasonCode(), row.getReasonDetail(), row.getOccurredAt()),
 			json.readTree(row.getWorkSnapshot()));

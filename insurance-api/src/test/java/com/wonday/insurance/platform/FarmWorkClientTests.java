@@ -87,7 +87,7 @@ class FarmWorkClientTests {
 	void mismatchedDetailAndInvalidTimeZoneAreRejected() {
 		String valid = json.writeValueAsString(WorkChangePollingTests.assignment(7001));
 		for (String body : List.of(valid.replace("\"workerId\":123","\"workerId\":999"),
-			valid.replace("Asia/Seoul","invalid-zone"), valid.replace("\"agreedDailyWage\":120000","\"agreedDailyWage\":0"))) {
+			valid.replace("GMT+9","invalid-zone"), valid.replace("\"agreedDailyWage\":120000","\"agreedDailyWage\":0"))) {
 			server.reset();
 			server.expect(anything()).andRespond(withSuccess(body,MediaType.APPLICATION_JSON));
 			assertThatThrownBy(() -> client.assignment(123,7001)).isInstanceOf(PlatformVerificationException.class);

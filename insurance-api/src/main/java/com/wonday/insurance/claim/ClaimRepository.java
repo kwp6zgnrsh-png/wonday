@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 interface ClaimRepository extends JpaRepository<ClaimCase, Long> {
 	Optional<ClaimCase> findByContractIdAndAssignmentId(long contractId, long assignmentId);
 
+	// 계약과 원본 이벤트의 회원 소유권을 모두 확인한다. 동의를 철회해도 본인의 과거 접수는 조회할 수 있다.
 	@Query("""
 		select c.id as id, c.contractId as contractId, p.name as productName,
 		  c.assignmentId as assignmentId, c.status as status, c.openedVia as openedVia,

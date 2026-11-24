@@ -11,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 
 interface ContractRepository extends JpaRepository<InsuranceContract, Long> {
 
+	// 늦게 수신된 취소도 발생 시점의 보장 여부로 판단한다. 보장 시작은 포함하고 종료는 제외한다.
+	// 계약을 ID 순서로 잠가 접수 생성의 중복을 막고 여러 계약의 잠금 순서를 일정하게 유지한다.
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("""
 		select c from InsuranceContract c
