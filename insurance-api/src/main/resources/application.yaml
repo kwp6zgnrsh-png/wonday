@@ -12,6 +12,11 @@ insurance:
     base-url: ${FARM_API_BASE_URL:http://127.0.0.1:8081}
     service-token: ${FARM_API_SERVICE_TOKEN:}
     consent-version: farm-platform-v1
+    polling:
+      enabled: ${FARM_WORK_POLLING_ENABLED:false}
+      delay-ms: ${FARM_WORK_POLLING_DELAY_MS:60000}
+      page-size: 100
+      max-pages-per-worker: 10
 
 spring:
   config:
