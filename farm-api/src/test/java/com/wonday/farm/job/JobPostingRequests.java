@@ -25,7 +25,7 @@ final class JobPostingRequests {
 		body.put("cropCode", CROP_CODE);
 		body.put("workTypeCode", WORK_TYPE_CODE);
 		body.put("workLocation", "충청북도 충주시 예시농장");
-		body.put("timeZone", "Asia/Seoul");
+		body.put("timeZone", "GMT+9");
 		body.put("headcount", 2);
 		body.put("dailyWage", 120000);
 		body.put("schedules", new ArrayList<>(List.of(

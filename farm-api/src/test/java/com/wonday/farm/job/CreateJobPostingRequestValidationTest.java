@@ -134,7 +134,7 @@ class CreateJobPostingRequestValidationTest {
 		private String cropCode = JobPostingRequests.CROP_CODE;
 		private String workTypeCode = JobPostingRequests.WORK_TYPE_CODE;
 		private String workLocation = "충청북도 충주시 예시농장";
-		private String timeZone = "Asia/Seoul";
+		private String timeZone = "GMT+9";
 		private Integer headcount = 2;
 		private Long dailyWage = 120000L;
 		private List<CreateJobPostingRequest.Schedule> schedules = List.of(schedule());

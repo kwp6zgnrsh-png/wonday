@@ -23,6 +23,8 @@ import com.wonday.farm.member.MemberRole;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -53,7 +55,7 @@ class JobPostingServiceTest {
 	class Success {
 		@Test
 		void savesPostingThenSchedulesAndMapsResponse() {
-			var request = request("Asia/Seoul",
+			var request = request("GMT+9",
 				schedule("2026-11-30", "2026-11-30T08:00", "2026-11-30T16:00", "2026-11-30T12:00", "2026-11-30T13:00"),
 				schedule("2026-12-02", "2026-12-02T08:00", "2026-12-02T12:00", null, null));
 
@@ -73,7 +75,7 @@ class JobPostingServiceTest {
 			assertThat(p.getCropCode()).isEqualTo(request.cropCode());
 			assertThat(p.getWorkTypeCode()).isEqualTo(request.workTypeCode());
 			assertThat(p.getWorkLocation()).isEqualTo(request.workLocation());
-			assertThat(p.getTimeZone()).isEqualTo("Asia/Seoul");
+			assertThat(p.getTimeZone()).isEqualTo("GMT+9");
 			assertThat(p.getHeadcount()).isEqualTo(2);
 			assertThat(p.getDailyWage()).isEqualTo(120000L);
 
@@ -104,7 +106,7 @@ class JobPostingServiceTest {
 
 		@Test
 		void acceptsOvernightShiftAndBreakTouchingWorkBoundaries() {
-			service.create(EMPLOYER_ID, request("Asia/Seoul",
+			service.create(EMPLOYER_ID, request("GMT+9",
 				schedule("2026-12-05", "2026-12-05T22:00", "2026-12-06T06:00", "2026-12-05T22:00", "2026-12-05T23:00"),
 				schedule("2026-12-06", "2026-12-06T08:00", "2026-12-06T16:00", "2026-12-06T15:00", "2026-12-06T16:00")));
 
@@ -113,7 +115,7 @@ class JobPostingServiceTest {
 
 		@Test
 		void acceptsDatetimeRangeLimitsAndMicroseconds() {
-			service.create(EMPLOYER_ID, request("Asia/Seoul",
+			service.create(EMPLOYER_ID, request("GMT+9",
 				schedule("1000-01-01", "1000-01-01T00:00", "1000-01-01T01:00", null, null),
 				schedule("9999-12-31", "9999-12-31T22:00", "9999-12-31T23:59:59.999999", null, null)));
 
@@ -123,17 +125,29 @@ class JobPostingServiceTest {
 		@Test
 		void acceptsDescriptionOfExactly65535Utf8Bytes() {
 			// "가"는 UTF-8 3바이트: 21845 × 3 = 65535
-			service.create(EMPLOYER_ID, request("Asia/Seoul", "가".repeat(21845), defaultSchedule()));
+			service.create(EMPLOYER_ID, request("GMT+9", "가".repeat(21845), defaultSchedule()));
 
 			verify(postings).save(any());
 		}
 
 		@Test
-		void acceptsTimesOutsideDstTransition() {
-			service.create(EMPLOYER_ID, request("America/New_York",
-				schedule("2026-03-08", "2026-03-08T03:00", "2026-03-08T11:00", null, null)));
+		void gmtPlus9HasNoDaylightSavingSoAnyLocalTimeIsAccepted() {
+			// 팀 정책상 시간대는 GMT+9(고정 오프셋)뿐이다. 다른 지역에서 DST로 없거나 겹치는 현지 시각도 정상이다.
+			service.create(EMPLOYER_ID, request("GMT+9",
+				schedule("2026-03-08", "2026-03-08T02:30", "2026-03-08T10:00", null, null),
+				schedule("2026-11-01", "2026-11-01T01:30", "2026-11-01T09:00", "2026-11-01T01:30", "2026-11-01T02:30")));
 
-			verify(postings).save(any());
+			verify(schedules).saveAll(anyList());
+		}
+
+		@Test
+		void storesTimeZoneExactlyAsGmtPlus9() {
+			service.create(EMPLOYER_ID, request("GMT+9", defaultSchedule()));
+
+			ArgumentCaptor<JobPosting> posting = ArgumentCaptor.forClass(JobPosting.class);
+			verify(postings).save(posting.capture());
+			// ZoneId.of("GMT+9")가 정규화하는 "GMT+09:00"이 아니라 입력한 표기 그대로 저장한다.
+			assertThat(posting.getValue().getTimeZone()).isEqualTo("GMT+9");
 		}
 	}
 
@@ -143,14 +157,14 @@ class JobPostingServiceTest {
 		void rejectsMemberWhoseCurrentRoleIsWorker() {
 			memberWithRole(MemberRole.WORKER);
 
-			assertRejectedWithoutSaving(() -> service.create(EMPLOYER_ID, request("Asia/Seoul", defaultSchedule())));
+			assertRejectedWithoutSaving(() -> service.create(EMPLOYER_ID, request("GMT+9", defaultSchedule())));
 		}
 
 		@Test
 		void rejectsMissingMember() {
 			given(members.findById(EMPLOYER_ID)).willReturn(Optional.empty());
 
-			assertRejectedWithoutSaving(() -> service.create(EMPLOYER_ID, request("Asia/Seoul", defaultSchedule())));
+			assertRejectedWithoutSaving(() -> service.create(EMPLOYER_ID, request("GMT+9", defaultSchedule())));
 		}
 
 		@Test
@@ -158,7 +172,7 @@ class JobPostingServiceTest {
 			Member member = memberWithRole(MemberRole.EMPLOYER);
 			ReflectionTestUtils.setField(member, "role", "ADMIN");
 
-			assertRejectedWithoutSaving(() -> service.create(EMPLOYER_ID, request("Asia/Seoul", defaultSchedule())));
+			assertRejectedWithoutSaving(() -> service.create(EMPLOYER_ID, request("GMT+9", defaultSchedule())));
 		}
 
 		@Test
@@ -178,20 +192,28 @@ class JobPostingServiceTest {
 
 	@Nested
 	class Validation {
+		@ParameterizedTest(name = "timeZone=[{0}]")
+		@ValueSource(strings = {"Asia/Seoul", "+09:00", "GMT+09:00", "GMT+09", "UTC", "UTC+9", "Z", "ROK", "Etc/GMT-9",
+			"America/New_York", "gmt+9", "GMT +9", "GMT+9 ", " GMT+9", "GMT+9\n", "GMT＋9", "GMT+10", "Mars/Olympus"})
+		void timeZoneOtherThanExactGmtPlus9IsRejected(String timeZone) {
+			assertInvalid(request(timeZone, defaultSchedule()), "INVALID_TIME_ZONE", "timeZone");
+		}
+
 		@Test
-		void invalidTimeZone() {
-			assertInvalid(request("Mars/Olympus", defaultSchedule()), "INVALID_TIME_ZONE", "timeZone");
+		void timeZoneIsCheckedBeforeOtherScheduleErrors() {
+			assertInvalid(request("Asia/Seoul", schedule("2026-12-11", "2026-12-11T08:00", "2026-12-11T07:00", null, null)),
+				"INVALID_TIME_ZONE", "timeZone");
 		}
 
 		@Test
 		void descriptionOver65535Utf8Bytes() {
-			assertInvalid(request("Asia/Seoul", "가".repeat(21845) + "d", defaultSchedule()),
+			assertInvalid(request("GMT+9", "가".repeat(21845) + "d", defaultSchedule()),
 				"INVALID_JOB_POSTING", "description");
 		}
 
 		@Test
 		void duplicateWorkDateReportsSecondOccurrence() {
-			assertInvalid(request("Asia/Seoul",
+			assertInvalid(request("GMT+9",
 					schedule("2026-12-11", "2026-12-11T08:00", "2026-12-11T12:00", null, null),
 					schedule("2026-12-12", "2026-12-12T08:00", "2026-12-12T12:00", null, null),
 					schedule("2026-12-11", "2026-12-11T13:00", "2026-12-11T17:00", null, null)),
@@ -223,12 +245,10 @@ class JobPostingServiceTest {
 		}
 
 		@Test
-		void breakEndMissingIsRejected() {
-			// field 값은 DEFECT-4 (JobPostingKnownDefectTests)에서 별도로 검증한다.
-			assertThatThrownBy(() -> service.create(EMPLOYER_ID,
-					one("2026-12-11", "2026-12-11T08:00", "2026-12-11T16:00", "2026-12-11T12:00", null)))
-				.isInstanceOfSatisfying(JobPostingException.class,
-					e -> assertThat(e.code()).isEqualTo("INVALID_BREAK_TIME"));
+		void breakEndMissing() {
+			// DEFECT-4 수정 확인: 누락된 종료 항목을 가리킨다.
+			assertInvalid(one("2026-12-11", "2026-12-11T08:00", "2026-12-11T16:00", "2026-12-11T12:00", null),
+				"INVALID_BREAK_TIME", "schedules[0].breakEndAt");
 		}
 
 		@Test
@@ -244,12 +264,29 @@ class JobPostingServiceTest {
 		}
 
 		@Test
-		void breakStartsBeforeWorkIsRejected() {
-			// field 값은 DEFECT-4에서 별도로 검증한다.
-			assertThatThrownBy(() -> service.create(EMPLOYER_ID,
-					one("2026-12-11", "2026-12-11T08:00", "2026-12-11T16:00", "2026-12-11T07:59", "2026-12-11T09:00")))
-				.isInstanceOfSatisfying(JobPostingException.class,
-					e -> assertThat(e.code()).isEqualTo("INVALID_BREAK_TIME"));
+		void breakStartsBeforeWork() {
+			// DEFECT-4 수정 확인: 근무 시작보다 앞선 휴게 시작을 가리킨다.
+			assertInvalid(one("2026-12-11", "2026-12-11T08:00", "2026-12-11T16:00", "2026-12-11T07:59", "2026-12-11T09:00"),
+				"INVALID_BREAK_TIME", "schedules[0].breakStartAt");
+		}
+
+		@Test
+		void breakEntirelyBeforeWorkPointsToBreakStart() {
+			assertInvalid(one("2026-12-11", "2026-12-11T08:00", "2026-12-11T16:00", "2026-12-11T06:00", "2026-12-11T07:00"),
+				"INVALID_BREAK_TIME", "schedules[0].breakStartAt");
+		}
+
+		@Test
+		void breakEntirelyAfterWorkPointsToBreakEnd() {
+			assertInvalid(one("2026-12-11", "2026-12-11T08:00", "2026-12-11T16:00", "2026-12-11T17:00", "2026-12-11T18:00"),
+				"INVALID_BREAK_TIME", "schedules[0].breakEndAt");
+		}
+
+		@Test
+		void reversedBreakOutsideWorkReportsOrderErrorOnBreakEnd() {
+			// 종료 ≤ 시작 검사가 범위 검사보다 먼저다.
+			assertInvalid(one("2026-12-11", "2026-12-11T08:00", "2026-12-11T16:00", "2026-12-11T07:00", "2026-12-11T06:00"),
+				"INVALID_BREAK_TIME", "schedules[0].breakEndAt");
 		}
 
 		@Test
@@ -283,29 +320,14 @@ class JobPostingServiceTest {
 		}
 
 		@Test
-		void nonexistentLocalTimeInDstGap() {
-			assertInvalid(request("America/New_York",
-					schedule("2026-03-08", "2026-03-08T02:30", "2026-03-08T10:00", null, null)),
-				"INVALID_LOCAL_TIME", "schedules[0].plannedStartAt");
-		}
-
-		@Test
-		void ambiguousLocalTimeInDstOverlap() {
-			assertInvalid(request("America/New_York",
-					schedule("2026-10-31", "2026-10-31T22:00", "2026-11-01T01:30", null, null)),
-				"INVALID_LOCAL_TIME", "schedules[0].plannedEndAt");
-		}
-
-		@Test
-		void ambiguousBreakTimeInDstOverlap() {
-			assertInvalid(request("America/New_York",
-					schedule("2026-10-31", "2026-10-31T20:00", "2026-11-01T04:00", "2026-11-01T01:15", "2026-11-01T03:00")),
+		void subMicrosecondBreakStart() {
+			assertInvalid(one("2026-12-11", "2026-12-11T08:00", "2026-12-11T16:00", "2026-12-11T12:00:00.0000005", "2026-12-11T13:00"),
 				"INVALID_LOCAL_TIME", "schedules[0].breakStartAt");
 		}
 
 		@Test
 		void invalidLaterScheduleStopsWholeRequestBeforeSaving() {
-			assertInvalid(request("Asia/Seoul",
+			assertInvalid(request("GMT+9",
 					schedule("2026-12-13", "2026-12-13T08:00", "2026-12-13T12:00", null, null),
 					schedule("2026-12-14", "2026-12-14T08:00", "2026-12-14T07:00", null, null)),
 				"INVALID_WORK_TIME", "schedules[1].plannedEndAt");
@@ -347,7 +369,7 @@ class JobPostingServiceTest {
 	}
 
 	static CreateJobPostingRequest one(String date, String start, String end, String breakStart, String breakEnd) {
-		return request("Asia/Seoul", schedule(date, start, end, breakStart, breakEnd));
+		return request("GMT+9", schedule(date, start, end, breakStart, breakEnd));
 	}
 
 	static CreateJobPostingRequest.Schedule defaultSchedule() {

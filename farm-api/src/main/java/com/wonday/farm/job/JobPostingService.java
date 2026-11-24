@@ -1,7 +1,6 @@
 package com.wonday.farm.job;
 
 import java.nio.charset.StandardCharsets;
-import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -48,12 +47,11 @@ public class JobPostingService {
 	}
 
 	private static void validate(CreateJobPostingRequest request) {
-		ZoneId zone;
-		try {
-			zone = ZoneId.of(request.timeZone());
-		} catch (DateTimeException exception) {
-			throw new JobPostingException("INVALID_TIME_ZONE", "유효한 작업지 시간대를 입력해 주세요.", "timeZone");
+		// 팀에서 합의한 고정 표기만 받고, 저장할 때도 입력한 GMT+9를 유지한다.
+		if (!"GMT+9".equals(request.timeZone())) {
+			throw new JobPostingException("INVALID_TIME_ZONE", "작업지 시간대는 GMT+9로 입력해 주세요.", "timeZone");
 		}
+		ZoneId zone = ZoneId.of(request.timeZone());
 		if (request.description().getBytes(StandardCharsets.UTF_8).length > 65535) {
 			throw new JobPostingException("INVALID_JOB_POSTING", "작업 내용이 저장 가능한 길이를 초과했습니다.", "description");
 		}
@@ -86,13 +84,22 @@ public class JobPostingService {
 		if (start == null && end == null) {
 			return;
 		}
-		if (start == null || end == null) {
-			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 시작과 종료를 함께 입력해 주세요.", field + ".breakStartAt");
+		if (start == null) {
+			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 시작을 입력해 주세요.", field + ".breakStartAt");
+		}
+		if (end == null) {
+			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 종료를 입력해 주세요.", field + ".breakEndAt");
 		}
 		validateLocalTime(start, zone, field + ".breakStartAt");
 		validateLocalTime(end, zone, field + ".breakEndAt");
-		if (!end.isAfter(start) || start.isBefore(schedule.plannedStartAt()) || end.isAfter(schedule.plannedEndAt())) {
-			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 구간은 순서에 맞게 근무 구간 안에 입력해 주세요.", field + ".breakEndAt");
+		if (!end.isAfter(start)) {
+			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 종료는 휴게 시작 이후여야 합니다.", field + ".breakEndAt");
+		}
+		if (start.isBefore(schedule.plannedStartAt())) {
+			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 시작은 근무 시작 이전일 수 없습니다.", field + ".breakStartAt");
+		}
+		if (end.isAfter(schedule.plannedEndAt())) {
+			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 종료는 근무 종료를 넘을 수 없습니다.", field + ".breakEndAt");
 		}
 	}
 

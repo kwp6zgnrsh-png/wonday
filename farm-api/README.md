@@ -11,7 +11,7 @@
   "cropCode": "<팀에서 합의할 작목 코드>",
   "workTypeCode": "<팀에서 합의할 작업 유형 코드>",
   "workLocation": "충청북도 충주시 예시농장",
-  "timeZone": "Asia/Seoul",
+  "timeZone": "GMT+9",
   "headcount": 2,
   "dailyWage": 120000,
   "schedules": [
@@ -43,13 +43,17 @@
 | 유효한 CSRF 토큰을 가진 근로자의 등록 요청 | 403 | `EMPLOYER_ROLE_REQUIRED` |
 | 필수 항목·길이·양수 조건 오류 | 400 | `INVALID_JOB_POSTING` |
 | 중복 근무일 | 400 | `DUPLICATE_WORK_DATE` |
-| 작업지 시간대 오류 | 400 | `INVALID_TIME_ZONE` |
+| 작업지 시간대가 `GMT+9`와 다름 | 400 | `INVALID_TIME_ZONE` |
 | 근무일과 시작 일자의 불일치·종료 순서 오류 | 400 | `INVALID_WORK_TIME` |
 | 휴게시간 한쪽 누락·순서·범위 오류 | 400 | `INVALID_BREAK_TIME` |
 | DB 범위·정밀도 초과 또는 작업지에서 해석이 모호한 일시 | 400 | `INVALID_LOCAL_TIME` |
 | JSON 역직렬화 오류 | 400 | `INVALID_REQUEST_BODY` |
 
-시간은 작업지 시간대의 현지 일시로 받고 시작 날짜를 `workDate`로 사용한다. 종료는 시작 이후여야 하며, 날짜를 넘기는 근무도 입력할 수 있다. 일시 정밀도는 MySQL과 동일한 마이크로초까지 지원한다. 일광 절약 시간 전환으로 존재하지 않거나 두 번 존재하는 현지 일시는 거절한다.
+팀 합의에 따라 `timeZone`은 정확히 `GMT+9`만 허용하며 저장 시 같은 표기를 유지한다. 기존에 저장된 시간대 값은 그대로 보존한다. 시간은 해당 시간대의 현지 일시로 받고 시작 날짜를 `workDate`로 사용한다. 종료는 시작 이후여야 하며, 날짜를 넘기는 근무도 입력할 수 있다. 일시 정밀도는 MySQL과 동일한 마이크로초까지 지원한다.
+
+정원과 일급에는 따옴표 없는 JSON 정수를 입력한다. 소수와 숫자 문자열은 `400 INVALID_REQUEST_BODY`로 거절한다. 일시는 `2026-11-30T08:00:00`처럼 시간대 접미사 없이 입력하며, `Z`나 `+09:00`이 붙은 일시도 같은 오류로 거절한다. 휴게시간 오류의 `field`는 누락된 시작·종료 항목 또는 근무 범위를 벗어난 항목을 가리킨다.
+
+날짜·일시는 JSON 문자열로 입력한다. `[2026,11,30]` 같은 배열은 거절하며, 날짜와 시간 사이에는 대문자 `T`를 사용한다. 소문자 `t`가 포함된 일시도 `400 INVALID_REQUEST_BODY`로 거절한다.
 
 V4는 공고의 `time_zone`과 일정의 `terms_version`을 추가한다. 기존 공고의 시간대는 실제 작업지 확인 후 보완해야 하므로 DB에서 NULL을 허용하고, 신규 API 등록에는 시간대를 필수로 받는다. 공통 정원·일급은 기존 `default_headcount`, `default_daily_wage` 컬럼에 매핑한다. 기존 행의 시간대 보완 후 DB의 NOT NULL 제약을 적용하는 후속 마이그레이션이 필요하다.
 
@@ -81,13 +85,14 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 
 ## 테스트와 커버리지
 
-Docker를 켠 상태에서 데모 프로필을 설정하지 않은 터미널로 `farm-api` 폴더에서 `.\gradlew.bat test`를 실행한다. `test`는 단위 테스트와 통합 테스트를 모두 실행하고, 라인 커버리지가 기준에 못 미치면 빌드를 실패시킨다. 통합 테스트는 Testcontainers로 실행마다 새 MySQL 8.4 컨테이너를 띄우므로 로컬 개발 DB(`.env`의 `farm_db`)를 사용하지 않는다.
+기능 구현 단계에는 `.\gradlew.bat test`가 **단위 테스트·단위 JaCoCo 리포트·90% 라인 커버리지 검사**를 실행한다. CI의 farm-api 단계는 `unitTest jacocoUnitTestReport jacocoUnitTestCoverageVerification bootJar`로 같은 검증과 JAR 빌드를 실행한다. 통합 테스트는 기능이 갖춰진 뒤 Docker를 켜고 `.\gradlew.bat fullTest`로 실행한다. 통합 테스트는 Testcontainers로 실행마다 새 MySQL 8.4 컨테이너를 띄우므로 로컬 개발 DB(`.env`의 `farm_db`)를 사용하지 않는다.
 
-| 종류 | 구분 | 단독 실행 | 라인 기준 | 리포트 |
-| --- | --- | --- | --- | --- |
-| 단위 | `@Tag("integration")`이 없는 테스트, Spring 컨텍스트 없음 | `.\gradlew.bat unitTest` | 90% 이상 | `build/reports/jacoco/jacocoUnitTestReport/html/index.html` |
-| 통합 | `@Tag("integration")` + `@SpringBootTest` | `.\gradlew.bat integrationTest` | 80% 이상 | `build/reports/jacoco/jacocoIntegrationTestReport/html/index.html` |
-| 합산 | 두 실행 결과 | `.\gradlew.bat test` | — | `build/reports/jacoco/test/html/index.html` |
+| 명령 | 실행 범위 | 라인 기준 | 리포트 |
+| --- | --- | --- | --- |
+| `.\gradlew.bat test` | 단위: `@Tag("integration")`이 없는 테스트, 단위 리포트·기준 검사 포함 | 90% 이상 | `build/reports/jacoco/jacocoUnitTestReport/html/index.html` |
+| `.\gradlew.bat unitTest` | 단위 테스트만 | 검사 없음 | `build/reports/tests/unitTest/index.html` |
+| `.\gradlew.bat integrationTest` | 통합: `@Tag("integration")` + `@SpringBootTest` (Docker 필요) | 80% 이상 (`fullTest`에서 검사) | `build/reports/jacoco/jacocoIntegrationTestReport/html/index.html` |
+| `.\gradlew.bat fullTest` | 단위 + 통합, 커버리지 기준 둘 다 (Docker 필요) | 90% / 80% | 위 두 리포트와 합산 `build/reports/jacoco/test/html/index.html` |
 
 새 Spring 통합 테스트 클래스에는 `@Tag("integration")`과 `@Import(MySqlTestDatabase.class)`를 붙인다. 태그가 없으면 단위 테스트로 실행된다. 데모 프로필 테스트만 전용 인메모리 H2에서 계정을 등록한다.
 

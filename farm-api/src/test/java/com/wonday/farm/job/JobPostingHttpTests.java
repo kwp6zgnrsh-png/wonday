@@ -372,11 +372,26 @@ class JobPostingHttpTests {
 				Arguments.of("없는 날짜", json(edit(b -> firstSchedule(b).put("workDate", "2026-02-30")))),
 				Arguments.of("날짜 형식", json(edit(b -> firstSchedule(b).put("workDate", "2026/11/30")))),
 				Arguments.of("일시 공백 구분", json(edit(b -> firstSchedule(b).put("plannedStartAt", "2026-11-30 08:00:00")))),
-				Arguments.of("일시에 +09:00 오프셋", json(edit(b -> firstSchedule(b).put("plannedStartAt", "2026-11-30T08:00:00+09:00")))),
+				Arguments.of("schedules 객체", json(edit(b -> b.put("schedules", Map.of())))),
+				// 이전 DEFECT-2: 오프셋·Z가 붙은 일시는 네 필드 모두 거절한다.
+				Arguments.of("plannedStartAt +09:00", json(edit(b -> firstSchedule(b).put("plannedStartAt", "2026-11-30T08:00:00+09:00")))),
+				Arguments.of("plannedStartAt Z", json(edit(b -> firstSchedule(b).put("plannedStartAt", "2026-11-30T08:00:00Z")))),
+				Arguments.of("plannedEndAt Z", json(edit(b -> firstSchedule(b).put("plannedEndAt", "2026-11-30T16:00:00Z")))),
+				Arguments.of("breakStartAt +09:00", json(edit(b -> firstSchedule(b).put("breakStartAt", "2026-11-30T12:00:00+09:00")))),
+				Arguments.of("breakEndAt Z", json(edit(b -> firstSchedule(b).put("breakEndAt", "2026-11-30T13:00:00Z")))),
+				// 이전 DEFECT-1: 따옴표 없는 JSON 정수만 받는다.
 				Arguments.of("headcount 문자", json(edit(b -> b.put("headcount", "two")))),
+				Arguments.of("headcount 숫자 문자열", json(edit(b -> b.put("headcount", "2")))),
+				Arguments.of("headcount 소수", json(edit(b -> b.put("headcount", 1.5)))),
+				Arguments.of("headcount 지수 표기", valid.replace("\"headcount\":2,", "\"headcount\":2E0,")),
+				Arguments.of("headcount boolean", json(edit(b -> b.put("headcount", true)))),
+				Arguments.of("headcount 배열", json(edit(b -> b.put("headcount", List.of(2))))),
 				Arguments.of("headcount int 범위 초과", json(edit(b -> b.put("headcount", 2147483648L)))),
 				Arguments.of("dailyWage 문자", json(edit(b -> b.put("dailyWage", "많이")))),
-				Arguments.of("schedules 객체", json(edit(b -> b.put("schedules", Map.of())))));
+				Arguments.of("dailyWage 숫자 문자열", json(edit(b -> b.put("dailyWage", "120000")))),
+				Arguments.of("dailyWage 소수", json(edit(b -> b.put("dailyWage", 120000.9)))),
+				Arguments.of("dailyWage 객체", json(edit(b -> b.put("dailyWage", Map.of("v", 1))))),
+				Arguments.of("dailyWage long 범위 초과", json(edit(b -> b.put("dailyWage", new java.math.BigInteger("9223372036854775808"))))));
 		}
 
 		@ParameterizedTest(name = "{0}")
@@ -402,9 +417,20 @@ class JobPostingHttpTests {
 					"INVALID_WORK_TIME", "schedules[0].plannedEndAt"),
 				Arguments.of("근무일 ≠ 시작 일자", one("2026-12-12", "2026-12-11T08:00:00", "2026-12-11T12:00:00", null, null),
 					"INVALID_WORK_TIME", "schedules[0].workDate"),
-				Arguments.of("존재하지 않는 시간대", edit(b -> b.put("timeZone", "Mars/Olympus")), "INVALID_TIME_ZONE", "timeZone"),
-				Arguments.of("시간대 대소문자 오류", edit(b -> b.put("timeZone", "asia/seoul")), "INVALID_TIME_ZONE", "timeZone"),
+				// 팀 확정 정책: timeZone은 정확히 "GMT+9"만 허용한다.
+				Arguments.of("시간대 Asia/Seoul", tz("Asia/Seoul"), "INVALID_TIME_ZONE", "timeZone"),
+				Arguments.of("시간대 +09:00", tz("+09:00"), "INVALID_TIME_ZONE", "timeZone"),
+				Arguments.of("시간대 GMT+09:00", tz("GMT+09:00"), "INVALID_TIME_ZONE", "timeZone"),
+				Arguments.of("시간대 UTC", tz("UTC"), "INVALID_TIME_ZONE", "timeZone"),
+				Arguments.of("시간대 뒤 공백", tz("GMT+9 "), "INVALID_TIME_ZONE", "timeZone"),
+				Arguments.of("시간대 소문자", tz("gmt+9"), "INVALID_TIME_ZONE", "timeZone"),
+				Arguments.of("존재하지 않는 시간대", tz("Mars/Olympus"), "INVALID_TIME_ZONE", "timeZone"),
 				Arguments.of("휴게 시작만 null", one("2026-12-11", "2026-12-11T08:00:00", "2026-12-11T16:00:00", null, "2026-12-11T13:00:00"),
+					"INVALID_BREAK_TIME", "schedules[0].breakStartAt"),
+				// 이전 DEFECT-4: field가 문제 항목을 가리킨다.
+				Arguments.of("휴게 종료만 null", one("2026-12-11", "2026-12-11T08:00:00", "2026-12-11T16:00:00", "2026-12-11T12:00:00", null),
+					"INVALID_BREAK_TIME", "schedules[0].breakEndAt"),
+				Arguments.of("휴게 시작이 근무 시작 전", one("2026-12-11", "2026-12-11T08:00:00", "2026-12-11T16:00:00", "2026-12-11T07:59:59", "2026-12-11T09:00:00"),
 					"INVALID_BREAK_TIME", "schedules[0].breakStartAt"),
 				Arguments.of("휴게 종료 = 시작", one("2026-12-11", "2026-12-11T08:00:00", "2026-12-11T16:00:00", "2026-12-11T12:00:00", "2026-12-11T12:00:00"),
 					"INVALID_BREAK_TIME", "schedules[0].breakEndAt"),
@@ -417,14 +443,7 @@ class JobPostingHttpTests {
 				Arguments.of("마이크로초 초과 정밀도", one("2026-12-11", "2026-12-11T08:00:00.1234567", "2026-12-11T12:00:00", null, null),
 					"INVALID_LOCAL_TIME", "schedules[0].plannedStartAt"),
 				Arguments.of("휴게 일시 정밀도 초과", one("2026-12-11", "2026-12-11T08:00:00", "2026-12-11T16:00:00", "2026-12-11T12:00:00.0000001", "2026-12-11T13:00:00"),
-					"INVALID_LOCAL_TIME", "schedules[0].breakStartAt"),
-				// 미국 동부: 2026-03-08 02:00~03:00은 존재하지 않고, 2026-11-01 01:00~02:00은 두 번 존재한다.
-				Arguments.of("DST로 존재하지 않는 시작 일시", zone("America/New_York",
-						"2026-03-08", "2026-03-08T02:30:00", "2026-03-08T10:00:00"),
-					"INVALID_LOCAL_TIME", "schedules[0].plannedStartAt"),
-				Arguments.of("DST로 두 번 존재하는 종료 일시", zone("America/New_York",
-						"2026-10-31", "2026-10-31T22:00:00", "2026-11-01T01:30:00"),
-					"INVALID_LOCAL_TIME", "schedules[0].plannedEndAt"));
+					"INVALID_LOCAL_TIME", "schedules[0].breakStartAt"));
 		}
 
 		@ParameterizedTest(name = "{0}")
@@ -437,10 +456,11 @@ class JobPostingHttpTests {
 		}
 
 		@Test
-		void validDstZoneScheduleOutsideTransitionIsAccepted() throws Exception {
+		void gmtPlus9HasNoDaylightSavingSoUsDstTransitionTimesAreAccepted() throws Exception {
+			// GMT+9는 고정 오프셋이라 DST가 없다. 이전 지역 ID 정책에서 거절하던 미국 DST 전환 시각도 정상이다.
 			Session employer = login(MemberRole.EMPLOYER);
 
-			assertThat(employer.post(zone("America/New_York", "2026-03-08", "2026-03-08T03:00:00", "2026-03-08T11:00:00"))
+			assertThat(employer.post(one("2026-03-08", "2026-03-08T02:30:00", "2026-03-08T10:00:00", null, null))
 				.statusCode()).isEqualTo(201);
 		}
 
@@ -448,9 +468,9 @@ class JobPostingHttpTests {
 			return withOneSchedule(schedule(date, start, end, breakStart, breakEnd));
 		}
 
-		private static Map<String, Object> zone(String zone, String date, String start, String end) {
-			Map<String, Object> body = one(date, start, end, null, null);
-			body.put("timeZone", zone);
+		private static Map<String, Object> tz(String timeZone) {
+			Map<String, Object> body = valid();
+			body.put("timeZone", timeZone);
 			return body;
 		}
 	}
@@ -473,7 +493,7 @@ class JobPostingHttpTests {
 		void databaseUniqueConstraintRejectsSameWorkDateInSamePosting() {
 			Member employer = register(MemberRole.EMPLOYER);
 			jdbc.update("INSERT INTO job_posting (employer_id, title, description, crop_code, work_type_code, work_location,"
-				+ " default_headcount, default_daily_wage, time_zone) VALUES (?, 't', 'd', 'C', 'W', 'L', 1, 1, 'Asia/Seoul')",
+				+ " default_headcount, default_daily_wage, time_zone) VALUES (?, 't', 'd', 'C', 'W', 'L', 1, 1, 'GMT+9')",
 				employer.getId());
 			long postingId = count("SELECT MAX(id) FROM job_posting WHERE employer_id = ?", employer.getId());
 			String insert = "INSERT INTO work_schedule (job_posting_id, work_date, planned_start_at, planned_end_at, status)"

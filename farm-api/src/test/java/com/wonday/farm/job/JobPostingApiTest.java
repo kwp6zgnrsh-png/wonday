@@ -21,7 +21,7 @@ class JobPostingApiTest {
 		JobPostingService service = mock(JobPostingService.class);
 		FarmPrincipal principal = mock(FarmPrincipal.class);
 		given(principal.memberId()).willReturn(42L);
-		var request = JobPostingServiceTest.request("Asia/Seoul", JobPostingServiceTest.defaultSchedule());
+		var request = JobPostingServiceTest.request("GMT+9", JobPostingServiceTest.defaultSchedule());
 		var expected = new CreateJobPostingResponse(7L, 42L, 2, List.of(
 			new CreateJobPostingResponse.Schedule(8L, LocalDate.parse("2026-11-30"), WorkSchedule.Status.OPEN)));
 		given(service.create(42L, request)).willReturn(expected);
