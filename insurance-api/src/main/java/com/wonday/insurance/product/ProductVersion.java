@@ -33,9 +33,11 @@ class ProductVersion {
 	@Column(name = "version_no", nullable = false)
 	private int versionNo;
 
+	@JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
 	@Column(name = "sales_start_at", nullable = false)
 	private LocalDateTime salesStartAt;
 
+	@JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
 	@Column(name = "sales_end_at")
 	private LocalDateTime salesEndAt;
 

@@ -1,6 +1,7 @@
 package com.wonday.insurance.product;
 
 import java.time.Clock;
+import java.time.temporal.ChronoUnit;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -35,7 +36,7 @@ class ProductQueryService {
 	}
 
 	private LocalDateTime now() {
-		return LocalDateTime.ofInstant(productClock.instant(), ZoneOffset.UTC);
+		return LocalDateTime.ofInstant(productClock.instant(), ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
 	}
 
 	private ProductSummary summary(ProductVersion version) {

@@ -1,6 +1,8 @@
 package com.wonday.insurance.product;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,6 +14,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.TimeZone;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -37,6 +41,14 @@ class ProductApiTests {
 
 	@Autowired
 	private EntityManager entities;
+
+	@Autowired
+	private Clock clock;
+
+	@BeforeEach
+	void resetTime() {
+		when(clock.instant()).thenReturn(Instant.parse("2026-11-24T00:00:00Z"));
+	}
 
 	@Test
 	void emptyCatalogReturnsAnEmptyList() throws Exception {
@@ -105,12 +117,80 @@ class ProductApiTests {
 	@Test
 	void unknownAndInvalidProductIdsHaveExplicitStatuses() throws Exception {
 		mvc.perform(get("/api/products/9223372036854775807")).andExpect(status().isNotFound());
-		mvc.perform(get("/api/products/not-a-number")).andExpect(status().isBadRequest());
+		for (String id : new String[]{"not-a-number", "1 2", "0xC", "0XC", "#12", "+12", "-12",
+			"0", "01", "9223372036854775808"}) {
+			mvc.perform(get("/api/products/{id}", id)).andExpect(status().isBadRequest());
+		}
 	}
 
 	@Test
 	void catalogReadsDoNotEnableAnonymousWrites() throws Exception {
-		mvc.perform(post("/api/products")).andExpect(status().isForbidden());
+		mvc.perform(post("/api/products").with(csrf())).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void statusMustMatchExactlyEvenWithCaseInsensitiveDatabaseCollation() throws Exception {
+		for (String state : new String[]{"active", "ÁCTIVE", "ACTIVE ", "Active"}) {
+			InsuranceProduct product = product(state);
+			version(product, 1, NOW.minusDays(1), null);
+			flush();
+			mvc.perform(get("/api/products/{id}", product.getId())).andExpect(status().isNotFound());
+		}
+		mvc.perform(get("/api/products")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+	}
+
+	@Test
+	void subMicrosecondTimeDoesNotActivateTheNextVersionEarly() throws Exception {
+		InsuranceProduct product = product("ACTIVE");
+		ProductVersion old = version(product, 1, NOW.minusDays(1), NOW.plusSeconds(1));
+		ProductVersion next = version(product, 2, NOW.plusSeconds(1), null);
+		flush();
+		when(clock.instant()).thenReturn(Instant.parse("2026-11-24T00:00:00.999999700Z"));
+		mvc.perform(get("/api/products"))
+			.andExpect(jsonPath("$[0].productVersionId").value(old.getId().intValue()));
+		mvc.perform(get("/api/products/{id}", product.getId()))
+			.andExpect(jsonPath("$.product.productVersionId").value(old.getId().intValue()));
+
+		when(clock.instant()).thenReturn(Instant.parse("2026-11-24T00:00:01Z"));
+		mvc.perform(get("/api/products"))
+			.andExpect(jsonPath("$[0].productVersionId").value(next.getId().intValue()));
+		mvc.perform(get("/api/products/{id}", product.getId()))
+			.andExpect(jsonPath("$.product.productVersionId").value(next.getId().intValue()));
+	}
+
+	@Test
+	void utcSqlDatesSurviveJvmDaylightSavingGap() throws Exception {
+		InsuranceProduct future = product("ACTIVE");
+		ProductVersion futureVersion = version(future, 1, NOW.minusDays(1), null);
+		InsuranceProduct available = product("ACTIVE");
+		ProductVersion availableVersion = version(available, 1, NOW.minusDays(1), null);
+		flush();
+		TimeZone original = TimeZone.getDefault();
+		try {
+			TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"));
+			// SQL literals ensure the fixture never passes through Java timestamp conversion.
+			entities.createNativeQuery("""
+				update product_version
+				set sales_start_at = '2026-03-08 03:00:00', sales_end_at = null
+				where id = :id
+				""").setParameter("id", futureVersion.getId()).executeUpdate();
+			entities.createNativeQuery("""
+				update product_version
+				set sales_start_at = '2026-03-08 02:00:00', sales_end_at = '2026-03-08 02:45:00'
+				where id = :id
+				""").setParameter("id", availableVersion.getId()).executeUpdate();
+			entities.clear();
+			when(clock.instant()).thenReturn(Instant.parse("2026-03-08T02:30:00Z"));
+			mvc.perform(get("/api/products")).andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].id").value(available.getId().intValue()));
+			mvc.perform(get("/api/products/{id}", future.getId())).andExpect(status().isNotFound());
+			mvc.perform(get("/api/products/{id}", available.getId())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.product.salesStartAt").value("2026-03-08T02:00:00"))
+				.andExpect(jsonPath("$.product.salesEndAt").value("2026-03-08T02:45:00"));
+		} finally {
+			TimeZone.setDefault(original);
+		}
 	}
 
 	private InsuranceProduct product(String status) {
@@ -151,7 +231,7 @@ class ProductApiTests {
 		@Bean
 		@Primary
 		Clock fixedProductClock() {
-			return Clock.fixed(Instant.parse("2026-11-24T00:00:00Z"), ZoneOffset.UTC);
+			return mock(Clock.class);
 		}
 	}
 }

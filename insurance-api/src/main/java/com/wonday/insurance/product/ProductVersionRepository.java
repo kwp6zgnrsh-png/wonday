@@ -11,7 +11,7 @@ interface ProductVersionRepository extends JpaRepository<ProductVersion, Long> {
 	@Query("""
 		select version from ProductVersion version
 		join fetch version.product product
-		where product.status = 'ACTIVE'
+		where collate(product.status as utf8mb4_0900_bin) = 'ACTIVE'
 		  and (:productId is null or product.id = :productId)
 		  and version.salesStartAt <= :now
 		  and (version.salesEndAt is null or version.salesEndAt > :now)
