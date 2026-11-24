@@ -11,6 +11,8 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandlerImpl;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler;
@@ -33,11 +35,22 @@ public class SecurityConfig {
 				auth.requestMatchers(HttpMethod.GET, "/", "/api/auth/csrf").permitAll()
 					.requestMatchers(HttpMethod.POST, LoginRequestFilter.LOGIN_PATH).permitAll()
 					.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("EMPLOYER", "WORKER")
+					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
 					.anyRequest().denyAll();
 			})
 			// 인증이 필요한 API를 세션 없이 호출하면 401을 반환한다.
 			.exceptionHandling(exceptions -> exceptions
-				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+				.accessDeniedHandler((request, response, exception) -> {
+					if (request.getServletPath().equals("/api/job-postings")
+							&& request.getMethod().equals("POST") && !(exception instanceof CsrfException)) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 공고를 등록할 수 있습니다.\"}");
+					} else {
+						new AccessDeniedHandlerImpl().handle(request, response, exception);
+					}
+				}))
 			.requestCache(AbstractHttpConfigurer::disable)
 			.addFilterBefore(new LoginRequestFilter(), UsernamePasswordAuthenticationFilter.class)
 			// 폼의 loginId와 password를 검증하고, 성공하면 세션에 인증 정보를 저장한다.

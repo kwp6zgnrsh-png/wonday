@@ -36,11 +36,17 @@ dependencies {
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testRuntimeOnly 'com.h2database:h2'
+    // 통합 테스트는 실행마다 새 MySQL 컨테이너를 사용해 로컬 개발 DB와 격리한다 (Docker 필요).
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-mysql'
     testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
 // 테스트 종류: @Tag("integration")이 붙은 Spring 통합 테스트와 그 밖의 단위 테스트로 나눈다.
 def integrationTag = 'integration'
+// 운영 코드 결함을 재현하는 테스트. 수정 전까지 실패하므로 기본 실행(test)에서 빼고 knownDefectTest로 따로 실행한다.
+def knownDefectTag = 'known-defect'
 
 // 커버리지 기준(라인): 단위 90%, 통합 80%. 실행 진입점은 두 측정 모두에서 제외한다.
 def alwaysExcluded = ['com/wonday/farm/FarmApiApplication.class']
@@ -56,16 +62,28 @@ def unitTest = tasks.register('unitTest', Test) {
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform { excludeTags integrationTag }
+    useJUnitPlatform { excludeTags integrationTag, knownDefectTag }
 }
 
 def integrationTest = tasks.register('integrationTest', Test) {
-    description = 'Runs Spring integration tests (requires MySQL).'
+    description = 'Runs Spring integration tests (requires Docker for the MySQL container).'
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform { includeTags integrationTag }
+    useJUnitPlatform {
+        includeTags integrationTag
+        excludeTags knownDefectTag
+    }
     shouldRunAfter unitTest
+}
+
+tasks.register('knownDefectTest', Test) {
+    description = 'Runs reproduction tests for known production defects. Fails until the defects are fixed.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags knownDefectTag }
+    shouldRunAfter integrationTest
 }
 
 def jacocoUnitTestReport = tasks.register('jacocoUnitTestReport', JacocoReport) {

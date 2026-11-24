@@ -22,6 +22,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import com.wonday.farm.testsupport.MySqlTestDatabase;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
@@ -34,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 // 인증 API를 기능별로 검증한다. 각 테스트는 독립적으로 계정을 만들고, 회원 행은 테스트가 끝나면 롤백한다.
 @Tag("integration")
 @SpringBootTest
+@Import(MySqlTestDatabase.class)
 @AutoConfigureMockMvc
 @Transactional
 class AuthApiTests {
