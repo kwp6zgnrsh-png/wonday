@@ -30,7 +30,7 @@ public class InsuranceIntegrationApi {
 		this.changes = changes;
 	}
 
-	@PostMapping(value = "/worker-verifications", consumes = "application/json")
+	@PostMapping("/worker-verifications")
 	public VerifiedWorkerResponse verify(@Valid @RequestBody WorkerVerificationRequest request) {
 		return verification.verify(request);
 	}

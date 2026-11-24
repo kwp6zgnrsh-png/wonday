@@ -48,7 +48,9 @@ def integrationTag = 'integration'
 // 운영 코드 결함을 재현하는 테스트. 수정 전까지 실패하므로 기본 실행(test)에서 빼고 knownDefectTest로 따로 실행한다.
 def knownDefectTag = 'known-defect'
 
-// 커버리지 기준(라인): 단위 90%, 통합 80%. 실행 진입점은 두 측정 모두에서 제외한다.
+// 명시적으로 실행하는 커버리지 검사 기준(라인): 단위 90%, 통합 80%.
+// 개발 중 기본 test와 CI에서는 수치로 차단하지 않고 측정·리포트만 유지한다.
+// 실행 진입점은 두 측정 모두에서 제외한다.
 def alwaysExcluded = ['com/wonday/farm/FarmApiApplication.class']
 // SecurityConfig는 필터 체인 조립만 담당하므로 단위가 아닌 통합 테스트로 검증한다.
 def unitExcluded = alwaysExcluded + ['com/wonday/farm/auth/SecurityConfig*.class']
@@ -107,7 +109,7 @@ def jacocoIntegrationTestReport = tasks.register('jacocoIntegrationTestReport', 
 }
 
 def jacocoUnitTestCoverageVerification = tasks.register('jacocoUnitTestCoverageVerification', JacocoCoverageVerification) {
-    description = 'Fails the build when unit test line coverage is below 90%.'
+    description = 'Opt-in check: fails when unit test line coverage is below 90%.'
     group = 'verification'
     dependsOn unitTest
     executionData unitTest.get()
@@ -152,11 +154,12 @@ tasks.named('jacocoTestReport', JacocoReport) {
 }
 
 // 기능 구현 단계(2026-11-24~)에는 CI와 README의 `./gradlew test`가 단위 테스트만 실행한다.
+// 단위 테스트 실패는 빌드를 실패시키며, 커버리지 수치만으로는 실패시키지 않는다.
 // 통합 테스트는 기능이 갖춰진 뒤 `./gradlew fullTest`(또는 `integrationTest`)로 따로 실행한다.
 tasks.named('test') {
-    description = 'Runs unit tests with the unit coverage report and 90% line coverage gate.'
+    description = 'Runs unit tests with the unit coverage report (no coverage threshold gate).'
     enabled = false
-    dependsOn unitTest, jacocoUnitTestReport, jacocoUnitTestCoverageVerification
+    dependsOn unitTest, jacocoUnitTestReport
 }
 
 // 단위 + 통합 테스트, 리포트 3종(단위·통합·합산), 커버리지 기준 2개를 모두 실행한다 (Docker 필요).

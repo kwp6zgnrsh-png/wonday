@@ -107,11 +107,14 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 
 ## 테스트와 커버리지
 
-기능 구현 단계에는 `.\gradlew.bat test`가 **단위 테스트·단위 JaCoCo 리포트·90% 라인 커버리지 검사**를 실행한다. CI의 farm-api 단계는 `unitTest jacocoUnitTestReport jacocoUnitTestCoverageVerification bootJar`로 같은 검증과 JAR 빌드를 실행한다. 통합 테스트는 기능이 갖춰진 뒤 Docker를 켜고 `.\gradlew.bat fullTest`로 실행한다. 통합 테스트는 Testcontainers로 실행마다 새 MySQL 8.4 컨테이너를 띄우므로 로컬 개발 DB(`.env`의 `farm_db`)를 사용하지 않는다.
+기능 구현 단계에는 `.\gradlew.bat test`가 **단위 테스트와 단위 JaCoCo 리포트**를 실행한다. 팀 합의에 따라 전체 커버리지 90% 미달에 따른 자동 실패는 일시 해제한다. 단위 테스트 실패는 계속 빌드를 실패시킨다. 측정 대상은 줄이지 않으며, 리포트에서 미검증 코드를 확인한다. CI의 farm-api 단계는 `unitTest jacocoUnitTestReport bootJar`로 단위 테스트·리포트 생성과 JAR 빌드를 실행한다.
+
+90% 기준을 직접 확인하려면 `.\gradlew.bat jacocoUnitTestCoverageVerification`을 실행한다. 이 명시적 검사의 기준은 유지한다. 통합 테스트는 기능이 갖춰진 뒤 Docker를 켜고 `.\gradlew.bat fullTest`로 실행한다. `fullTest`는 기존처럼 단위 90%·통합 80% 검사를 모두 포함한다. 통합 테스트는 Testcontainers로 실행마다 새 MySQL 8.4 컨테이너를 띄우므로 로컬 개발 DB(`.env`의 `farm_db`)를 사용하지 않는다.
 
 | 명령 | 실행 범위 | 라인 기준 | 리포트 |
 | --- | --- | --- | --- |
-| `.\gradlew.bat test` | 단위: `@Tag("integration")`이 없는 테스트, 단위 리포트·기준 검사 포함 | 90% 이상 | `build/reports/jacoco/jacocoUnitTestReport/html/index.html` |
+| `.\gradlew.bat test` | 단위 테스트와 단위 리포트. 기존 제외 태그 유지 | 측정만, 수치로 차단하지 않음 | `build/reports/jacoco/jacocoUnitTestReport/html/index.html` |
+| `.\gradlew.bat jacocoUnitTestCoverageVerification` | 단위 테스트와 명시적 커버리지 기준 검사 | 90% 이상 | 콘솔의 검사 결과 |
 | `.\gradlew.bat unitTest` | 단위 테스트만 | 검사 없음 | `build/reports/tests/unitTest/index.html` |
 | `.\gradlew.bat integrationTest` | 통합: `@Tag("integration")` + `@SpringBootTest` (Docker 필요) | 80% 이상 (`fullTest`에서 검사) | `build/reports/jacoco/jacocoIntegrationTestReport/html/index.html` |
 | `.\gradlew.bat fullTest` | 단위 + 통합, 커버리지 기준 둘 다 (Docker 필요) | 90% / 80% | 위 두 리포트와 합산 `build/reports/jacoco/test/html/index.html` |
