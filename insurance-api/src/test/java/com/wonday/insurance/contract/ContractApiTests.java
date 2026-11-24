@@ -90,6 +90,7 @@ class ContractApiTests {
 		String result = mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
 			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true)))
 			.andExpect(status().isCreated())
+			.andExpect(header().string("Location", org.hamcrest.Matchers.matchesPattern("/api/contracts/[1-9][0-9]*")))
 			.andExpect(jsonPath("$.coverageFrom").value("2026-02-09T15:00:00"))
 			.andExpect(jsonPath("$.coverageTo").value("2026-05-09T15:00:00"))
 			.andExpect(jsonPath("$.status").value("ACTIVE"))

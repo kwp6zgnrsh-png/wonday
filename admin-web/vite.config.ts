@@ -11,6 +11,17 @@ export default defineConfig({
       '/api/insurance/contracts': {
         target: 'http://127.0.0.1:8080',
         rewrite: (path) => path.replace('/api/insurance/contracts', '/api/contracts'),
+        configure: (proxy) => {
+          proxy.on('proxyRes', (response) => {
+            const location = response.headers.location
+            if (location) {
+              response.headers.location = location.replace(
+                /^\/api\/contracts(?=\/|[?#]|$)/,
+                '/api/insurance/contracts',
+              )
+            }
+          })
+        },
       },
       '/api/insurance/products': {
         target: 'http://127.0.0.1:8080',

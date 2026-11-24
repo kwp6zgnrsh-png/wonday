@@ -65,13 +65,46 @@ class FarmPlatformClientTests {
 	}
 
 	@Test
-	void malformedAndMismatchedSuccessCannotLinkAnAccount() {
+	void mismatchedIdentityInSuccessCannotLinkAnAccount() {
 		server.expect(anything()).andRespond(withSuccess("""
 			{"workerId":77,"name":"another worker","phone":"01000000000"}
 			""", MediaType.APPLICATION_JSON));
 		assertThatThrownBy(() -> client.verify(identity())).isInstanceOfSatisfying(
 			PlatformVerificationException.class, exception ->
 				assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"{",
+		"{\"workerId\":{},\"name\":\"upstream-secret\",\"phone\":\"01000000000\"}",
+		"{\"workerId\":77,\"name\":{},\"phone\":\"01000000000\"}"
+	})
+	void undecodableSuccessHasAnInvalidResponseError(String body) {
+		server.expect(anything()).andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+		assertInvalidResponse();
+	}
+
+	@Test
+	void unsupportedSuccessContentTypeHasAnInvalidResponseError() {
+		server.expect(anything()).andRespond(withSuccess("upstream-secret", MediaType.TEXT_PLAIN));
+		assertInvalidResponse();
+	}
+
+	@Test
+	void emptySuccessHasAnInvalidResponseError() {
+		server.expect(anything()).andRespond(withSuccess());
+		assertInvalidResponse();
+	}
+
+	private void assertInvalidResponse() {
+		assertThatThrownBy(() -> client.verify(identity())).isInstanceOfSatisfying(
+			PlatformVerificationException.class, exception -> {
+				assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+				assertThat(exception.getCode()).isEqualTo("INVALID_PLATFORM_RESPONSE");
+				assertThat(exception.getMessage()).doesNotContain("upstream-secret");
+			});
+		server.verify();
 	}
 
 	@Test

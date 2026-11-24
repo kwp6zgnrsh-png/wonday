@@ -3,10 +3,12 @@ package com.wonday.insurance.platform;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.UnknownContentTypeException;
 
 @Component
 @RequiredArgsConstructor
@@ -27,8 +29,7 @@ public class FarmPlatformClient {
 				.body(identity).retrieve().body(VerifiedWorker.class);
 			if (worker == null || worker.workerId() <= 0 || !identity.name().equals(worker.name())
 				|| !identity.phone().equals(worker.phone())) {
-				throw new PlatformVerificationException(HttpStatus.BAD_GATEWAY,
-					"INVALID_PLATFORM_RESPONSE", "Invalid worker verification response");
+				throw invalidResponse();
 			}
 			return worker;
 		} catch (RestClientResponseException exception) {
@@ -42,8 +43,17 @@ public class FarmPlatformClient {
 				default -> throw unavailable();
 			}
 		} catch (RestClientException exception) {
+			if (exception instanceof UnknownContentTypeException
+				|| exception.contains(HttpMessageConversionException.class)) {
+				throw invalidResponse();
+			}
 			throw unavailable();
 		}
+	}
+
+	private static PlatformVerificationException invalidResponse() {
+		return new PlatformVerificationException(HttpStatus.BAD_GATEWAY,
+			"INVALID_PLATFORM_RESPONSE", "Invalid worker verification response");
 	}
 
 	private static PlatformVerificationException unavailable() {
