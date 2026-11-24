@@ -39,6 +39,10 @@ class FarmWorkClient {
 
 	Assignment assignment(long workerId, long assignmentId) {
 		Assignment work = get(workerId, "/work-assignments/" + assignmentId, null, null, Assignment.class);
+		return validateAssignment(work, workerId, assignmentId);
+	}
+
+	static Assignment validateAssignment(Assignment work, long workerId, long assignmentId) {
 		if (work.workerId() != workerId || work.assignmentId() != assignmentId
 			|| !work.agreedEndAt().isAfter(work.agreedStartAt())) {
 			throw invalidResponse();

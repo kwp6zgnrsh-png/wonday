@@ -8,6 +8,9 @@ server:
         same-site: lax
 
 insurance:
+  claim-intake:
+    enabled: ${CLAIM_INTAKE_ENABLED:true}
+    delay-ms: ${CLAIM_INTAKE_DELAY_MS:60000}
   farm:
     base-url: ${FARM_API_BASE_URL:http://127.0.0.1:8081}
     service-token: ${FARM_API_SERVICE_TOKEN:}

@@ -62,6 +62,17 @@ class PlatformWorkEvent {
 	@Column(name = "source_payload", columnDefinition = "JSON")
 	private String sourcePayload;
 
+	@JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
+	@Column(name = "intake_processed_at")
+	private LocalDateTime intakeProcessedAt;
+
+	@Column(name = "intake_result", length = 40)
+	private String intakeResult;
+
+	@JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
+	@Column(name = "intake_next_attempt_at", nullable = false)
+	private LocalDateTime intakeNextAttemptAt;
+
 	PlatformWorkEvent(long linkId, FarmWorkResponse.Change change, String payload,
 		String snapshot, LocalDateTime now) {
 		platformLinkId = linkId;
@@ -74,8 +85,23 @@ class PlatformWorkEvent {
 		reasonDetail = change.reasonDetail();
 		sourceUpdatedAt = utcMicros(change.updatedAt());
 		receivedAt = now;
+		intakeNextAttemptAt = now;
 		sourcePayload = payload;
 		workSnapshot = snapshot;
+	}
+
+	void captureSnapshot(String snapshot) {
+		workSnapshot = snapshot;
+	}
+
+	void finishIntake(String result, LocalDateTime now) {
+		intakeResult = result;
+		intakeProcessedAt = now;
+	}
+
+	void deferIntake(LocalDateTime nextAttemptAt) {
+		intakeResult = "RETRY_PENDING";
+		intakeNextAttemptAt = nextAttemptAt;
 	}
 
 	boolean matchesStoredFields(FarmWorkResponse.Change change) {

@@ -15,6 +15,13 @@ interface PlatformLinkRepository extends JpaRepository<PlatformLink, Long> {
 	@Query("select l from PlatformLink l where l.id = :id and l.revokedAt is null and l.workerId is not null")
 	Optional<PlatformLink> lockPollingLink(long id);
 
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+		select l from PlatformLink l
+		where l.memberId = :memberId and l.workerId = :workerId and l.revokedAt is null
+		""")
+	Optional<PlatformLink> lockForClaimIntake(long memberId, long workerId);
+
 	Optional<PlatformLink> findByMemberIdAndRevokedAtIsNull(long memberId);
 	Optional<PlatformLink> findByWorkerIdAndRevokedAtIsNull(long workerId);
 }

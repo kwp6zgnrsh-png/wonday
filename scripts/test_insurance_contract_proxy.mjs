@@ -21,6 +21,12 @@ const upstream = createHttpServer((request, response) => {
   } else if (request.method === 'GET' && request.url === '/api/contracts/42') {
     response.writeHead(200, { 'Content-Type': 'application/json' })
     response.end(JSON.stringify({ id: 42, status: 'ACTIVE' }))
+  } else if (request.method === 'GET' && request.url === '/api/claims') {
+    response.writeHead(200, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify([{ id: 99, status: 'REVIEWING' }]))
+  } else if (request.method === 'GET' && request.url === '/api/claims/99') {
+    response.writeHead(200, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({ claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } }))
   } else {
     response.writeHead(404)
     response.end()
@@ -41,7 +47,7 @@ try {
         host: '127.0.0.1',
         port: 0,
         strictPort: true,
-        proxy: { '/api/insurance/contracts': { target } },
+        proxy: { '/api/insurance/contracts': { target }, '/api/insurance/claims': { target } },
       },
     })
     try {
@@ -61,6 +67,13 @@ try {
       assert.match(detail.headers.get('content-type'), /application\/json/)
       assert.deepEqual(await detail.json(), contract)
       console.log('PASS ' + web + ': POST -> rewritten Location -> GET contract JSON')
+      const claims = await fetch(origin + '/api/insurance/claims')
+      assert.equal(claims.status, 200)
+      assert.deepEqual(await claims.json(), [{ id: 99, status: 'REVIEWING' }])
+      const claimDetail = await fetch(origin + '/api/insurance/claims/99')
+      assert.equal(claimDetail.status, 200)
+      assert.deepEqual(await claimDetail.json(), { claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } })
+      console.log('PASS ' + web + ': GET claim list and detail JSON')
     } finally {
       await vite.close()
     }
