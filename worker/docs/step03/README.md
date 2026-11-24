@@ -9,9 +9,9 @@ STEP03은 최종 리스크 R에 들어갈 개별 지수 S를 수치화하는 단
 ## 폴더 구성
 
 - `worker/code/step03/`: STEP03 실행·검증·테스트 코드
-- `docs/step03/`: STEP03 사용법과 검토 문서
+- `worker/docs/step03/`: STEP03 사용법과 검토 문서
 - `worker/data/gyeonggi_processed/step03/`: 최신 STEP03 결과와 분위수 JSON
-- `docs/step03/archive/`: 변경 전 통계 검토 기록
+- `worker/docs/step03/archive/`: 변경 전 통계 검토 기록
 - 결과의 `archive/before_available_history/`: 이전 STEP03 결과와 기준표
 - 기존 STEP01·02 코드와 공유 정제자료 경로는 유지합니다.
 

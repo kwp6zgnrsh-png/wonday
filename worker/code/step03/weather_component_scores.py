@@ -1,6 +1,6 @@
 """Compute all stations' daily rain, wind and heat risk from weather_clean.csv.
 
-Only the Python standard library is required. See docs/step03/README.md in the repository.
+Only the Python standard library is required. See worker/docs/step03/README.md in the repository.
 """
 
 import argparse
