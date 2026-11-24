@@ -51,7 +51,12 @@ jobs:
           cache-dependency-path: |
             ${{ matrix.app }}/*.gradle
             ${{ matrix.app }}/gradle/wrapper/gradle-wrapper.properties
-      - name: Run tests and build executable JAR
+      - name: Run farm unit tests, coverage gate and build executable JAR
+        if: matrix.app == 'farm-api'
+        working-directory: farm-api
+        run: ./gradlew --no-daemon unitTest jacocoUnitTestReport jacocoUnitTestCoverageVerification bootJar
+      - name: Run insurance tests and build executable JAR
+        if: matrix.app == 'insurance-api'
         working-directory: ${{ matrix.app }}
         env:
           MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
