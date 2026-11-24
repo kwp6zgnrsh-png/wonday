@@ -201,7 +201,7 @@ python -m playwright install chromium
 python scripts/test_insurance_auth_browser.py
 ```
 
-`worker/`는 Python 분석 워커를 위한 자리다. 현재 실행할 워커 코드는 없다.
+`worker/`에는 Python 기상 분석 코드와 로컬 데이터가 있다. STEP03 실행 코드는 `worker/code/step03/`에 있으며, [기상 분석 안내](docs/weather_analysis.md)와 [STEP03 사용법](docs/step03/README.md)을 참고한다.
 
 ## **종료와 문제 해결**
 

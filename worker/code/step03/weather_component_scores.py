@@ -1,6 +1,6 @@
 """Compute all stations' daily rain, wind and heat risk from weather_clean.csv.
 
-Only the Python standard library is required. See README_weather_component_scores.md.
+Only the Python standard library is required. See docs/step03/README.md in the repository.
 """
 
 import argparse
@@ -14,11 +14,18 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 STEP = timedelta(minutes=10)
-DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "gyeonggi_processed"
+WORKER_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_DATA_DIR = WORKER_DIR / "data" / "gyeonggi_processed"
+DEFAULT_OUTPUT_DIR = DEFAULT_DATA_DIR / "step03"
 REQUIRED_COLUMNS = (
     "station_code", "observed_at", "temperature_c", "humidity_pct", "wind_mps", "rain_10min_mm",
 )
 GUST_COLUMN = "gust_mps"
+CALIBRATION_POLICY = "available_observations_within_training_window"
+
+
+class CalibrationUnavailableError(ValueError):
+    """There is no usable training sample; never fall back to held-out data."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,27 +199,39 @@ def quantiles(values: list[float]) -> dict:
 
 
 def validate_training_dates(start: date, end: date) -> None:
-    try:
-        anniversary = start.replace(year=start.year + 8)
-    except ValueError:
-        anniversary = start.replace(year=start.year + 8, day=28)
-    if end + timedelta(days=1) != anniversary:
-        raise ValueError("training period must be exactly 8 calendar years (inclusive end)")
+    if start > end:
+        raise ValueError("training start must not follow training end")
 
 
 def fit_calibration(rows: list[dict], start: date, end: date) -> dict:
     validate_training_dates(start, end)
     training = [row for row in rows if start.isoformat() <= row["work_date"] <= end.isoformat()]
-    if not training or training[0]["work_date"] != start.isoformat() or training[-1]["work_date"] != end.isoformat():
-        raise ValueError("input must cover the entire requested 8-year training period")
+    observed = sorted(row["work_date"] for row in training if row["work_observation_count"] > 0)
+    if not observed:
+        raise CalibrationUnavailableError("no_training_observations")
+    bounds = {}
+    for key in ("work_rain_mm", "prior_24h_rain_mm"):
+        valid = [row for row in training if row[key] is not None]
+        if not any(row[key] > 0 for row in valid):
+            raise CalibrationUnavailableError(f"no_positive_{key}")
+        bounds[key] = {
+            **quantiles([row[key] for row in valid]),
+            "valid_sample_count": len(valid),
+            "first_valid_date": min(row["work_date"] for row in valid),
+            "last_valid_date": max(row["work_date"] for row in valid),
+        }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "fit_policy": CALIBRATION_POLICY,
         "station_code": training[0]["station_code"],
         "work_start": training[0]["work_start"], "work_end": training[0]["work_end"],
         "train_start": start.isoformat(), "train_end": end.isoformat(),
+        "actual_train_start": observed[0], "actual_train_end": observed[-1],
+        "training_observed_days": len(set(observed)),
+        "training_calendar_days": (end - start).days + 1,
+        "training_history_status": "full_window" if observed[0] == start.isoformat() and observed[-1] == end.isoformat() else "partial_window",
         "quantile_method": "linear (n-1)*p; positive complete totals only; tied anchors use highest score",
-        **{key: quantiles([row[key] for row in training if row[key] is not None])
-           for key in ("work_rain_mm", "prior_24h_rain_mm")},
+        **bounds,
     }
 
 
@@ -221,13 +240,22 @@ def validate_calibration(model: dict, first_row: dict, start: date, end: date) -
     if not isinstance(model, dict):
         raise ValueError("calibration must be a JSON object")
     expected = {
-        "schema_version": 1, "station_code": first_row["station_code"],
+        "station_code": first_row["station_code"],
         "work_start": first_row["work_start"], "work_end": first_row["work_end"],
         "train_start": start.isoformat(), "train_end": end.isoformat(),
     }
     for key, value in expected.items():
         if model.get(key) != value:
             raise ValueError(f"calibration {key} mismatch: expected {value!r}; choose a matching calibration file")
+    if model.get("schema_version") not in (1, 2):
+        raise ValueError("unsupported calibration schema version")
+    if model["schema_version"] == 2:
+        if model.get("fit_policy") != CALIBRATION_POLICY:
+            raise ValueError("calibration fit policy mismatch")
+        actual_start = date.fromisoformat(model["actual_train_start"])
+        actual_end = date.fromisoformat(model["actual_train_end"])
+        if not start <= actual_start <= actual_end <= end:
+            raise ValueError("actual calibration dates must stay inside the training window")
     for key in ("work_rain_mm", "prior_24h_rain_mm"):
         bounds = model.get(key, {})
         anchors = [bounds.get(name) for name in ("p50", "p90", "p99")]
@@ -286,6 +314,10 @@ def score_features(features: dict, calibration: dict) -> dict:
         "S_H": None if sh is None else 100 * sh,
         "period": "train" if calibration["train_start"] <= row["work_date"] <= calibration["train_end"] else "validation" if row["work_date"] > calibration["train_end"] else "before_train",
         "rain_train_start": calibration["train_start"], "rain_train_end": calibration["train_end"],
+        "rain_actual_train_start": calibration.get("actual_train_start", ""),
+        "rain_actual_train_end": calibration.get("actual_train_end", ""),
+        "rain_training_history_status": calibration.get("training_history_status", "unavailable"),
+        "component_scores_complete": all(value is not None for value in (sr, sw, sh)),
     })
     return row
 
@@ -368,20 +400,14 @@ def station_calibration(rows, args, path):
         with path.open(encoding="utf-8-sig") as stream:
             model = json.load(stream)
         validate_calibration(model, rows[0], args.train_start, args.train_end)
-        return model, "reused", ""
-    training = [r for r in rows if args.train_start.isoformat() <= r["work_date"] <= args.train_end.isoformat()]
-    reason = ""
-    if not training or training[0]["work_date"] != args.train_start.isoformat() or training[-1]["work_date"] != args.train_end.isoformat():
-        reason = "insufficient_training_span"
-    else:
-        for key in ("work_rain_mm", "prior_24h_rain_mm"):
-            if not any(r[key] is not None and r[key] > 0 for r in training):
-                reason = f"no_positive_{key}"
-                break
-    if reason:
+        if model["schema_version"] == 2:
+            return model, "reused", ""
+        print(f"Upgrading legacy calibration from training observations only: {path}", flush=True)
+    try:
+        model = fit_calibration(rows, args.train_start, args.train_end)
+    except CalibrationUnavailableError as exc:
         # Do not substitute another station or fit on held-out years.
-        return {"train_start": args.train_start.isoformat(), "train_end": args.train_end.isoformat()}, "unavailable", reason
-    model = fit_calibration(rows, args.train_start, args.train_end)
+        return {"train_start": args.train_start.isoformat(), "train_end": args.train_end.isoformat()}, "unavailable", str(exc)
     atomic_write(path, lambda stream: json.dump(model, stream, ensure_ascii=False, indent=2, allow_nan=False))
     return model, "fitted", ""
 
@@ -446,6 +472,14 @@ def run_pipeline(args):
                     "first_date": first.isoformat(), "last_date": last.isoformat(),
                     "workday_count": len(scored), "rain_calibration_status": status,
                     "rain_calibration_reason": reason,
+                    "rain_actual_train_start": model.get("actual_train_start", ""),
+                    "rain_actual_train_end": model.get("actual_train_end", ""),
+                    "rain_training_history_status": model.get("training_history_status", "unavailable"),
+                    "training_observed_days": model.get("training_observed_days", 0),
+                    **{f"{key}_training_positive_count": model.get(key, {}).get("positive_sample_count", 0)
+                       for key in ("work_rain_mm", "prior_24h_rain_mm")},
+                    **{f"{period}_component_complete_days": sum(r["period"] == period and r["component_scores_complete"] for r in scored)
+                       for period in ("train", "validation", "after_validation")},
                     **{f"{period}_days": sum(r["period"] == period for r in scored)
                        for period in ("train", "validation", "after_validation")},
                     **audit,
@@ -461,6 +495,17 @@ def run_pipeline(args):
                 summaries.append(summary)
 
         atomic_write(args.output, write_output)
+    # Preserve every row (including missing scores) for STEP04. No IF is fitted here.
+    for period, destination in (("train", args.train_output), ("validation", args.heldout_output)):
+        def write_split(stream, selected_period=period):
+            with args.output.open(encoding="utf-8-sig", newline="") as source:
+                reader = csv.DictReader(source)
+                writer = csv.DictWriter(stream, fieldnames=reader.fieldnames)
+                writer.writeheader()
+                for row in reader:
+                    if row["period"] == selected_period:
+                        writer.writerow(row)
+        atomic_write(destination, write_split)
     def write_summary(stream):
         writer = csv.DictWriter(stream, fieldnames=list(summaries[0]))
         writer.writeheader()
@@ -480,6 +525,15 @@ def run_pipeline(args):
         "independently_checked_days": sum(s["checked_days"] for s in summaries),
         "mismatch_count": sum(s["mismatch_count"] for s in summaries),
         "calibration_unavailable_stations": [s["station_code"] for s in summaries if s["rain_calibration_status"] == "unavailable"],
+        "calibration_policy": CALIBRATION_POLICY,
+        "calibration_available_station_count": sum(s["rain_calibration_status"] != "unavailable" for s in summaries),
+        "partial_history_stations": [s["station_code"] for s in summaries if s["rain_training_history_status"] == "partial_window"],
+        "train_rows": sum(s["train_days"] for s in summaries),
+        "train_component_complete_rows": sum(s["train_component_complete_days"] for s in summaries),
+        "heldout_component_complete_rows": sum(s["validation_component_complete_days"] for s in summaries),
+        "train_output": args.train_output.name, "heldout_output": args.heldout_output.name,
+        "heldout_role": "Reserved for downstream Isolation Forest evaluation; never used to fit STEP03 cutoffs.",
+        "distribution_checks_gate_scoring": False,
         "scope": "Implementation and held-out weather-data audit; no damage labels, so no predictive accuracy claim.",
         "quantile_distribution_report": args.quantile_report.name,
         "quantile_interpretation": "Held-out distribution diagnostics, not an accuracy or pass/fail claim. Rainfall ties affect exceedance rates.",
@@ -494,7 +548,7 @@ def run_pipeline(args):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=DEFAULT_DATA_DIR / "weather_clean.csv")
-    parser.add_argument("--output", type=Path, default=DEFAULT_DATA_DIR / "weather_component_scores.csv")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_DIR / "weather_component_scores.csv")
     parser.add_argument("--station-code", action="append", help="optional; repeat for selected stations; default: all stations")
     parser.add_argument("--work-start", type=parse_clock, default=480)
     parser.add_argument("--work-end", type=parse_clock, default=1020)
@@ -508,6 +562,8 @@ def main() -> None:
     parser.add_argument("--summary", type=Path, help="default: weather_component_station_summary.csv beside output")
     parser.add_argument("--validation-report", type=Path, help="default: weather_component_validation.json beside output")
     parser.add_argument("--quantile-report", type=Path, help="default: weather_rain_quantile_validation.csv beside output")
+    parser.add_argument("--train-output", type=Path, help="STEP04 training input; default: weather_component_train.csv")
+    parser.add_argument("--heldout-output", type=Path, help="STEP04 held-out input; default: weather_component_holdout.csv")
     parser.add_argument("--refit-calibration", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.work_start < args.work_end <= 1440:
@@ -518,12 +574,15 @@ def main() -> None:
     args.summary = args.summary or args.output.with_name("weather_component_station_summary.csv")
     args.validation_report = args.validation_report or args.output.with_name("weather_component_validation.json")
     args.quantile_report = args.quantile_report or args.output.with_name("weather_rain_quantile_validation.csv")
+    args.train_output = args.train_output or args.output.with_name("weather_component_train.csv")
+    args.heldout_output = args.heldout_output or args.output.with_name("weather_component_holdout.csv")
     try:
         args.validation_end = args.validation_end or args.train_end.replace(year=args.train_end.year + 2)
         validate_training_dates(args.train_start, args.train_end)
         if args.validation_end <= args.train_end:
             raise ValueError("validation end must follow training end")
-        paths = [args.input, args.output, args.summary, args.validation_report, args.quantile_report]
+        paths = [args.input, args.output, args.summary, args.validation_report, args.quantile_report,
+                 args.train_output, args.heldout_output]
         if args.calibration:
             paths.append(args.calibration)
         if len(set(p.resolve() for p in paths)) != len(paths):

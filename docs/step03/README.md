@@ -1,22 +1,33 @@
 # 개별 기상위험지수 산출
 
-현재 단계는 전체 관측소 산출과 계산 검증을 구현한 중간 버전입니다. 강수 분위수의 통계적 적절성은 확정 전이며, 선행강수 결측·P99 안정성·4개 관측소의 짧은 학습기간을 보완해야 합니다. 실제 20개 학습 관측소의 수치와 STEP04 진행 조건은 [강수 분위수 검토 문서](weather_quantile_review.md)를 참고하세요.
+STEP03은 최종 리스크 R에 들어갈 개별 지수 S를 수치화하는 단계입니다. 전체 관측소가 공통 학습 경계(기본 2023년 말) 이전에 확보한 자료로 강수 분위수를 추정합니다. 8년 전체 자료 보유를 강제하지 않으며, 늦게 시작한 4개 관측소도 실제 학습기간을 기록해 포함합니다. 2024~2025년은 STEP04 Isolation Forest 평가용으로 보관하며, STEP03에서는 해당 기간으로 기준을 다시 맞추거나 분위수 유사성 합격을 요구하지 않습니다. 선행강수 결측과 순간풍속 부재는 그대로 기록합니다.
 
-`weather_component_scores.py`는 입력 파일의 **전체 관측소**에 대해 작업일별 강수·강풍·온열 위험을 산출합니다. Python 3.10 이상에서 외부 패키지 없이 실행합니다. 같은 폴더의 `validate_weather_scores.py`가 실제 검증기간 결과를 독립 재계산해 대조합니다.
+이전 20개 학습 관측소에 대한 통계 검토는 [과거 검토 기록](archive/weather_quantile_review.md)에 남겨 두었습니다. 이 문서의 과거 학습기간 제한과 통계 검토 제안은 현재 산출을 막는 조건이 아닙니다.
+
+`worker/code/step03/weather_component_scores.py`는 입력 파일의 **전체 관측소**에 대해 작업일별 강수·강풍·온열 위험을 산출합니다. Python 3.10 이상에서 외부 패키지 없이 실행합니다. 실행 스크립트와 같은 폴더의 `validate_weather_scores.py`가 실제 검증기간 결과를 독립 재계산해 대조합니다.
+
+## 폴더 구성
+
+- `worker/code/step03/`: STEP03 실행·검증·테스트 코드
+- `docs/step03/`: STEP03 사용법과 검토 문서
+- `worker/data/gyeonggi_processed/step03/`: 최신 STEP03 결과와 분위수 JSON
+- `docs/step03/archive/`: 변경 전 통계 검토 기록
+- 결과의 `archive/before_available_history/`: 이전 STEP03 결과와 기준표
+- 기존 STEP01·02 코드와 공유 정제자료 경로는 유지합니다.
 
 ## 실행
 
 저장소 루트 `C:\Users\user\wonday`에서 실행합니다.
 
 ```powershell
-python worker/code/weather_component_scores.py
+python worker/code/step03/weather_component_scores.py
 ```
 
-기본 설정은 **전체 관측소**, 비산지, 매일 **08:00~17:00**, 학습 **2016-01-01~2023-12-31(8년)**, 검증 **2024-01-01~2025-12-31(2년)**입니다. 2026년 이후는 `after_validation`으로 표시하며 똑같이 계산합니다. 이는 고정된 8년·2년 구분이며, 전체 행을 무작위로 80:20 분할하는 방식은 아닙니다. `--validation-end 2026-11-17`처럼 검증 종료일을 바꿀 수 있습니다. 실제 작업 일정이 없으므로 각 관측소 자료의 첫 날짜부터 마지막 날짜까지 모든 날짜를 예정 작업일로 가정합니다.
+기본 설정은 **전체 관측소**, 비산지, 매일 **08:00~17:00**입니다. 학습 윈도는 **2016-01-01~2023-12-31**이며 각 관측소는 이 범위 안에서 확보된 자료만 사용합니다. 공통 보관 기간은 **2024-01-01~2025-12-31**이고 `period=validation`으로 표시해 이후 Isolation Forest 평가에 사용합니다. 2026년 이후는 `after_validation`으로 표시하며 계산합니다. 무작위 80:20 분할이나 관측소별 다른 검증 시작일을 사용하지 않습니다. 실제 작업 일정이 없으므로 각 관측소 자료의 첫 날짜부터 마지막 날짜까지 모든 날짜를 예정 작업일로 가정합니다.
 
 ```powershell
-python worker/code/weather_component_scores.py --station-code 477802A001 --work-start 08:00 --work-end 16:00
-python worker/code/weather_component_scores.py --station-code 477802A001 --mountain
+python worker/code/step03/weather_component_scores.py --station-code 477802A001 --work-start 08:00 --work-end 16:00
+python worker/code/step03/weather_component_scores.py --station-code 477802A001 --mountain
 # 일부 관측소만 선택하려면 --station-code를 반복합니다.
 # 전체 관측소 실행 중 산지 기준을 적용할 관측소는 --mountain-station 코드로 지정합니다.
 ```
@@ -28,13 +39,17 @@ python worker/code/weather_component_scores.py --station-code 477802A001 --mount
 | 용도 | 경로 |
 | --- | --- |
 | 입력 | `worker/data/gyeonggi_processed/weather_clean.csv` |
-| 출력 | `worker/data/gyeonggi_processed/weather_component_scores.csv` |
-| 관측소별 강수 분위수 | `worker/data/gyeonggi_processed/rain_calibrations/rain_calibration_<관측소>.json` |
-| 관측소별 기간·결측·점수 요약 | `worker/data/gyeonggi_processed/weather_component_station_summary.csv` |
-| 실제 검증기간 점검 결과 | `worker/data/gyeonggi_processed/weather_component_validation.json` |
-| 학습·검증 강수 분포 비교 | `worker/data/gyeonggi_processed/weather_rain_quantile_validation.csv` |
+| 출력 | `worker/data/gyeonggi_processed/step03/weather_component_scores.csv` |
+| STEP04 학습 입력 | `worker/data/gyeonggi_processed/step03/weather_component_train.csv` |
+| STEP04 검증 보관 입력 | `worker/data/gyeonggi_processed/step03/weather_component_holdout.csv` |
+| 관측소별 강수 분위수 | `worker/data/gyeonggi_processed/step03/rain_calibrations/rain_calibration_<관측소>.json` |
+| 관측소별 기간·결측·점수 요약 | `worker/data/gyeonggi_processed/step03/weather_component_station_summary.csv` |
+| 실제 검증기간 점검 결과 | `worker/data/gyeonggi_processed/step03/weather_component_validation.json` |
+| 학습·검증 강수 분포 비교 | `worker/data/gyeonggi_processed/step03/weather_rain_quantile_validation.csv` |
 
-다른 경로는 `--input`, `--output`, `--calibration-dir`, `--summary`, `--validation-report`로 지정합니다. `--calibration`으로 특정 JSON을 지정하는 기능은 단일 관측소 모드에서 지원합니다. 작업시간을 바꿀 때는 별도의 분위수 폴더를 사용하세요. 같은 경로의 결과 CSV는 다시 실행하면 교체됩니다. 각 파일은 임시 파일 작성 후 교체하지만 여러 결과 파일 전체를 하나의 트랜잭션으로 저장하지는 않습니다.
+다른 경로는 `--input`, `--output`, `--calibration-dir`, `--summary`, `--validation-report`, `--train-output`, `--heldout-output` 등으로 지정합니다. `--calibration`으로 특정 JSON을 지정하는 기능은 단일 관측소 모드에서 지원합니다. 작업시간을 바꿀 때는 별도의 분위수 폴더를 사용하세요. 같은 경로의 결과 CSV는 다시 실행하면 교체됩니다. 각 파일은 임시 파일 작성 후 교체하지만 여러 결과 파일 전체를 하나의 트랜잭션으로 저장하지는 않습니다.
+
+학습·보관 CSV는 전체 점수에서 `period=train`과 `period=validation` 행을 각각 그대로 추출합니다. 결측 행도 유지하고 `component_scores_complete`로 세 최종 지수가 모두 있는지 표시합니다. 이 필드는 세 지수 입력의 충족 여부이며, IF를 학습했거나 품질 검증을 통과했다는 뜻은 아닙니다. 2026년 이후는 두 분리 파일에 넣지 않습니다. STEP04에서도 같은 시간 경계를 사용하고, 검증자료로 전처리·모델·최종 R의 설정을 학습하지 않도록 해야 합니다.
 
 입력은 한 번 읽어 임시 폴더에 관측소별로 분리하고, 한 관측소씩 메모리에 올려 계산합니다. 입력이 관측소 순으로 정렬되어 있지 않아도 작동합니다. 임시 파일은 종료 시 정리되며, 입력 크기 정도의 임시 디스크 공간이 필요합니다. 전체 관측소는 입력 정제 CSV에 들어 있는 관측소를 뜻합니다.
 
@@ -74,14 +89,16 @@ python worker/code/weather_component_scores.py --station-code 477802A001 --mount
 
 관측의 이산성으로 분위수가 같아지면 같은 강수량에 서로 다른 점수를 부여할 수 없습니다. 이 경우 **같은 기준점 중 높은 점수**를 사용하고, 0mm는 항상 0으로 둡니다.
 
-분위수 JSON에는 관측소·작업시간·학습기간과 양수 표본 수를 기록합니다. 이후 실행에서는 기존 JSON을 그대로 읽으며, 검증자료로 분위수를 다시 계산하지 않습니다. 메타데이터가 실행 설정과 다르면 오류를 냅니다. 검증기간 자료만 있는 입력도 기존 JSON을 지정하면 계산할 수 있습니다.
+분위수 JSON v2에는 관측소·작업시간·공통 학습 윈도와 함께 `actual_train_start`, `actual_train_end`, `training_observed_days`, `training_history_status`를 기록합니다. 강수 변수별로 유효 합계 수, 양수 표본 수, 최초·최종 유효 날짜도 저장합니다. `full_window`는 자료가 학습 윈도의 양 끝 날짜까지 있다는 뜻이며, 모든 중간 관측이 완전하다는 뜻은 아닙니다. `partial_window`는 더 짧은 자료로 학습했다는 뜻으로 사용 불가 판정이 아닙니다.
 
-학습기간은 종료일을 포함해 정확히 8년이어야 하며, 최초 학습용 입력은 이 기간을 포함해야 합니다. 기간 내 결측 합계는 해당 변수의 학습 표본에서 제외합니다. 의도적으로 기준을 다시 학습할 때만 실행합니다.
+기존 v1 기준표는 학습기간 관측에서 다시 계산해 v2로 업그레이드합니다. 이때 전체 학습 입력이 필요합니다. v2는 이후 실행에서 그대로 재사용하며, 검증기간만 있는 입력에도 기존 v2를 지정할 수 있습니다. 관측소·작업시간·공통 학습 윈도가 다르거나 실제 학습 날짜가 학습 윈도 밖이면 오류를 냅니다. 검증자료로 분위수를 다시 맞추지 않습니다.
 
-**학습기간이 부족하거나 양수 학습 표본이 없는 관측소도 결과에서 제외하지 않습니다.** 다른 관측소 기준을 빌리거나 검증기간 자료를 학습에 넣지 않습니다. 해당 관측소는 `rain_calibration_status=unavailable`과 사유를 기록합니다. 강풍·온열 및 강수 만점 판정은 정상 수행하고, 강수의 작업 중·선행 합계가 모두 0이면 0점을 줍니다. 그 외 분위수가 필요한 강수 점수는 빈칸으로 남기며 `missing_calibration`을 표시합니다. 입력 자체가 불완전한 경우는 `missing_data`가 우선합니다.
+기존의 정확히 8년이라는 제약을 제거했습니다. 2016년부터 자료가 없는 관측소도 자료 시작일부터 2023년 말까지의 양수 유효 강수량으로 기준을 만듭니다. 기간 내 결측 합계는 해당 변수의 표본에서 제외합니다. 의도적으로 기준을 다시 학습할 때는 다음 옵션을 사용합니다.
+
+**학습기간 관측이 아예 없거나 필요한 변수의 양수 표본이 없는 경우에만** `rain_calibration_status=unavailable`과 사유를 기록합니다. 단순히 기간이 짧다는 이유로 학습을 거부하지 않습니다. 다른 관측소 기준을 빌리거나 검증기간 자료를 대신 사용하지 않습니다. 기준을 못 만든 경우에도 강풍·온열과 강수 만점 판정은 수행하며, 작업 중·선행 강수합이 모두 0이면 강수점수는 0입니다. 그 외 분위수가 필요한 강수점수는 `missing_calibration`으로 남깁니다. 실제 관측 부족은 `missing_data`가 우선합니다.
 
 ```powershell
-python worker/code/weather_component_scores.py --refit-calibration
+python worker/code/step03/weather_component_scores.py --refit-calibration
 ```
 
 ## 결측과 결과 해석
@@ -108,19 +125,22 @@ python worker/code/weather_component_scores.py --refit-calibration
 | `period` | `train`, `validation`, `after_validation`, `before_train` |
 | `station_name` | 정제 입력에 있는 관측소 이름 |
 | `rain_calibration_status`, `rain_calibration_reason` | 분위수 학습·재사용·부족 여부와 사유 |
-| `rain_train_start`, `rain_train_end` | 적용한 분위수의 학습기간 |
+| `rain_train_start`, `rain_train_end` | 모든 관측소가 공유하는 학습 허용 윈도 |
+| `rain_actual_train_start`, `rain_actual_train_end` | 실제 사용한 학습 관측 범위 |
+| `rain_training_history_status` | `full_window`, `partial_window`, `unavailable` |
+| `component_scores_complete` | 세 최종 지수가 모두 계산됐으면 True |
 
 실제 특보 발효 여부는 입력이나 만점 판정에 사용하지 않습니다. 이 코드는 사용자가 제시한 프로젝트 점수 설계를 구현합니다.
 
 ## 검증
 
 ```powershell
-python -m unittest discover -s worker/code -p test_weather_component_scores.py -v
+python -m unittest discover -s worker/code/step03 -p test_weather_component_scores.py -v
 ```
 
 예시 77.5점, 강수의 작업시간 경계·이동 창·결측, 순간풍속 및 산지 기준, 한 구간만 있어도 적용되는 만점, 분위수 학습자료 분리와 재사용 설정, 시각별 기온·습도 결합을 확인합니다.
 
-테스트 파일의 자료는 정답을 아는 가상자료입니다. 여러 관측소를 섞은 입력, 관측소별 독립 기준표, 학습기간 부족 처리, 2026년 기간 표시, 오류 시 기존 결과 보존도 확인합니다. 이 단위·통합 테스트는 실제 검증자료 평가와 구분합니다.
+테스트 파일의 자료는 정답을 아는 가상자료입니다. 31개 테스트로 여러 관측소 입력, 관측소별 기준표, 4개 늦게 시작한 관측소의 가용기간 학습, 미래 극단값을 추가해도 기준표가 바뀌지 않는지, v1→v2 업그레이드와 v2 재사용, 학습·보관 파일의 정확한 행 분리, 실제 결측 보존 등을 확인합니다.
 
 실제 실행에서는 `validate_weather_scores.py`가 **2024~2025년의 모든 관측소·작업일**에 대해 원래 10분 관측으로 작업시간 집계, 이동강수량, 만점 판정, 세 최종 점수를 독립 구현으로 다시 계산합니다. 생산용 집계·보간·점수 함수를 호출하지 않고 대조하며, 불일치가 있으면 결과 CSV 교체 전에 실행을 중단합니다. 기온·습도에서 체감온도로 바꾸는 단계는 생산 코드가 만든 관측값을 공유하므로 이 공식 자체는 단위 테스트로 확인합니다.
 
@@ -128,8 +148,10 @@ python -m unittest discover -s worker/code -p test_weather_component_scores.py -
 
 `weather_rain_quantile_validation.csv`는 관측소별로 작업 중·선행강수를 분리하여 학습 P50/P90/P99, 검증기간 양수 강수량의 분위수, 학습 기준을 초과하거나 같은 값인 검증 양수 표본의 비율을 저장합니다. 검증 분위수는 비교용으로만 계산하며 점수 기준표에 반영하지 않습니다. 같은 분포라면 P90 초과 비율이 대략 10%인지를 살펴볼 수 있지만, 강수량 이산값의 동점·표본 수·연도별 기후 변동 때문에 이를 정확히 10%여야 한다는 통과 기준으로 사용하지 않습니다. 이 비교는 코드 재계산 일치 검사와 목적이 다릅니다.
 
+이 분포 비교는 설명용 진단이며 STEP04 진행을 막는 합격 관문이 아닙니다. 독립 재계산에서 실제 구현 불일치가 있으면 중단하지만, 학습·검증 분위수가 다르다는 이유로 산출을 중단하거나 기준표를 수정하지 않습니다. STEP03에서는 Isolation Forest를 학습하거나 최종 R을 계산하지 않습니다.
+
 이미 저장된 점수에서 분위수 분포 비교만 다시 실행하려면 다음 명령을 사용합니다. 이 명령은 원래 10분 입력의 집계를 다시 계산하는 검사는 아니며, 저장된 강수 합계와 기존 기준표를 비교합니다. 10분 입력부터의 독립 계산 대조는 산출 프로그램 전체 실행 시 수행합니다.
 
 ```powershell
-python worker/code/validate_weather_scores.py --scores worker/data/gyeonggi_processed/weather_component_scores.csv
+python worker/code/step03/validate_weather_scores.py --scores worker/data/gyeonggi_processed/step03/weather_component_scores.csv
 ```

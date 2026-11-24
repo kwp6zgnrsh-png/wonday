@@ -15,8 +15,11 @@ import weather_component_scores as scores
 DAY = date(2024, 7, 1)
 START = datetime(2024, 7, 1, 8)
 MODEL = {
-    "schema_version": 1, "station_code": "test", "work_start": "08:00", "work_end": "16:00",
+    "schema_version": 2, "station_code": "test", "work_start": "08:00", "work_end": "16:00",
     "train_start": "2016-01-01", "train_end": "2023-12-31",
+    "fit_policy": scores.CALIBRATION_POLICY,
+    "actual_train_start": "2016-01-01", "actual_train_end": "2023-12-31",
+    "training_history_status": "full_window",
     "work_rain_mm": {"p50": 10, "p90": 50, "p99": 100},
     "prior_24h_rain_mm": {"p50": 20, "p90": 80, "p99": 150},
 }
@@ -166,7 +169,8 @@ class RiskScoresTests(unittest.TestCase):
     def test_calibration_period_and_metadata_validation(self):
         scores.validate_calibration(MODEL, summarize(observations()), date(2016, 1, 1), date(2023, 12, 31))
         with self.assertRaises(ValueError):
-            scores.validate_training_dates(date(2016, 1, 1), date(2024, 12, 31))
+            scores.validate_training_dates(date(2024, 1, 1), date(2023, 12, 31))
+        scores.validate_training_dates(date(2018, 1, 1), date(2023, 12, 31))
         with self.assertRaises(ValueError):
             scores.validate_calibration(MODEL, dict(summarize(observations()), station_code="other"), date(2016, 1, 1), date(2023, 12, 31))
         with self.assertRaises(ValueError):
@@ -236,7 +240,7 @@ class RiskScoresTests(unittest.TestCase):
             self.assertEqual(float(row["S_W"]), 0)
             self.assertEqual(row["gust_evaluation_status"], "unavailable")
 
-    def test_all_stations_have_independent_calibrations_and_explicit_missing_history(self):
+    def test_all_stations_have_independent_calibrations_and_partial_history(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source, output = root / "input.csv", root / "scores.csv"
@@ -244,13 +248,13 @@ class RiskScoresTests(unittest.TestCase):
                 writer = csv.writer(stream)
                 writer.writerow(scores.REQUIRED_COLUMNS)
                 # Interleave station rows: batch processing must not assume sorted input.
-                for day in (date(2016, 1, 1), date(2023, 12, 31), DAY, date(2026, 1, 1)):
+                for day in (date(2016, 1, 1), date(2019, 7, 1), date(2023, 12, 31), DAY, date(2026, 1, 1)):
                     start = datetime.combine(day, datetime.min.time()).replace(hour=8)
                     for i in range(-143, 49):
                         stamp = start + i * scores.STEP
                         writer.writerow(["001", stamp.isoformat(), 25, 60, 2, .5])
                         writer.writerow(["003", stamp.isoformat(), 25, 60, 2, 2])
-                        if day >= DAY:
+                        if day >= date(2019, 7, 1):
                             writer.writerow(["002", stamp.isoformat(), 25, 60, 2, .5])
             command = [sys.executable, str(Path(scores.__file__)), "--input", str(source),
                        "--output", str(output), "--work-end", "16:00"]
@@ -263,22 +267,33 @@ class RiskScoresTests(unittest.TestCase):
             a = next(r for r in rows if r["station_code"] == "001" and r["work_date"] == DAY.isoformat())
             b = next(r for r in rows if r["station_code"] == "002" and r["work_date"] == DAY.isoformat())
             self.assertEqual(a["rain_calibration_status"], "fitted")
-            self.assertEqual(b["rain_calibration_reason"], "insufficient_training_span")
-            self.assertEqual(b["rain_score_status"], "missing_calibration")
-            self.assertEqual(b["S_R"], "")
+            self.assertEqual(b["rain_calibration_status"], "fitted")
+            self.assertEqual(b["rain_calibration_reason"], "")
+            self.assertEqual(b["rain_training_history_status"], "partial_window")
+            self.assertEqual(b["rain_score_status"], "ok")
+            self.assertNotEqual(b["S_R"], "")
             self.assertNotEqual(b["S_W"], "")
             self.assertNotEqual(b["S_H"], "")
             self.assertEqual(next(r for r in rows if r["work_date"] == "2026-01-01")["period"], "after_validation")
             report = json.loads((root / "weather_component_validation.json").read_text(encoding="utf-8-sig"))
             self.assertEqual(report["station_count"], 3)
             self.assertEqual(report["mismatch_count"], 0)
-            self.assertEqual(report["calibration_unavailable_stations"], ["002"])
+            self.assertEqual(report["calibration_unavailable_stations"], [])
+            self.assertEqual(report["partial_history_stations"], ["002"])
+            self.assertFalse(report["distribution_checks_gate_scoring"])
             self.assertTrue((root / "rain_calibrations" / "rain_calibration_001.json").is_file())
             m1 = json.loads((root / "rain_calibrations" / "rain_calibration_001.json").read_text(encoding="utf-8-sig"))
             m3 = json.loads((root / "rain_calibrations" / "rain_calibration_003.json").read_text(encoding="utf-8-sig"))
             self.assertEqual(m3["work_rain_mm"]["p50"], 4 * m1["work_rain_mm"]["p50"])
-            self.assertFalse((root / "rain_calibrations" / "rain_calibration_002.json").exists())
+            self.assertTrue((root / "rain_calibrations" / "rain_calibration_002.json").exists())
             self.assertTrue((root / "weather_rain_quantile_validation.csv").is_file())
+            for filename, period in (("weather_component_train.csv", "train"), ("weather_component_holdout.csv", "validation")):
+                with (root / filename).open(encoding="utf-8-sig", newline="") as stream:
+                    subset = list(csv.DictReader(stream))
+                expected = [r for r in rows if r["period"] == period]
+                self.assertEqual(subset, expected)
+                self.assertEqual({r["station_code"] for r in subset}, {"001", "002", "003"})
+                self.assertTrue(any(r["component_scores_complete"] == "False" for r in subset))
 
     def test_independent_validation_detects_wrong_scores(self):
         from validate_weather_scores import audit_validation
@@ -320,6 +335,78 @@ class RiskScoresTests(unittest.TestCase):
         self.assertEqual(result["validation_fraction_above_training_p90"], .5)
         self.assertEqual(result["validation_fraction_equal_training_p50"], .25)
         self.assertEqual(json.dumps(MODEL, sort_keys=True), frozen)
+
+    def test_four_late_stations_fit_available_history_before_common_cutoff(self):
+        base = summarize(observations())
+        starts = {"011104F031": "2019-10-01", "017414F020": "2017-11-24",
+                  "017421F029": "2018-11-14", "018544F032": "2019-10-12"}
+        for station, start in starts.items():
+            with self.subTest(station=station):
+                rows = [dict(base, station_code=station, work_date=start, work_rain_mm=10, prior_24h_rain_mm=20),
+                        dict(base, station_code=station, work_date="2023-12-31", work_rain_mm=30, prior_24h_rain_mm=40),
+                        dict(base, station_code=station, work_date="2024-01-01", work_rain_mm=1e8, prior_24h_rain_mm=1e8)]
+                model = scores.fit_calibration(rows, date(2016, 1, 1), date(2023, 12, 31))
+                self.assertEqual(model["actual_train_start"], start)
+                self.assertEqual(model["actual_train_end"], "2023-12-31")
+                self.assertEqual(model["training_history_status"], "partial_window")
+                self.assertEqual(model["work_rain_mm"]["p50"], 20)
+                self.assertEqual(model["training_observed_days"], 2)
+
+    def test_heldout_extremes_do_not_change_any_fitted_model_field(self):
+        base = summarize(observations())
+        training = [dict(base, work_date="2019-10-01", work_rain_mm=10, prior_24h_rain_mm=20),
+                    dict(base, work_date="2023-12-31", work_rain_mm=30, prior_24h_rain_mm=40)]
+        model = scores.fit_calibration(training, date(2016, 1, 1), date(2023, 12, 31))
+        for day in ("2024-01-01", "2025-12-31", "2026-01-01"):
+            future = dict(base, work_date=day, work_rain_mm=1e9, prior_24h_rain_mm=1e9)
+            self.assertEqual(scores.fit_calibration(training + [future], date(2016, 1, 1), date(2023, 12, 31)), model)
+
+    def test_validation_only_station_does_not_fit_on_heldout_rain(self):
+        from types import SimpleNamespace
+        args = SimpleNamespace(train_start=date(2016, 1, 1), train_end=date(2023, 12, 31), refit_calibration=False)
+        rows = [dict(summarize(observations()), work_rain_mm=10, prior_24h_rain_mm=20)]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rain.json"
+            model, status, reason = scores.station_calibration(rows, args, path)
+            self.assertEqual(status, "unavailable")
+            self.assertEqual(reason, "no_training_observations")
+            self.assertNotIn("work_rain_mm", model)
+            self.assertFalse(path.exists())
+
+    def test_legacy_calibration_is_upgraded_using_training_only(self):
+        from types import SimpleNamespace
+        args = SimpleNamespace(train_start=date(2016, 1, 1), train_end=date(2023, 12, 31), refit_calibration=False)
+        legacy = dict(MODEL, schema_version=1)
+        base = summarize(observations())
+        rows = [dict(base, work_date="2019-01-01", work_rain_mm=10, prior_24h_rain_mm=20),
+                dict(base, work_date="2023-12-31", work_rain_mm=30, prior_24h_rain_mm=40),
+                dict(base, work_date="2024-07-01", work_rain_mm=1e9, prior_24h_rain_mm=1e9)]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rain.json"
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            model, status, reason = scores.station_calibration(rows, args, path)
+            self.assertEqual(model["schema_version"], 2)
+            self.assertEqual(model["work_rain_mm"]["p50"], 20)
+            self.assertEqual(status, "fitted")
+            saved = path.read_bytes()
+            again, status, _ = scores.station_calibration(rows[-1:], args, path)
+            self.assertEqual(status, "reused")
+            self.assertEqual(again, model)
+            self.assertEqual(path.read_bytes(), saved)
+
+    def test_calibration_rejects_actual_dates_after_training_cutoff(self):
+        invalid = dict(MODEL, actual_train_end="2024-01-01")
+        with self.assertRaisesRegex(ValueError, "inside the training window"):
+            scores.validate_calibration(invalid, summarize(observations()), date(2016, 1, 1), date(2023, 12, 31))
+
+    def test_no_positive_training_rain_stays_unavailable(self):
+        from types import SimpleNamespace
+        args = SimpleNamespace(train_start=date(2016, 1, 1), train_end=date(2023, 12, 31), refit_calibration=False)
+        rows = [dict(summarize(observations()), work_date="2023-12-31")]
+        with tempfile.TemporaryDirectory() as directory:
+            _, status, reason = scores.station_calibration(rows, args, Path(directory) / "rain.json")
+            self.assertEqual(status, "unavailable")
+            self.assertEqual(reason, "no_positive_work_rain_mm")
 
 
 if __name__ == "__main__":
