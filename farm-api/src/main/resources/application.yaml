@@ -23,3 +23,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+
+farm:
+  insurance:
+    service-token: ${FARM_API_SERVICE_TOKEN:}
