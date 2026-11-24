@@ -23,7 +23,7 @@ public class SecurityConfig {
 		return http
 			.authorizeHttpRequests(auth -> auth
 				.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-				.requestMatchers(HttpMethod.GET, "/", "/api/auth/csrf").permitAll()
+				.requestMatchers(HttpMethod.GET, "/", "/api/auth/csrf", "/api/products", "/api/products/*").permitAll()
 				.requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
 				.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("WORKER", "ADMIN")
 				.anyRequest().denyAll())

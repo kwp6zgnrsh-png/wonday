@@ -56,6 +56,8 @@ jobs:
         env:
           MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
           MYSQL_PASSWORD: ci-mysql
+          MYSQL_TEST_USER: root
+          MYSQL_TEST_PASSWORD: ci-root
           RABBITMQ_PASSWORD: ci-rabbitmq
         run: ./gradlew --no-daemon test bootJar
       - name: Name release artifact

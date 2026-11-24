@@ -22,5 +22,7 @@ spring:
     username: ${MYSQL_USER:wonday}
     password: ${MYSQL_PASSWORD}
   jpa:
+    properties:
+      hibernate.type.java_time_use_direct_jdbc: true
     hibernate:
       ddl-auto: validate
