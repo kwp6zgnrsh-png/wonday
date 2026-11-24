@@ -26,6 +26,8 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.GET, "/", "/api/auth/csrf", "/api/products", "/api/products/*").permitAll()
 				.requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
 				.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("WORKER", "ADMIN")
+				.requestMatchers(HttpMethod.POST, "/api/contracts").hasRole("WORKER")
+				.requestMatchers(HttpMethod.GET, "/api/contracts", "/api/contracts/*").hasRole("WORKER")
 				.anyRequest().denyAll())
 			.exceptionHandling(exceptions -> exceptions
 				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))

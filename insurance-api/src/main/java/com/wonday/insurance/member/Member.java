@@ -35,6 +35,17 @@ class Member {
 	@Column(nullable = false, length = 32)
 	private MemberRole role;
 
+	@Column(length = 32)
+	private String phone;
+
+	@Column(name = "resident_registration_number", length = 32)
+	private String residentRegistrationNumber;
+
+	void updateEnrollmentContact(String phone, String residentRegistrationNumber) {
+		this.phone = phone;
+		this.residentRegistrationNumber = residentRegistrationNumber;
+	}
+
 	Member(String loginId, String passwordHash, String name, MemberRole role) {
 		this.loginId = loginId;
 		this.passwordHash = passwordHash;

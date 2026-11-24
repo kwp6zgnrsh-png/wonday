@@ -4,7 +4,7 @@ import java.util.List;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 
-final class MemberPrincipal extends User {
+public final class MemberPrincipal extends User {
 
 	private final long memberId;
 	private final String name;
@@ -18,7 +18,7 @@ final class MemberPrincipal extends User {
 		this.role = member.getRole();
 	}
 
-	long memberId() {
+	public long memberId() {
 		return memberId;
 	}
 

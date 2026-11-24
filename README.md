@@ -130,6 +130,50 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 
 이번 구현에서 판매 기간의 DB 일시는 UTC로 해석한다. 프런트는 salesStartAt·salesEndAt을 표시할 때 UTC 기준으로 처리한다. 상품 등록·약정 데이터 입력은 별도 관리하며, 테스트의 예시 금액과 기준은 테스트용 값이다.
 
+#### 보험 상품 가입·농업 플랫폼 연동
+
+보험 회원가입과 로그인 후 `POST /api/contracts`로 상품에 가입한다. 로컬 웹의 경로는 `/api/insurance/contracts`다. 기존 인증과 동일하게 세션 쿠키와 CSRF 헤더를 보낸다.
+
+```json
+{
+  "productVersionId": 7,
+  "termsAccepted": true,
+  "platformConsentAccepted": true,
+  "identity": {
+    "name": "김가상",
+    "phone": "010-0000-0000",
+    "residentRegistrationNumber": "000000-0000000"
+  }
+}
+```
+
+두 동의가 모두 있어야 가입할 수 있다. 상품 상세가 제공한 productVersionId를 사용한다. 고객 정보는 시연용 가상 정보로 준비한다. 이름 앞뒤 공백, 전화번호·주민등록번호의 하이픈과 공백을 정리한 뒤 합의한 농업 API에 전달한다.
+
+서버 설정에는 `FARM_API_BASE_URL`(로컬 기본값 http://127.0.0.1:8081)과 `FARM_API_SERVICE_TOKEN`을 사용한다. 인증 토큰이 설정돼야 확인 요청을 전송할 수 있다. 보험 서버는 `POST /api/internal/insurance/worker-verifications`에 Bearer 토큰과 identity JSON을 보내고, 농업 서버의 workerId·name·phone 응답을 확인한다. 이름과 전화번호가 요청과 일치하고 workerId가 양수여야 성공으로 처리한다. 연결·응답 시간 제한은 각각 3초다.
+
+확인 성공 후 연락처·시연 주민등록번호, 농업 계정 연결, 계약을 하나의 트랜잭션으로 저장한다. 요청 본문에 보험 회원 ID를 받는 대신 로그인 세션의 회원을 사용한다. 연락처는 확인된 농업 서버 전화번호를 저장한다. 연동 동의 버전은 `farm-platform-v1`을 사용한다.
+
+보장은 가입 즉시 시작하고, 한국 시각의 같은 시점에서 3개월 뒤 종료한다. 2월 10일 가입하면 5월 10일까지이며, 말일에 해당 날짜가 없으면 해당 월의 말일을 적용한다. 응답의 acceptedAt·coverageFrom·coverageTo는 UTC 일시다. 가입 성공은 201과 계약 상세 및 Location 헤더를 반환한다.
+
+| 실패 상황 | 보험 API 응답 |
+|---|---|
+| 로그인 세션 없음 | 401 |
+| 근로자 권한 없음 또는 CSRF 누락 | 403 |
+| 동의 누락·입력 형식 오류 | 400 |
+| 농업 정보 불일치 | 404 및 WORKER_IDENTITY_NOT_MATCHED |
+| 농업 정보 중복 | 409 및 WORKER_IDENTITY_AMBIGUOUS |
+| 다른 보험 회원에 이미 연결된 농업 계정 | 409 |
+| 다른 농업 계정으로 연결 변경 시도 | 409 |
+| 같은 상품의 유효 계약이 이미 있음 | 409 |
+| 판매 종료 또는 선택한 버전이 최신 판매 가능 버전과 달라짐 | 409 |
+| 상품 버전 없음 | 404 |
+| 농업 서버 인증 오류·서버 오류·통신 실패·시간 초과 | 503 및 FARM_SERVICE_UNAVAILABLE |
+| 농업 서버의 성공 응답에 필수값이 없거나 요청과 불일치 | 502 및 INVALID_PLATFORM_RESPONSE |
+
+기존 연결의 근로자 ID와 동의 버전이 같으면 연결을 재사용한다. 상품 가입 시에는 농업 API로 입력 정보를 다시 검증한다. 같은 회원의 동시 가입은 회원 행 잠금으로 직렬화하고, 같은 상품의 두 번째 가입을 409로 처리한다. 실패 시 전체 로컬 저장을 롤백한다. 가입 성공 응답을 받지 못하고 재시도했을 때 409가 오면 내 보험 목록에서 기존 계약을 확인할 수 있다.
+
+`GET /api/contracts`는 본인의 계약 목록, `GET /api/contracts/{contractId}`는 본인의 계약 상세를 반환한다. 상세에는 가입 당시 약정 버전의 약관이 포함된다. 다른 회원의 계약은 404로 응답한다. 조회 시각이 보장 종료에 도달하면 상태를 EXPIRED로 표시한다.
+
 #### 보험 API 테스트 환경
 
 보험 API 테스트는 실행할 때마다 `insurance_test_<임의 UUID>` 스키마를 생성한다. 개발 데이터와 분리된 테스트 MySQL 인스턴스를 권장한다. `MYSQL_HOST`·`MYSQL_PORT`로 서버를 지정하고, 새 테스트 스키마를 생성할 수 있는 계정을 `MYSQL_TEST_USER`·`MYSQL_TEST_PASSWORD`로 전달한 뒤 보험 모듈에서 `./gradlew test`를 실행한다. 이 값이 없으면 기존 MySQL 접속 계정을 사용하며 스키마 생성 권한이 필요하다. CI의 테스트 계정은 작업마다 제공되는 임시 MySQL에만 적용한다. 로컬에 생성된 테스트 스키마는 검증 후 정리할 수 있다.

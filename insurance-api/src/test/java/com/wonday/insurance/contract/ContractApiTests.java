@@ -1,0 +1,318 @@
+package com.wonday.insurance.contract;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+
+import com.jayway.jsonpath.JsonPath;
+import com.wonday.insurance.platform.FarmPlatformClient;
+import com.wonday.insurance.platform.FarmPlatformClient.VerifiedWorker;
+import com.wonday.insurance.platform.PlatformVerificationException;
+import jakarta.persistence.EntityManager;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.UUID;
+import java.util.concurrent.*;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import(ContractApiTests.FixedClock.class)
+class ContractApiTests {
+
+	@Autowired MockMvc mvc;
+	@Autowired EntityManager entities;
+	@Autowired PlatformTransactionManager transactionManager;
+	@Autowired ObjectMapper json;
+	@Autowired Clock clock;
+	@Autowired ContractService contracts;
+	@MockitoBean FarmPlatformClient farm;
+	private long versionId;
+
+	@BeforeEach
+	void prepare() {
+		when(clock.instant()).thenReturn(Instant.parse("2026-02-09T15:00:00Z"));
+		when(farm.verify(any())).thenReturn(new VerifiedWorker(77, "테스트 근로자", "01000000000"));
+		tx(() -> {
+			for (String entity : new String[]{"InsuranceContract", "PlatformLink", "ProductVersion", "InsuranceProduct", "Member"}) {
+				entities.createQuery("delete from " + entity).executeUpdate();
+			}
+			Object product = entity("product.InsuranceProduct");
+			field(product, "productCode", "DEMO");
+			field(product, "name", "분기 소득 보장");
+			field(product, "description", "가상 상품");
+			field(product, "status", "ACTIVE");
+			entities.persist(product);
+			Object version = entity("product.ProductVersion");
+			field(version, "product", product);
+			field(version, "versionNo", 1);
+			field(version, "salesStartAt", LocalDateTime.of(2026, 1, 1, 0, 0));
+			field(version, "termsText", "시연 약관");
+			field(version, "premiumTerms", "{}");
+			field(version, "eligibleWorkGroups", "[]");
+			field(version, "stationSelectionRule", "{}");
+			field(version, "windowRule", "{}");
+			field(version, "indexRules", "{}");
+			field(version, "payoutRules", "{}");
+			entities.persist(version);
+			entities.flush();
+			versionId = (long) ReflectionTestUtils.getField(version, "id");
+			return null;
+		});
+	}
+
+	@Test
+	void enrollmentAtomicallySavesContactLinkAndThreeMonthContract() throws Exception {
+		Account account = account();
+		String result = mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true)))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.coverageFrom").value("2026-02-09T15:00:00"))
+			.andExpect(jsonPath("$.coverageTo").value("2026-05-09T15:00:00"))
+			.andExpect(jsonPath("$.status").value("ACTIVE"))
+			.andExpect(jsonPath("$.termsText").value("시연 약관"))
+			.andExpect(jsonPath("$.residentRegistrationNumber").doesNotExist())
+			.andReturn().getResponse().getContentAsString();
+		long id = ((Number) JsonPath.read(result, "$.id")).longValue();
+		tx(() -> {
+			assertThat(entities.createQuery("select m.phone from Member m where m.id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult()).isEqualTo("01000000000");
+			assertThat(entities.createQuery("select m.residentRegistrationNumber from Member m where m.id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult()).isEqualTo("0000000000000");
+			assertThat(count("PlatformLink")).isEqualTo(1);
+			return null;
+		});
+		mvc.perform(get("/api/contracts").session(account.session()))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+		mvc.perform(get("/api/contracts/{id}", id).session(account.session()))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.id").value((int) id));
+		Account other = account();
+		mvc.perform(get("/api/contracts/{id}", id).session(other.session())).andExpect(status().isNotFound());
+		mvc.perform(get("/api/contracts").session(other.session())).andExpect(jsonPath("$.length()").value(0));
+		when(clock.instant()).thenReturn(Instant.parse("2026-05-09T15:00:00Z"));
+		mvc.perform(get("/api/contracts/{id}", id).session(account.session()))
+			.andExpect(jsonPath("$.status").value("EXPIRED"));
+	}
+
+	@Test
+	void consentIsRequiredBeforeCallingFarm() throws Exception {
+		Account account = account();
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(false, true))).andExpect(status().isBadRequest());
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, false))).andExpect(status().isBadRequest());
+		verifyNoInteractions(farm);
+		assertThat(tx(() -> count("InsuranceContract"))).isZero();
+	}
+
+	@Test
+	void verificationFailureCreatesNoLocalState() throws Exception {
+		Account account = account();
+		when(farm.verify(any())).thenThrow(new PlatformVerificationException(HttpStatus.NOT_FOUND,
+			"WORKER_IDENTITY_NOT_MATCHED", "No matching worker"));
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true)))
+			.andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("WORKER_IDENTITY_NOT_MATCHED"));
+		tx(() -> {
+			assertThat(count("InsuranceContract")).isZero();
+			assertThat(count("PlatformLink")).isZero();
+			assertThat(entities.createQuery("select m.phone from Member m where m.id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult()).isNull();
+			return null;
+		});
+	}
+
+	@Test
+	void duplicateAndCrossAccountLinksRollback() throws Exception {
+		Account first = account();
+		Account second = account();
+		mvc.perform(post("/api/contracts").session(first.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true))).andExpect(status().isCreated());
+		mvc.perform(post("/api/contracts").session(first.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true))).andExpect(status().isConflict());
+		mvc.perform(post("/api/contracts").session(second.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true))).andExpect(status().isConflict());
+		tx(() -> {
+			assertThat(count("InsuranceContract")).isEqualTo(1);
+			assertThat(count("PlatformLink")).isEqualTo(1);
+			assertThat(entities.createQuery("select m.phone from Member m where m.id = :id", String.class)
+				.setParameter("id", second.id()).getSingleResult()).isNull();
+			return null;
+		});
+	}
+
+	@Test
+	void unavailableVersionAndInvalidIdentityCannotCreateContracts() throws Exception {
+		Account account = account();
+		String unavailable = payload(true, true).replace("\"productVersionId\":" + versionId, "\"productVersionId\":9223372036854775807");
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(unavailable)).andExpect(status().isNotFound());
+		String invalid = payload(true, true).replace("000000-0000000", "wrong");
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
+		verifyNoInteractions(farm);
+	}
+
+	@Test
+	void concurrentEnrollmentForSameAccountCreatesOneContract() throws Exception {
+		Account account = account();
+		ContractEnrollmentRequest request = json.readValue(payload(true, true), ContractEnrollmentRequest.class);
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		try {
+			Callable<Integer> action = () -> {
+				try { contracts.enroll(account.id(), request); return 201; }
+				catch (org.springframework.web.server.ResponseStatusException exception) {
+					return exception.getStatusCode().value();
+				}
+			};
+			var results = pool.invokeAll(java.util.List.of(action, action));
+			assertThat(java.util.List.of(results.get(0).get(), results.get(1).get()))
+				.containsExactlyInAnyOrder(201, 409);
+			assertThat(tx(() -> count("InsuranceContract"))).isEqualTo(1);
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	@Test
+	void threeMonthCoverageUsesKoreanMonthEnd() throws Exception {
+		Account account = account();
+		when(clock.instant()).thenReturn(Instant.parse("2026-01-30T15:00:00Z"));
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true)))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.coverageTo").value("2026-04-29T15:00:00"));
+	}
+
+	@Test
+	void productIsRecheckedAfterFarmVerificationAndLocalWritesRollback() throws Exception {
+		Account account = account();
+		when(farm.verify(any())).thenAnswer(invocation -> {
+			tx(() -> {
+				entities.createQuery("update InsuranceProduct p set p.status = 'CLOSED'").executeUpdate();
+				return null;
+			});
+			return new VerifiedWorker(77, "테스트 근로자", "01000000000");
+		});
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true))).andExpect(status().isConflict());
+		tx(() -> {
+			assertThat(count("InsuranceContract")).isZero();
+			assertThat(count("PlatformLink")).isZero();
+			assertThat(entities.createQuery("select m.phone from Member m where m.id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult()).isNull();
+			return null;
+		});
+	}
+
+	@Test
+	void existingLinkIsReusedForAnotherProduct() throws Exception {
+		Account account = account();
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true))).andExpect(status().isCreated());
+		tx(() -> {
+			Object product = entity("product.InsuranceProduct");
+			field(product, "productCode", "SECOND");
+			field(product, "name", "다른 상품");
+			field(product, "description", "가상 상품");
+			field(product, "status", "ACTIVE");
+			entities.persist(product);
+			Object version = entity("product.ProductVersion");
+			field(version, "product", product);
+			field(version, "versionNo", 1);
+			field(version, "salesStartAt", LocalDateTime.of(2026, 1, 1, 0, 0));
+			field(version, "termsText", "다른 약관");
+			for (String field : new String[]{"premiumTerms", "stationSelectionRule", "windowRule", "indexRules", "payoutRules"}) {
+				field(version, field, "{}");
+			}
+			field(version, "eligibleWorkGroups", "[]");
+			entities.persist(version);
+			entities.flush();
+			versionId = (long) ReflectionTestUtils.getField(version, "id");
+			return null;
+		});
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true))).andExpect(status().isCreated());
+		tx(() -> {
+			assertThat(count("InsuranceContract")).isEqualTo(2);
+			assertThat(count("PlatformLink")).isEqualTo(1);
+			return null;
+		});
+	}
+
+	@Test
+	void endpointsRequireAuthenticationAndCsrf() throws Exception {
+		mvc.perform(get("/api/contracts")).andExpect(status().isUnauthorized());
+		mvc.perform(post("/api/contracts").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+			.content(payload(true, true))).andExpect(status().isUnauthorized());
+		Account account = account();
+		mvc.perform(post("/api/contracts").session(account.session()).contentType(MediaType.APPLICATION_JSON)
+			.content(payload(true, true))).andExpect(status().isForbidden());
+	}
+
+	private String payload(boolean terms, boolean consent) {
+		return """
+			{"productVersionId":%d,"termsAccepted":%s,"platformConsentAccepted":%s,
+			"identity":{"name":"테스트 근로자","phone":"010-0000-0000","residentRegistrationNumber":"000000-0000000"}}
+			""".formatted(versionId, terms, consent);
+	}
+
+	private Account account() throws Exception {
+		String loginId = "enroll-" + UUID.randomUUID();
+		String response = mvc.perform(post("/api/auth/signup").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"loginId\":\""+loginId+"\",\"name\":\"보험 회원\",\"password\":\"test-password\"}"))
+			.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+		MockHttpSession session = (MockHttpSession) mvc.perform(post("/api/auth/login").with(csrf())
+			.contentType(MediaType.APPLICATION_FORM_URLENCODED).formField("loginId", loginId)
+			.formField("password", "test-password")).andExpect(status().isNoContent())
+			.andReturn().getRequest().getSession(false);
+		return new Account(((Number)JsonPath.read(response, "$.id")).longValue(), session);
+	}
+
+	private long count(String entity) {
+		return entities.createQuery("select count(e) from " + entity + " e", Long.class).getSingleResult();
+	}
+
+	private <T> T tx(Supplier<T> action) {
+		return new TransactionTemplate(transactionManager).execute(status -> action.get());
+	}
+
+	private static Object entity(String name) {
+		try { return BeanUtils.instantiateClass(Class.forName("com.wonday.insurance." + name)); }
+		catch (ClassNotFoundException exception) { throw new IllegalStateException(exception); }
+	}
+
+	private static void field(Object entity, String name, Object value) {
+		ReflectionTestUtils.setField(entity, name, value);
+	}
+
+	private record Account(long id, MockHttpSession session) {}
+
+	@TestConfiguration
+	static class FixedClock {
+		@Bean @Primary Clock enrollmentClock() { return mock(Clock.class); }
+	}
+}
