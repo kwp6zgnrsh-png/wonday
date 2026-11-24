@@ -36,6 +36,7 @@ public class SecurityConfig {
 					.requestMatchers(HttpMethod.POST, LoginRequestFilter.LOGIN_PATH).permitAll()
 					.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("EMPLOYER", "WORKER")
 					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
+					.requestMatchers(HttpMethod.GET, "/api/job-postings/mine").hasRole("EMPLOYER")
 					.anyRequest().denyAll();
 			})
 			// 인증이 필요한 API를 세션 없이 호출하면 401을 반환한다.
@@ -47,6 +48,11 @@ public class SecurityConfig {
 						response.setStatus(HttpStatus.FORBIDDEN.value());
 						response.setContentType("application/json;charset=UTF-8");
 						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 공고를 등록할 수 있습니다.\"}");
+					} else if (request.getServletPath().equals("/api/job-postings/mine")
+							&& request.getMethod().equals("GET")) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 내 공고를 조회할 수 있습니다.\"}");
 					} else {
 						new AccessDeniedHandlerImpl().handle(request, response, exception);
 					}
