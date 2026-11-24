@@ -236,6 +236,91 @@ class RiskScoresTests(unittest.TestCase):
             self.assertEqual(float(row["S_W"]), 0)
             self.assertEqual(row["gust_evaluation_status"], "unavailable")
 
+    def test_all_stations_have_independent_calibrations_and_explicit_missing_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, output = root / "input.csv", root / "scores.csv"
+            with source.open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(scores.REQUIRED_COLUMNS)
+                # Interleave station rows: batch processing must not assume sorted input.
+                for day in (date(2016, 1, 1), date(2023, 12, 31), DAY, date(2026, 1, 1)):
+                    start = datetime.combine(day, datetime.min.time()).replace(hour=8)
+                    for i in range(-143, 49):
+                        stamp = start + i * scores.STEP
+                        writer.writerow(["001", stamp.isoformat(), 25, 60, 2, .5])
+                        writer.writerow(["003", stamp.isoformat(), 25, 60, 2, 2])
+                        if day >= DAY:
+                            writer.writerow(["002", stamp.isoformat(), 25, 60, 2, .5])
+            command = [sys.executable, str(Path(scores.__file__)), "--input", str(source),
+                       "--output", str(output), "--work-end", "16:00"]
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with output.open(encoding="utf-8-sig", newline="") as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual({r["station_code"] for r in rows}, {"001", "002", "003"})
+            self.assertEqual(len(rows), len({(r["station_code"], r["work_date"]) for r in rows}))
+            a = next(r for r in rows if r["station_code"] == "001" and r["work_date"] == DAY.isoformat())
+            b = next(r for r in rows if r["station_code"] == "002" and r["work_date"] == DAY.isoformat())
+            self.assertEqual(a["rain_calibration_status"], "fitted")
+            self.assertEqual(b["rain_calibration_reason"], "insufficient_training_span")
+            self.assertEqual(b["rain_score_status"], "missing_calibration")
+            self.assertEqual(b["S_R"], "")
+            self.assertNotEqual(b["S_W"], "")
+            self.assertNotEqual(b["S_H"], "")
+            self.assertEqual(next(r for r in rows if r["work_date"] == "2026-01-01")["period"], "after_validation")
+            report = json.loads((root / "weather_component_validation.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual(report["station_count"], 3)
+            self.assertEqual(report["mismatch_count"], 0)
+            self.assertEqual(report["calibration_unavailable_stations"], ["002"])
+            self.assertTrue((root / "rain_calibrations" / "rain_calibration_001.json").is_file())
+            m1 = json.loads((root / "rain_calibrations" / "rain_calibration_001.json").read_text(encoding="utf-8-sig"))
+            m3 = json.loads((root / "rain_calibrations" / "rain_calibration_003.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual(m3["work_rain_mm"]["p50"], 4 * m1["work_rain_mm"]["p50"])
+            self.assertFalse((root / "rain_calibrations" / "rain_calibration_002.json").exists())
+            self.assertTrue((root / "weather_rain_quantile_validation.csv").is_file())
+
+    def test_independent_validation_detects_wrong_scores(self):
+        from validate_weather_scores import audit_validation
+        points = observations(heat=34)
+        row = score(points)
+        self.assertEqual(audit_validation(points, [row], MODEL)["mismatch_count"], 0)
+        row["S_H"] = 0
+        self.assertEqual(audit_validation(points, [row], MODEL)["mismatch_count"], 1)
+
+    def test_unavailable_calibration_preserves_overrides_and_zero_rain(self):
+        model = {"train_start": "2016-01-01", "train_end": "2023-12-31"}
+        self.assertEqual(scores.score_features(summarize(observations()), model)["S_R"], 0)
+        points = observations()
+        for i in range(1, 7):
+            points[START + i * scores.STEP] = scores.Observation(12, 0, None, 20)
+        self.assertEqual(scores.score_features(summarize(points), model)["S_R"], 100)
+
+    def test_unknown_station_fails_without_replacing_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, output = root / "input.csv", root / "scores.csv"
+            source.write_text(",".join(scores.REQUIRED_COLUMNS) + "\ntest,2024-07-01 08:10:00,25,60,0,0\n", encoding="utf-8")
+            output.write_text("original", encoding="utf-8")
+            result = subprocess.run([sys.executable, str(Path(scores.__file__)), "--input", str(source),
+                                     "--output", str(output), "--station-code", "unknown"], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(output.read_text(encoding="utf-8"), "original")
+
+    def test_held_out_distribution_diagnostics_do_not_refit_training(self):
+        from validate_weather_scores import quantile_diagnostics
+        rows = [dict(summarize(observations()), period="validation", work_rain_mm=v,
+                     prior_24h_rain_mm=v) for v in (0, 10, 30, 60, 120)]
+        rows.append(dict(rows[0], period="train", work_rain_mm=9999))
+        frozen = json.dumps(MODEL, sort_keys=True)
+        result = quantile_diagnostics(rows, MODEL)[0]
+        self.assertEqual(result["validation_valid_days"], 5)
+        self.assertEqual(result["validation_positive_days"], 4)
+        self.assertEqual(result["training_p90_mm"], 50)
+        self.assertEqual(result["validation_fraction_above_training_p90"], .5)
+        self.assertEqual(result["validation_fraction_equal_training_p50"], .25)
+        self.assertEqual(json.dumps(MODEL, sort_keys=True), frozen)
+
 
 if __name__ == "__main__":
     unittest.main()

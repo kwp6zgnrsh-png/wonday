@@ -1,4 +1,4 @@
-"""Compute daily rain, wind and heat risk from STEP01's 10-minute weather_clean.csv.
+"""Compute all stations' daily rain, wind and heat risk from weather_clean.csv.
 
 Only the Python standard library is required. See README_weather_component_scores.md.
 """
@@ -11,11 +11,10 @@ from bisect import bisect_right
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 STEP = timedelta(minutes=10)
 DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "gyeonggi_processed"
-DEFAULT_STATION = "477802A001"
 REQUIRED_COLUMNS = (
     "station_code", "observed_at", "temperature_c", "humidity_pct", "wind_mps", "rain_10min_mm",
 )
@@ -249,8 +248,14 @@ def rain_score(value: float | None, bounds: dict) -> float | None:
 def score_features(features: dict, calibration: dict) -> dict:
     row = dict(features)
     count = row["scheduled_minutes"] // 10
-    work_rain = rain_score(row["work_rain_mm"], calibration["work_rain_mm"])
-    prior_rain = rain_score(row["prior_24h_rain_mm"], calibration["prior_24h_rain_mm"])
+    def calibrated_rain(key):
+        bounds = calibration.get(key)
+        value = row[key]
+        # Even without historical quantiles, zero rain is unambiguously zero.
+        return rain_score(value, bounds) if bounds else 0.0 if value == 0 else None
+
+    work_rain = calibrated_rain("work_rain_mm")
+    prior_rain = calibrated_rain("prior_24h_rain_mm")
     rain_complete = work_rain is not None and prior_rain is not None
     sr = 1.0 if row["rain_full_score"] else .7 * work_rain + .3 * prior_rain if rain_complete else None
     mean_warning, mean_limit, gust_warning, gust_limit = (17, 24, 25, 30) if row["is_mountain"] else (14, 21, 20, 26)
@@ -272,7 +277,7 @@ def score_features(features: dict, calibration: dict) -> dict:
         "rain_work_subscore": work_rain, "rain_prior_subscore": prior_rain,
         "wind_intensity_subscore": wind_intensity, "wind_duration_subscore": wind_duration,
         "heat_intensity_subscore": heat_peak, "heat_exposure_subscore": heat_duration,
-        "rain_score_status": "override" if row["rain_full_score"] else "ok" if sr is not None else "missing_data",
+        "rain_score_status": "override" if row["rain_full_score"] else "ok" if sr is not None else "missing_data" if row["work_rain_mm"] is None or row["prior_24h_rain_mm"] is None else "missing_calibration",
         "wind_score_status": "override" if row["wind_full_score"] else "ok" if sw is not None else "missing_data",
         "heat_score_status": "override" if row["heat_full_score"] else "ok" if sh is not None else "missing_data",
         # Only these final scores are on the 0..100 scale; subscores stay on 0..1.
@@ -308,58 +313,226 @@ def parse_clock(value: str) -> int:
         raise argparse.ArgumentTypeError("use HH:MM on a 10-minute boundary (00:00 to 24:00)") from exc
 
 
+def partition_stations(source_path: Path, folder: Path, selected: set[str] | None = None) -> dict:
+    """Read the source once; disk partitions keep memory bounded to one station.
+
+    Filenames use generated numbers, never station codes. Input order is arbitrary.
+    At most 32 partition streams are kept open at once.
+    """
+    from collections import OrderedDict
+    partitions, opened = {}, OrderedDict()
+    try:
+        with source_path.open(encoding="utf-8-sig", newline="") as source:
+            reader = csv.reader(source)
+            header = next(reader, [])
+            if not set(REQUIRED_COLUMNS).issubset(header):
+                raise ValueError("input is missing required 10-minute weather columns")
+            station_index = header.index("station_code")
+            name_index = header.index("station_name") if "station_name" in header else None
+            for row in reader:
+                if not row:
+                    continue
+                if len(row) != len(header):
+                    raise ValueError(f"{source_path}:{reader.line_num}: wrong column count")
+                station = row[station_index].strip()
+                if not station:
+                    raise ValueError(f"{source_path}:{reader.line_num}: empty station code")
+                if not station.isascii() or not all(c.isalnum() or c in "_-" for c in station):
+                    raise ValueError(f"{source_path}:{reader.line_num}: unsafe station code {station!r}")
+                if selected and station not in selected:
+                    continue
+                if station not in partitions:
+                    path = folder / f"station_{len(partitions):04}.csv"
+                    partitions[station] = (path, row[name_index].strip() if name_index is not None else "")
+                    with path.open("w", encoding="utf-8", newline="") as stream:
+                        csv.writer(stream).writerow(header)
+                if station not in opened:
+                    if len(opened) >= 32:
+                        _, stream = opened.popitem(last=False)
+                        stream.close()
+                    opened[station] = partitions[station][0].open("a", encoding="utf-8", newline="")
+                opened.move_to_end(station)
+                csv.writer(opened[station]).writerow(row)
+    finally:
+        for stream in opened.values():
+            stream.close()
+    if not partitions:
+        raise ValueError("no selected stations found in input")
+    if selected and selected - partitions.keys():
+        raise ValueError(f"stations not found: {sorted(selected - partitions.keys())}")
+    return partitions
+
+
+def station_calibration(rows, args, path):
+    if path.exists() and not args.refit_calibration:
+        with path.open(encoding="utf-8-sig") as stream:
+            model = json.load(stream)
+        validate_calibration(model, rows[0], args.train_start, args.train_end)
+        return model, "reused", ""
+    training = [r for r in rows if args.train_start.isoformat() <= r["work_date"] <= args.train_end.isoformat()]
+    reason = ""
+    if not training or training[0]["work_date"] != args.train_start.isoformat() or training[-1]["work_date"] != args.train_end.isoformat():
+        reason = "insufficient_training_span"
+    else:
+        for key in ("work_rain_mm", "prior_24h_rain_mm"):
+            if not any(r[key] is not None and r[key] > 0 for r in training):
+                reason = f"no_positive_{key}"
+                break
+    if reason:
+        # Do not substitute another station or fit on held-out years.
+        return {"train_start": args.train_start.isoformat(), "train_end": args.train_end.isoformat()}, "unavailable", reason
+    model = fit_calibration(rows, args.train_start, args.train_end)
+    atomic_write(path, lambda stream: json.dump(model, stream, ensure_ascii=False, indent=2, allow_nan=False))
+    return model, "fitted", ""
+
+
+def run_pipeline(args):
+    from validate_weather_scores import audit_validation, quantile_diagnostics
+
+    selected = set(args.station_code) if args.station_code else None
+    summaries = []
+    distributions = []
+    validation_end = args.validation_end
+    print(f"Partitioning stations from {args.input}", flush=True)
+    with TemporaryDirectory(prefix="weather_stations_") as temporary:
+        partitions = partition_stations(args.input, Path(temporary), selected)
+        unknown_mountains = set(args.mountain_station) - partitions.keys()
+        if unknown_mountains:
+            raise ValueError(f"mountain stations not in selected input: {sorted(unknown_mountains)}")
+
+        def write_output(stream):
+            writer = None
+            for index, (station, (path, name)) in enumerate(sorted(partitions.items()), 1):
+                print(f"[{index}/{len(partitions)}] {station} {name}", flush=True)
+                points = load_observations(path, station)
+                first, last = (min(points) - STEP).date(), (max(points) - STEP).date()
+                mountain = args.mountain or station in args.mountain_station
+                rows = [collect_features(points, first + timedelta(days=i), station,
+                                         args.work_start, args.work_end, mountain)
+                        for i in range((last - first).days + 1)]
+                calibration_path = args.calibration or args.calibration_dir / f"rain_calibration_{station}.json"
+                model, status, reason = station_calibration(rows, args, calibration_path)
+                if status == "reused":
+                    print(f"Reusing calibration: {calibration_path}", flush=True)
+                elif status == "unavailable":
+                    print(f"Rain calibration unavailable: {reason}; wind/heat and rain overrides retained", flush=True)
+                scored = []
+                for row in rows:
+                    result = score_features(row, model)
+                    if result["work_date"] > validation_end.isoformat():
+                        result["period"] = "after_validation"
+                    result.update(station_name=name, rain_calibration_status=status,
+                                  rain_calibration_reason=reason)
+                    scored.append(result)
+                audit = audit_validation(points, scored, model)
+                distributions.extend(quantile_diagnostics(scored, model))
+                if audit["mismatch_count"]:
+                    raise ValueError(f"{station}: validation audit failed: {audit}")
+                if len({r["work_date"] for r in scored}) != len(scored):
+                    raise ValueError(f"{station}: duplicate work dates")
+                for row in scored:
+                    for prefix, key in (("rain", "S_R"), ("wind", "S_W"), ("heat", "S_H")):
+                        value = row[key]
+                        if value is not None and not 0 <= value <= 100:
+                            raise ValueError(f"{station}: {key} outside 0..100")
+                        if row[prefix + "_full_score"] and value != 100:
+                            raise ValueError(f"{station}: {key} override mismatch")
+                    if writer is None:
+                        writer = csv.DictWriter(stream, fieldnames=list(row))
+                        writer.writeheader()
+                    writer.writerow({k: round(v, 6) if isinstance(v, float) else v for k, v in row.items()})
+                summary = {
+                    "station_code": station, "station_name": name, "is_mountain": mountain,
+                    "first_date": first.isoformat(), "last_date": last.isoformat(),
+                    "workday_count": len(scored), "rain_calibration_status": status,
+                    "rain_calibration_reason": reason,
+                    **{f"{period}_days": sum(r["period"] == period for r in scored)
+                       for period in ("train", "validation", "after_validation")},
+                    **audit,
+                }
+                for key in ("S_R", "S_W", "S_H"):
+                    for period in ("train", "validation", "after_validation"):
+                        values = [r[key] for r in scored if r["period"] == period and r[key] is not None]
+                        prefix = f"{period}_{key}"
+                        summary.update({prefix + "_valid": len(values),
+                                        prefix + "_mean": round(math.fsum(values) / len(values), 6) if values else None,
+                                        prefix + "_max": max(values) if values else None,
+                                        prefix + "_full": sum(v == 100 for v in values)})
+                summaries.append(summary)
+
+        atomic_write(args.output, write_output)
+    def write_summary(stream):
+        writer = csv.DictWriter(stream, fieldnames=list(summaries[0]))
+        writer.writeheader()
+        writer.writerows(summaries)
+    atomic_write(args.summary, write_summary)
+    def write_distributions(stream):
+        writer = csv.DictWriter(stream, fieldnames=list(distributions[0]))
+        writer.writeheader()
+        writer.writerows(distributions)
+    atomic_write(args.quantile_report, write_distributions)
+    report = {
+        "train_start": args.train_start.isoformat(), "train_end": args.train_end.isoformat(),
+        "validation_start": (args.train_end + timedelta(days=1)).isoformat(),
+        "validation_end": validation_end.isoformat(), "station_count": len(summaries),
+        "workday_count": sum(s["workday_count"] for s in summaries),
+        "validation_days": sum(s["validation_days"] for s in summaries),
+        "independently_checked_days": sum(s["checked_days"] for s in summaries),
+        "mismatch_count": sum(s["mismatch_count"] for s in summaries),
+        "calibration_unavailable_stations": [s["station_code"] for s in summaries if s["rain_calibration_status"] == "unavailable"],
+        "scope": "Implementation and held-out weather-data audit; no damage labels, so no predictive accuracy claim.",
+        "quantile_distribution_report": args.quantile_report.name,
+        "quantile_interpretation": "Held-out distribution diagnostics, not an accuracy or pass/fail claim. Rainfall ties affect exceedance rates.",
+        "output_unique_station_date_pairs": sum(s["workday_count"] for s in summaries),
+        "output_score_range_and_override_check": "passed",
+    }
+    atomic_write(args.validation_report, lambda stream: json.dump(report, stream, ensure_ascii=False, indent=2))
+    print(json.dumps(report, ensure_ascii=False, indent=2), flush=True)
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=DEFAULT_DATA_DIR / "weather_clean.csv")
     parser.add_argument("--output", type=Path, default=DEFAULT_DATA_DIR / "weather_component_scores.csv")
-    parser.add_argument("--station-code", default=DEFAULT_STATION)
+    parser.add_argument("--station-code", action="append", help="optional; repeat for selected stations; default: all stations")
     parser.add_argument("--work-start", type=parse_clock, default=480)
     parser.add_argument("--work-end", type=parse_clock, default=1020)
-    parser.add_argument("--mountain", action="store_true", help="explicitly use mountain wind thresholds")
+    parser.add_argument("--mountain", action="store_true", help="single-station mode only")
+    parser.add_argument("--mountain-station", action="append", default=[], help="repeat for stations known to use mountain thresholds")
     parser.add_argument("--train-start", type=date.fromisoformat, default=date(2016, 1, 1))
     parser.add_argument("--train-end", type=date.fromisoformat, default=date(2023, 12, 31))
-    parser.add_argument("--calibration", type=Path, help="saved rain quantiles (default: rain_calibration_<station>.json beside output)")
-    parser.add_argument("--refit-calibration", action="store_true", help="explicitly replace saved calibration using only the training period")
+    parser.add_argument("--validation-end", type=date.fromisoformat, help="default: two years after training end")
+    parser.add_argument("--calibration", type=Path, help="explicit JSON; single-station mode only")
+    parser.add_argument("--calibration-dir", type=Path, help="default: rain_calibrations beside output")
+    parser.add_argument("--summary", type=Path, help="default: weather_component_station_summary.csv beside output")
+    parser.add_argument("--validation-report", type=Path, help="default: weather_component_validation.json beside output")
+    parser.add_argument("--quantile-report", type=Path, help="default: weather_rain_quantile_validation.csv beside output")
+    parser.add_argument("--refit-calibration", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.work_start < args.work_end <= 1440:
         parser.error("work-start must precede work-end within the same day")
-    calibration_path = args.calibration or args.output.with_name(f"rain_calibration_{args.station_code}.json")
-    if len({args.input.resolve(), args.output.resolve(), calibration_path.resolve()}) != 3:
-        parser.error("input, output and calibration must have different paths")
+    if (args.calibration or args.mountain) and len(set(args.station_code or [])) != 1:
+        parser.error("--calibration and --mountain require exactly one --station-code")
+    args.calibration_dir = args.calibration_dir or args.output.parent / "rain_calibrations"
+    args.summary = args.summary or args.output.with_name("weather_component_station_summary.csv")
+    args.validation_report = args.validation_report or args.output.with_name("weather_component_validation.json")
+    args.quantile_report = args.quantile_report or args.output.with_name("weather_rain_quantile_validation.csv")
     try:
+        args.validation_end = args.validation_end or args.train_end.replace(year=args.train_end.year + 2)
         validate_training_dates(args.train_start, args.train_end)
-        print(f"Reading station {args.station_code}: {args.input}", flush=True)
-        points = load_observations(args.input, args.station_code)
-        start_day = (min(points) - STEP).date()
-        end_day = (max(points) - STEP).date()
-        rows = [collect_features(points, start_day + timedelta(days=i), args.station_code,
-                                 args.work_start, args.work_end, args.mountain)
-                for i in range((end_day - start_day).days + 1)]
-        if calibration_path.exists() and not args.refit_calibration:
-            with calibration_path.open(encoding="utf-8-sig") as stream:
-                calibration = json.load(stream)
-            print(f"Reusing calibration: {calibration_path}", flush=True)
-        else:
-            calibration = fit_calibration(rows, args.train_start, args.train_end)
-            print(f"Fitting calibration: {args.train_start} to {args.train_end}", flush=True)
-        validate_calibration(calibration, rows[0], args.train_start, args.train_end)
-        scored = [score_features(row, calibration) for row in rows]
-        if not calibration_path.exists() or args.refit_calibration:
-            atomic_write(calibration_path, lambda stream: json.dump(calibration, stream, ensure_ascii=False, indent=2, allow_nan=False))
-
-        def write_csv(stream):
-            writer = csv.DictWriter(stream, fieldnames=list(scored[0]))
-            writer.writeheader()
-            for row in scored:
-                writer.writerow({key: round(value, 6) if isinstance(value, float) else value for key, value in row.items()})
-
-        atomic_write(args.output, write_csv)
+        if args.validation_end <= args.train_end:
+            raise ValueError("validation end must follow training end")
+        paths = [args.input, args.output, args.summary, args.validation_report, args.quantile_report]
+        if args.calibration:
+            paths.append(args.calibration)
+        if len(set(p.resolve() for p in paths)) != len(paths):
+            raise ValueError("input and all output files must have different paths")
+        if args.calibration_dir.resolve() in [p.resolve() for p in paths]:
+            raise ValueError("calibration-dir must be a directory separate from all files")
+        run_pipeline(args)
     except (OSError, ValueError, csv.Error, KeyError, TypeError) as exc:
         parser.exit(1, f"Error: {exc}\n")
-    print(f"Saved {len(scored):,} workdays: {args.output.resolve()}")
-    for score in ("S_R", "S_W", "S_H"):
-        print(f"{score}: {sum(row[score] is not None for row in scored):,} valid, "
-              f"{sum(row[score] == 100 for row in scored):,} full-score days")
 
 
 if __name__ == "__main__":
