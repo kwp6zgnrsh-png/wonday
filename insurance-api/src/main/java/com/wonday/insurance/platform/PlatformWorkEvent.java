@@ -2,7 +2,10 @@ package com.wonday.insurance.platform;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -66,12 +69,24 @@ class PlatformWorkEvent {
 		sourceVersion = change.sourceVersion();
 		assignmentId = change.assignmentId();
 		eventType = change.changeType().name();
-		occurredAt = change.effectiveAt().withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime();
+		occurredAt = utcMicros(change.effectiveAt());
 		reasonCode = change.reasonCode().name();
 		reasonDetail = change.reasonDetail();
-		sourceUpdatedAt = change.updatedAt().withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime();
+		sourceUpdatedAt = utcMicros(change.updatedAt());
 		receivedAt = now;
 		sourcePayload = payload;
 		workSnapshot = snapshot;
+	}
+
+	boolean matchesStoredFields(FarmWorkResponse.Change change) {
+		return eventType.equals(change.changeType().name())
+			&& reasonCode.equals(change.reasonCode().name())
+			&& Objects.equals(reasonDetail, change.reasonDetail())
+			&& occurredAt.equals(utcMicros(change.effectiveAt()))
+			&& sourceUpdatedAt.equals(utcMicros(change.updatedAt()));
+	}
+
+	private static LocalDateTime utcMicros(OffsetDateTime value) {
+		return value.withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime().truncatedTo(ChronoUnit.MICROS);
 	}
 }

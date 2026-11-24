@@ -50,9 +50,11 @@ class WorkChangePollingService {
 
 	private void verifyDuplicate(PlatformWorkEvent existing, FarmWorkResponse.Change change, long workerId) {
 		PlatformLink owner = links.findById(existing.getPlatformLinkId()).orElseThrow();
+		boolean contentMatches = existing.getSourcePayload() == null
+			? existing.matchesStoredFields(change)
+			: json.readTree(existing.getSourcePayload()).equals(json.readTree(json.writeValueAsString(change)));
 		if (!Long.valueOf(workerId).equals(owner.getWorkerId()) || existing.getAssignmentId() != change.assignmentId()
-			|| (existing.getSourcePayload() != null
-				&& !json.readTree(existing.getSourcePayload()).equals(json.readTree(json.writeValueAsString(change))))) {
+			|| !contentMatches) {
 			throw FarmWorkClient.invalidResponse();
 		}
 	}

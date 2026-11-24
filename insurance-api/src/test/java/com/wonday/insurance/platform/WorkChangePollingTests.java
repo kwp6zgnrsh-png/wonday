@@ -9,13 +9,17 @@ import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.beans.BeanUtils;
@@ -29,7 +33,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class WorkChangePollingTests {
 
 	@Autowired WorkChangePollingService polling;
-	@Autowired PlatformLinkRepository links;
+	@MockitoSpyBean PlatformLinkRepository links;
 	@Autowired PlatformWorkEventRepository events;
 	@Autowired EntityManager entities;
 	@Autowired PlatformTransactionManager transactionManager;
@@ -138,6 +142,59 @@ class WorkChangePollingTests {
 		assertThat(events.count()).isEqualTo(1);
 	}
 
+	@Test
+	void legacyDuplicateComparesUtcMicrosAndKeepsUnknownOriginalFieldsUninitialized() {
+		Change original = new Change(9001L, "1", 7001L, ChangeType.CANCELLED, ReasonCode.WEATHER,
+			WeatherReasonCode.RAIN, null, TIME.plusNanos(123456000), TIME, TIME.plusNanos(123456000));
+		long eventId = saveLegacyEvent(original);
+		Change duplicate = new Change(original.changeId(), original.sourceVersion(), original.assignmentId(),
+			original.changeType(), original.reasonCode(), WeatherReasonCode.WIND, original.reasonDetail(),
+			original.effectiveAt().withOffsetSameInstant(ZoneOffset.UTC).plusNanos(999), TIME.minusHours(1),
+			original.updatedAt().withOffsetSameInstant(ZoneOffset.UTC).plusNanos(999));
+		when(farm.changes(123, "c1", 100)).thenReturn(page("c2", false, duplicate));
+
+		polling.pollPage(linkId);
+
+		assertThat(events.count()).isEqualTo(1);
+		PlatformWorkEvent stored = events.findById(eventId).orElseThrow();
+		assertThat(stored.getSourcePayload()).isNull();
+		assertThat(stored.getWorkSnapshot()).isNull();
+		assertThat(stored.getReasonDetail()).isNull();
+		assertThat(stored.getOccurredAt()).isEqualTo(LocalDateTime.of(2026, 11, 23, 22, 0, 0, 123456000));
+		assertThat(cursors.findById(123L).orElseThrow().getCursor()).isEqualTo("c2");
+		verify(farm, never()).assignment(anyLong(), anyLong());
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"eventType", "reasonCode", "reasonDetail", "nullReasonDetail", "occurredAt", "sourceUpdatedAt"})
+	void legacyColumnConflictRollsBackPageAndPreservesCursor(String field) {
+		Change original = change(9001, "1", 7001);
+		long eventId = saveLegacyEvent(original);
+		Object conflictingValue = switch (field) {
+			case "eventType" -> "EARLY_ENDED";
+			case "reasonCode" -> "FARM_CIRCUMSTANCES";
+			case "reasonDetail" -> "different explanation";
+			case "nullReasonDetail" -> null;
+			case "occurredAt", "sourceUpdatedAt" -> LocalDateTime.of(2026, 11, 23, 22, 0, 1);
+			default -> throw new IllegalArgumentException(field);
+		};
+		String storedField = field.equals("nullReasonDetail") ? "reasonDetail" : field;
+		new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+			PlatformWorkEvent stored = events.findById(eventId).orElseThrow();
+			ReflectionTestUtils.setField(stored, storedField, conflictingValue);
+		});
+		when(farm.changes(123, "c1", 100)).thenReturn(page("c2", false, change(9002, "1", 7002), original));
+
+		assertThatThrownBy(() -> polling.pollPage(linkId)).isInstanceOf(PlatformVerificationException.class);
+
+		assertThat(events.count()).isEqualTo(1);
+		PlatformWorkEvent stored = events.findById(eventId).orElseThrow();
+		assertThat(ReflectionTestUtils.getField(stored, storedField)).isEqualTo(conflictingValue);
+		assertThat(stored.getSourcePayload()).isNull();
+		assertThat(stored.getWorkSnapshot()).isNull();
+		assertThat(cursors.findById(123L).orElseThrow().getCursor()).isEqualTo("c1");
+	}
+
 	@ParameterizedTest
 	@EnumSource(ChangeType.class)
 	void collectsFarmCircumstancesAndEarlyEndWithoutCoverageFiltering(ChangeType type) {
@@ -173,6 +230,15 @@ class WorkChangePollingTests {
 	void concurrentPollersSerializeOnLinkAndUseCommittedCursor() throws Exception {
 		CountDownLatch entered = new CountDownLatch(1);
 		CountDownLatch release = new CountDownLatch(1);
+		CountDownLatch secondAtLock = new CountDownLatch(1);
+		AtomicInteger lockCalls = new AtomicInteger();
+		Answer<?> repositoryAnswer = mockingDetails(links).getMockCreationSettings().getDefaultAnswer();
+		doAnswer(invocation -> {
+			if (lockCalls.incrementAndGet() == 2) {
+				secondAtLock.countDown();
+			}
+			return repositoryAnswer.answer(invocation);
+		}).when(links).lockPollingLink(linkId);
 		when(farm.changes(123,null,100)).thenAnswer(call -> {
 			entered.countDown();
 			assertThat(release.await(10, TimeUnit.SECONDS)).isTrue();
@@ -180,18 +246,33 @@ class WorkChangePollingTests {
 		});
 		when(farm.changes(123,"c1",100)).thenReturn(page("c2",false,change(9001,"1",7001)));
 		try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
-			Future<Boolean> first = pool.submit(() -> polling.pollPage(linkId));
-			assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
-			Future<Boolean> second = pool.submit(() -> polling.pollPage(linkId));
-			release.countDown();
-			first.get(15,TimeUnit.SECONDS);
-			second.get(15,TimeUnit.SECONDS);
-		} finally {
-			release.countDown();
+			try {
+				Future<Boolean> first = pool.submit(() -> polling.pollPage(linkId));
+				assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+				Future<Boolean> second = pool.submit(() -> polling.pollPage(linkId));
+				assertThat(secondAtLock.await(10, TimeUnit.SECONDS)).isTrue();
+				assertThatThrownBy(() -> second.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+				verify(farm, times(1)).changes(eq(123L), nullable(String.class), eq(100));
+				release.countDown();
+				first.get(15, TimeUnit.SECONDS);
+				second.get(15, TimeUnit.SECONDS);
+			} finally {
+				release.countDown();
+			}
 		}
 		assertThat(events.count()).isEqualTo(1);
 		assertThat(cursors.findById(123L).orElseThrow().getCursor()).isEqualTo("c2");
 		verify(farm,times(1)).changes(123,null,100);
+	}
+
+	private long saveLegacyEvent(Change change) {
+		return new TransactionTemplate(transactionManager).execute(status -> {
+			LocalDateTime now = LocalDateTime.of(2026, 11, 24, 0, 0);
+			PlatformWorkCursor cursor = new PlatformWorkCursor(123, now);
+			cursor.advance("c1", now);
+			cursors.saveAndFlush(cursor);
+			return events.saveAndFlush(new PlatformWorkEvent(linkId, change, null, null, now)).getId();
+		});
 	}
 
 	static Change change(long id, String version, long assignmentId) {
