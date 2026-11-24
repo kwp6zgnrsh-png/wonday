@@ -178,6 +178,21 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 
 계약 Location의 개발 프록시 회귀 검사는 저장소 루트에서 `node scripts/test_insurance_contract_proxy.mjs`로 실행한다. 별도 개발 서버나 DB 없이 임시 HTTP 서버와 두 웹의 실제 Vite 설정을 사용해, 가입 응답의 Location을 따라가 계약 JSON을 받는지 검사한다. 이 검사는 실제 농업 서버와의 가입 통합 검증과 별개다.
 
+#### 근무 변경 기록 주기 조회
+
+보험 서버는 활성 농업 계정 연결을 대상으로 근로자별 변경 목록과 확정 근무 상세를 조회한다. 농업 서버에는 다음 두 API가 필요하다.
+
+- `GET /api/internal/insurance/workers/{workerId}/work-changes?cursor=...&limit=100`
+- `GET /api/internal/insurance/workers/{workerId}/work-assignments/{assignmentId}`
+
+본인 확인과 같은 `FARM_API_BASE_URL`, `FARM_API_SERVICE_TOKEN`을 사용한다. 농업 API 구현 후 `FARM_WORK_POLLING_ENABLED=true`로 활성화한다. 기본값은 비활성이며, `FARM_WORK_POLLING_DELAY_MS` 기본값은 60000ms다. 첫 조회도 이 시간이 지난 뒤 시작한다. `insurance.farm.polling.page-size`는 1~500, `max-pages-per-worker`는 기본 10이다. 한 근로자의 페이지 한도에 도달하면 다음 근로자를 처리하고 다음 주기에 저장한 커서부터 계속한다.
+
+최초 요청은 커서를 생략한다. 변경 기록은 `platform_work_event`에 `changeId + sourceVersion` 단위로 저장하며 원본 변경 JSON과 확정 근무 JSON을 보관한다. 사유 보완으로 버전이 바뀌면 별도 기록으로 저장한다. 전날 취소, 농장 사정, 조기 종료도 수집한다. 시각 컬럼은 UTC로 변환하고 원본 JSON에는 시간대 오프셋을 유지한다.
+
+페이지의 모든 상세 조회와 기록 저장이 성공해야 `platform_work_cursor`의 근로자별 커서도 함께 커밋한다. 실패하면 해당 페이지 전체를 롤백하고 다음 주기에 마지막 성공 커서로 재시도한다. 실패한 근로자 이후의 다른 근로자는 계속 처리한다. 인증 오류와 잘못된 커서도 저장 위치를 유지하며 로그를 남기므로 농업 서버의 설정·응답을 수정한 뒤 다음 주기에 재시도할 수 있다.
+
+동일 근로자의 동시 조회는 활성 연결 행의 DB 잠금으로 직렬화한다. 동의 갱신 시에도 근로자별 커서를 이어서 사용한다. 같은 ID·버전에 서로 다른 내용이 오면 처리를 실패시켜 커서 전진을 막는다. 수집된 기록은 이후 보상 접수 기능에서 사용한다.
+
 #### 보험 API 테스트 환경
 
 보험 API 테스트는 실행할 때마다 `insurance_test_<임의 UUID>` 스키마를 생성한다. 개발 데이터와 분리된 테스트 MySQL 인스턴스를 권장한다. `MYSQL_HOST`·`MYSQL_PORT`로 서버를 지정하고, 새 테스트 스키마를 생성할 수 있는 계정을 `MYSQL_TEST_USER`·`MYSQL_TEST_PASSWORD`로 전달한 뒤 보험 모듈에서 `./gradlew test`를 실행한다. 이 값이 없으면 기존 MySQL 접속 계정을 사용하며 스키마 생성 권한이 필요하다. CI의 테스트 계정은 작업마다 제공되는 임시 MySQL에만 적용한다. 로컬에 생성된 테스트 스키마는 검증 후 정리할 수 있다.
