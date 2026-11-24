@@ -25,7 +25,7 @@ class ContractService {
 	private final ContractRepository contracts;
 	private final Clock clock;
 
-	// Verification completes before the transaction that writes contact, link and contract.
+	// 원격 본인 확인은 DB 쓰기 트랜잭션 전에 끝내 외부 응답을 기다리는 동안 회원 잠금을 잡지 않는다.
 	ContractView enroll(long memberId, ContractEnrollmentRequest request) {
 		products.requireAvailable(request.productVersionId(), now());
 		var worker = farm.verify(request.identity());

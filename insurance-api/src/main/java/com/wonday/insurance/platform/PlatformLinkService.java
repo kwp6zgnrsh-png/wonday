@@ -30,6 +30,7 @@ public class PlatformLinkService {
 			return;
 		}
 		if (existing != null) {
+			// 이전 동의 이력을 보존하고 활성 연결의 유일성 제약을 먼저 해제한 뒤 새 동의를 저장한다.
 			existing.revoke(now);
 			links.flush();
 		}

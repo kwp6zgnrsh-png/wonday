@@ -394,7 +394,7 @@ class ClaimIntakeTests {
 		mvc.perform(get("/api/claims/{id}", claimId).session(session)).andExpect(status().isOk())
 			.andExpect(jsonPath("$.claim.id").value(claimId)).andExpect(jsonPath("$.intakeSource.changeId").value(9001))
 			.andExpect(jsonPath("$.work.assignmentId").value(7001)).andExpect(jsonPath("$.work.agreedDailyWage").value(120000))
-			.andExpect(jsonPath("$.work.agreedTimeZone").value("Asia/Seoul"));
+			.andExpect(jsonPath("$.work.agreedTimeZone").value("GMT+9"));
 		tx(() -> {
 			field(entities.find(type("platform.PlatformLink"), linkId), "revokedAt", LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
 			return null;
@@ -440,7 +440,7 @@ class ClaimIntakeTests {
 		ObjectNode work = json.createObjectNode();
 		work.put("assignmentId", assignmentId).put("workerId", 77);
 		work.put("confirmedAt", start.minusDays(3).toString());
-		work.put("agreedWorkDate", start.toLocalDate().toString()).put("agreedTimeZone", "Asia/Seoul");
+		work.put("agreedWorkDate", start.toLocalDate().toString()).put("agreedTimeZone", "GMT+9");
 		work.put("agreedWorkLocation", "시연 농장").put("agreedCropCode", "CABBAGE").put("agreedWorkTypeCode", "HARVEST");
 		work.put("agreedStartAt", start.toString()).put("agreedEndAt", start.plusHours(9).toString());
 		work.putNull("agreedBreakStartAt").putNull("agreedBreakEndAt");

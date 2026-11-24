@@ -22,12 +22,14 @@ class WorkChangeScheduler {
 	@Scheduled(fixedDelayString = "${insurance.farm.polling.delay-ms}",
 		initialDelayString = "${insurance.farm.polling.delay-ms}")
 	public void poll() {
+		// 한 근로자의 페이지 수를 제한해 다른 근로자의 수집이 계속 밀리지 않게 한다.
 		for (long linkId : links.findPollingLinkIds()) {
 			try {
 				for (int page = 0; page < properties.maxPagesPerWorker(); page++) {
 					if (!polling.pollPage(linkId)) break;
 				}
 			} catch (RuntimeException exception) {
+				// 실패한 페이지만 롤백되므로 다음 실행은 마지막으로 커밋된 커서에서 재개한다.
 				String code = exception instanceof PlatformVerificationException platformException
 					? platformException.getCode() : exception.getClass().getSimpleName();
 				log.warn("Farm work polling failed for link {} ({}). Retrying from saved cursor next cycle.",

@@ -43,11 +43,13 @@ class FarmWorkClient {
 	}
 
 	static Assignment validateAssignment(Assignment work, long workerId, long assignmentId) {
+		// 서버 토큰 인증과 별개로 응답의 소유자·근무 ID도 확인해 다른 근로자의 약정이 섞이지 않게 한다.
 		if (work.workerId() != workerId || work.assignmentId() != assignmentId
 			|| !work.agreedEndAt().isAfter(work.agreedStartAt())) {
 			throw invalidResponse();
 		}
 		try {
+			// 신규 약정은 GMT+9를 쓰며 과거 약정도 수신된 시간대를 기준으로 날짜를 검증한다.
 			ZoneId zone = ZoneId.of(work.agreedTimeZone());
 			if (!work.agreedStartAt().atZoneSameInstant(zone).toLocalDate().equals(work.agreedWorkDate())) {
 				throw invalidResponse();
@@ -82,7 +84,7 @@ class FarmWorkClient {
 			}).headers(headers -> headers.setBearerAuth(properties.serviceToken()))
 				.accept(MediaType.APPLICATION_JSON).retrieve().body(type);
 		} catch (RestClientResponseException exception) {
-			// Keep the upstream body and credentials out of scheduler logs.
+			// 원격 응답 본문이나 인증 정보를 스케줄러 로그에 남기지 않고 상태 코드만 전달한다.
 			throw new PlatformVerificationException(HttpStatus.BAD_GATEWAY,
 				"FARM_WORK_HTTP_" + exception.getStatusCode().value(), "Farm work request was rejected");
 		} catch (RestClientException exception) {

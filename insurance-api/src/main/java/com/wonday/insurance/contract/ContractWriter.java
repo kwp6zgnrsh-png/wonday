@@ -27,6 +27,7 @@ class ContractWriter {
 
 	@Transactional
 	public long create(long memberId, ContractEnrollmentRequest request, VerifiedWorker worker) {
+		// 동일 회원의 동시 가입을 직렬화하고 연락처·동의 연결·계약을 한 번에 저장한다.
 		members.lockWorkerAndSaveContact(memberId, worker.phone(), request.identity().residentRegistrationNumber());
 		LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
 		var product = products.requireAvailable(request.productVersionId(), now);
@@ -34,7 +35,8 @@ class ContractWriter {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Product is already covered by a current contract");
 		}
 		links.link(memberId, worker.workerId(), now);
-		LocalDateTime end = now.atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.of("Asia/Seoul"))
+		// 보장 3개월은 GMT+9의 달력 기준으로 계산한다. 계산 후에는 DB 저장 기준인 UTC로 돌린다.
+		LocalDateTime end = now.atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.of("GMT+9"))
 			.plusMonths(3).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
 		return contracts.saveAndFlush(new InsuranceContract(memberId, product.versionId(), now, now, end)).getId();
 	}
