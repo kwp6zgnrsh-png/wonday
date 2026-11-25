@@ -28,6 +28,8 @@
     dl { margin: 0 0 1.25rem; padding: .75rem 1rem; background: #f0f7f2; border-radius: .5rem; }
     dl div { display: flex; justify-content: space-between; gap: .75rem; padding: .35rem 0; }
     dd { margin: 0; font-weight: 650; }
+    #jobs-link { display: block; margin: 0 0 1rem; padding: .8rem; border-radius: .5rem; background: #e8f3ec; color: #18492f; font-weight: 700; text-align: center; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
@@ -50,6 +52,7 @@
         <div><dt>회원 ID</dt><dd id="member-id"></dd></div>
         <div><dt>역할</dt><dd id="member-role"></dd></div>
       </dl>
+      <a href="/demo/jobs" id="jobs-link" hidden>내 공고 조회 · 일정 수정하기</a>
       <button type="button" id="logout">로그아웃</button>
     </section>
     <p id="status" role="status">로그인 상태를 확인하는 중입니다.</p>
@@ -92,6 +95,7 @@
       document.querySelector('#member-name').textContent = account.name;
       document.querySelector('#member-id').textContent = account.id;
       document.querySelector('#member-role').textContent = roleName ? `${roleName} (${account.role})` : account.role;
+      document.querySelector('#jobs-link').hidden = account.role !== 'EMPLOYER';
       form.hidden = true;
       member.hidden = false;
       showStatus('');

@@ -2,7 +2,6 @@ package com.wonday.farm.job.service;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.HashSet;
 
@@ -13,6 +12,7 @@ import com.wonday.farm.job.entity.WorkSchedule;
 import com.wonday.farm.job.exception.JobPostingException;
 import com.wonday.farm.job.repository.JobPostingRepository;
 import com.wonday.farm.job.repository.WorkScheduleRepository;
+import com.wonday.farm.job.validation.WorkScheduleValidator;
 import com.wonday.farm.member.Member;
 import com.wonday.farm.member.MemberRepository;
 import com.wonday.farm.member.MemberRole;
@@ -69,52 +69,7 @@ public class JobPostingService {
 			if (!dates.add(schedule.workDate())) {
 				throw new JobPostingException("DUPLICATE_WORK_DATE", "같은 근무일을 두 번 등록할 수 없습니다.", field + ".workDate");
 			}
-			validateWorkTime(schedule, zone, field);
-			validateBreakTime(schedule, zone, field);
-		}
-	}
-
-	private static void validateWorkTime(CreateJobPostingRequest.Schedule schedule, ZoneId zone, String field) {
-		validateLocalTime(schedule.plannedStartAt(), zone, field + ".plannedStartAt");
-		validateLocalTime(schedule.plannedEndAt(), zone, field + ".plannedEndAt");
-		if (!schedule.plannedStartAt().toLocalDate().equals(schedule.workDate())) {
-			throw new JobPostingException("INVALID_WORK_TIME", "근무일은 예정 시작 일시의 날짜와 같아야 합니다.", field + ".workDate");
-		}
-		if (!schedule.plannedEndAt().isAfter(schedule.plannedStartAt())) {
-			throw new JobPostingException("INVALID_WORK_TIME", "예정 종료 일시는 시작 일시 이후여야 합니다.", field + ".plannedEndAt");
-		}
-	}
-
-	private static void validateBreakTime(CreateJobPostingRequest.Schedule schedule, ZoneId zone, String field) {
-		var start = schedule.breakStartAt();
-		var end = schedule.breakEndAt();
-		if (start == null && end == null) {
-			return;
-		}
-		if (start == null) {
-			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 시작을 입력해 주세요.", field + ".breakStartAt");
-		}
-		if (end == null) {
-			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 종료를 입력해 주세요.", field + ".breakEndAt");
-		}
-		validateLocalTime(start, zone, field + ".breakStartAt");
-		validateLocalTime(end, zone, field + ".breakEndAt");
-		if (!end.isAfter(start)) {
-			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 종료는 휴게 시작 이후여야 합니다.", field + ".breakEndAt");
-		}
-		if (start.isBefore(schedule.plannedStartAt())) {
-			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 시작은 근무 시작 이전일 수 없습니다.", field + ".breakStartAt");
-		}
-		if (end.isAfter(schedule.plannedEndAt())) {
-			throw new JobPostingException("INVALID_BREAK_TIME", "휴게 종료는 근무 종료를 넘을 수 없습니다.", field + ".breakEndAt");
-		}
-	}
-
-	private static void validateLocalTime(LocalDateTime time, ZoneId zone, String field) {
-		// MySQL DATETIME의 범위·정밀도와 작업지 시간대에서 해석 가능한 일시인지 확인한다.
-		if (time.getYear() < 1000 || time.getYear() > 9999 || time.getNano() % 1000 != 0
-				|| zone.getRules().getValidOffsets(time).size() != 1) {
-			throw new JobPostingException("INVALID_LOCAL_TIME", "작업지에서 해석 가능한 일시를 마이크로초 정밀도 이내로 입력해 주세요.", field);
+			WorkScheduleValidator.validate(schedule, zone, field);
 		}
 	}
 }

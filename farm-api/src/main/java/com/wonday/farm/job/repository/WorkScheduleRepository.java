@@ -1,13 +1,32 @@
 package com.wonday.farm.job.repository;
 
 import java.util.List;
+import java.util.Optional;
+import java.time.LocalDate;
 
 import com.wonday.farm.job.entity.WorkSchedule;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface WorkScheduleRepository extends JpaRepository<WorkSchedule, Long> {
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	Optional<WorkSchedule> findByIdAndJobPosting_Id(long id, long jobPostingId);
+
+	boolean existsByJobPosting_IdAndWorkDateAndIdNot(long jobPostingId, LocalDate workDate, long id);
+
+	// CANCELLED는 시작 전 취소로 기록된 근무다. 조기 종료는 자리를 비운 것으로 취급하지 않는다.
+	@Query(value = """
+		select count(*) from work_assignment assignment
+		join application app on app.id = assignment.application_id
+		left join work_change change_record on change_record.assignment_id = assignment.id
+		where app.work_schedule_id = :scheduleId
+		  and (change_record.id is null or change_record.change_type <> 'CANCELLED')
+		""", nativeQuery = true)
+	long countOccupyingAssignments(@Param("scheduleId") long scheduleId);
+
 	// 소유자 조건은 DB 조회에 적용하고, 공고도 함께 읽어 일정별 추가 조회를 방지한다.
 	@Query("""
 		select schedule from WorkSchedule schedule
