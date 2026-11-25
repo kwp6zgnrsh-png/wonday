@@ -2,6 +2,7 @@ package com.wonday.farm.job.entity;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 import com.wonday.farm.job.dto.CreateJobPostingRequest;
 import jakarta.persistence.Column;
@@ -68,6 +69,25 @@ public class WorkSchedule {
 	}
 
 	public enum Status {
-		OPEN, CLOSED, REMOVED
+		OPEN, PAUSED, CLOSED, REMOVED
+	}
+
+	public boolean hasSameConditions(CreateJobPostingRequest.Schedule conditions) {
+		return Objects.equals(workDate, conditions.workDate())
+			&& Objects.equals(plannedStartAt, conditions.plannedStartAt())
+			&& Objects.equals(plannedEndAt, conditions.plannedEndAt())
+			&& Objects.equals(breakStartAt, conditions.breakStartAt())
+			&& Objects.equals(breakEndAt, conditions.breakEndAt());
+	}
+
+	// 권한·확정 여부·입력 검증을 마친 서비스가 호출한다. 일정 ID와 모집 상태는 유지한다.
+	public void updateConditions(CreateJobPostingRequest.Schedule conditions) {
+		int nextVersion = Math.incrementExact(termsVersion);
+		workDate = conditions.workDate();
+		plannedStartAt = conditions.plannedStartAt();
+		plannedEndAt = conditions.plannedEndAt();
+		breakStartAt = conditions.breakStartAt();
+		breakEndAt = conditions.breakEndAt();
+		termsVersion = nextVersion;
 	}
 }
