@@ -200,11 +200,13 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 - `GET /api/internal/insurance/workers/{workerId}/work-changes?cursor=...&limit=100`
 - `GET /api/internal/insurance/workers/{workerId}/work-assignments/{assignmentId}`
 
-본인 확인과 같은 `FARM_API_BASE_URL`, `FARM_API_SERVICE_TOKEN`을 사용한다. 농업 API 구현 후 `FARM_WORK_POLLING_ENABLED=true`로 활성화한다. 기본값은 비활성이며, `FARM_WORK_POLLING_DELAY_MS` 기본값은 60000ms다. 첫 조회도 이 시간이 지난 뒤 시작한다. `insurance.farm.polling.page-size`는 1~500, `max-pages-per-worker`는 기본 10이다. 한 근로자의 페이지 한도에 도달하면 다음 근로자를 처리하고 다음 주기에 저장한 커서부터 계속한다.
+본인 확인과 같은 `FARM_API_BASE_URL`, `FARM_API_SERVICE_TOKEN`을 사용한다. `FARM_WORK_POLLING_ENABLED=true`로 활성화하면 **GMT+9 기준 매일 18:00에 한 회차** 실행한다. 기본값은 비활성이다. 서버 기본 시간대와 무관하게 cron `0 0 18 * * *`, 시간대 `GMT+9`를 적용하며, 기존 `FARM_WORK_POLLING_DELAY_MS` 설정은 사용하지 않는다. 서버 시작 직후의 즉시 조회는 없으며, 18시에 서버가 중단돼 있었다면 다음 실행은 다음 날 18시다.
+
+한 회차에 유효한 연동 근로자를 순회하며 근로자별로 여러 API 페이지를 조회할 수 있다. `insurance.farm.polling.page-size`는 1~500(기본 100), `max-pages-per-worker`는 기본 10이다. 한 근로자의 페이지 한도에 도달하면 다음 근로자를 처리하고 다음 날 18시에 저장한 커서부터 계속한다. 당일 날짜로 기록을 제한하지 않으므로 이번 회차에서 읽지 못한 변경(18시 이후 발생한 기록 포함)도 다음 회차에 이어서 가져온다.
 
 최초 요청은 커서를 생략한다. 변경 기록은 `platform_work_event`에 `changeId + sourceVersion` 단위로 저장하며 원본 변경 JSON과 확정 근무 JSON을 보관한다. 사유 보완으로 버전이 바뀌면 별도 기록으로 저장한다. 전날 취소, 농장 사정, 조기 종료도 수집한다. 시각 컬럼은 UTC로 변환하고 원본 JSON에는 시간대 오프셋을 유지한다.
 
-페이지의 모든 상세 조회와 기록 저장이 성공해야 `platform_work_cursor`의 근로자별 커서도 함께 커밋한다. 실패하면 해당 페이지 전체를 롤백하고 다음 주기에 마지막 성공 커서로 재시도한다. 실패한 근로자 이후의 다른 근로자는 계속 처리한다. 인증 오류와 잘못된 커서도 저장 위치를 유지하며 로그를 남기므로 농업 서버의 설정·응답을 수정한 뒤 다음 주기에 재시도할 수 있다.
+페이지의 모든 상세 조회와 기록 저장이 성공해야 `platform_work_cursor`의 근로자별 커서도 함께 커밋한다. 실패하면 해당 페이지 전체를 롤백하고 다음 날 18시에 마지막 성공 커서로 재시도한다. 실패한 근로자 이후의 다른 근로자는 계속 처리한다. 인증 오류와 잘못된 커서도 저장 위치를 유지하며 로그를 남기므로 농업 서버의 설정·응답을 수정한 뒤 다음 정기 실행에서 재시도할 수 있다.
 
 동일 근로자의 동시 조회는 활성 연결 행의 DB 잠금으로 직렬화한다. 동의 갱신 시에도 근로자별 커서를 이어서 사용한다. 같은 ID·버전에 서로 다른 내용이 오면 처리를 실패시켜 커서 전진을 막는다. 수집된 기록은 이후 보상 접수 기능에서 사용한다.
 
