@@ -8,7 +8,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.wonday.insurance.platform.PlatformClaimEvents;
+import com.wonday.insurance.platform.PlatformVerificationException;
 import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -124,24 +126,83 @@ class ClaimIntakeTests {
 
 	@Test
 	void pollingAndIntakeSchedulersConnectThroughPersistedEvents() {
-		ObjectNode change = json.createObjectNode().put("changeId", 9001).put("sourceVersion", "1")
-			.put("assignmentId", 7001).put("changeType", "CANCELLED").put("reasonCode", "WEATHER")
-			.put("weatherReasonCode", "RAIN").put("reasonDetail", "기상 사유 취소")
-			.put("effectiveAt", CANCELLED.toString()).put("recordedAt", CANCELLED.toString())
-			.put("updatedAt", CANCELLED.toString());
-		ObjectNode page = json.createObjectNode().put("workerId", 77).put("nextCursor", "complete").put("hasMore", false);
-		page.putArray("items").add(change);
-		farm.server().expect(requestTo("http://farm.test/api/internal/insurance/workers/77/work-changes?limit=100"))
-			.andRespond(withSuccess(json.writeValueAsString(page), MediaType.APPLICATION_JSON));
-		farm.server().expect(requestTo("http://farm.test/api/internal/insurance/workers/77/work-assignments/7001"))
-			.andRespond(withSuccess(json.writeValueAsString(snapshot(7001, START)), MediaType.APPLICATION_JSON));
-
+		expectPollingPage(null, "complete", 9001, 7001, snapshotWithCoordinates(7001, START));
 		ReflectionTestUtils.invokeMethod(context.getBean("workChangePollingService"), "pollPage", linkId);
+		long eventId = tx(() -> entities.createQuery("select e.id from PlatformWorkEvent e", Long.class).getSingleResult());
+		PlatformClaimEvents.Work work = tx(() -> source.verifiedWork(source.lockPending(eventId)));
+		assertThat(work.latitude()).isEqualByComparingTo("37.123456");
+		assertThat(work.longitude()).isEqualByComparingTo("127.654321");
 		scheduler.run();
 
 		assertThat(claims.count()).isEqualTo(1);
 		assertThat(history.count()).isEqualTo(1);
+		var saved = json.readTree(claims.findAll().getFirst().getWorkSnapshot());
+		assertThat(saved.get("agreedLatitude").decimalValue()).isEqualByComparingTo("37.123456");
+		assertThat(saved.get("agreedLongitude").decimalValue()).isEqualByComparingTo("127.654321");
 		assertThat(source.pendingIds()).isEmpty();
+	}
+
+	@Test
+	void invalidCoordinatesKeepSavedCursorThenRetrySucceeds() {
+		ObjectNode invalid = snapshotWithCoordinates(7002, START);
+		invalid.remove("agreedLongitude");
+		expectPollingPage(null, "c1", 9001, 7001, snapshotWithCoordinates(7001, START));
+		expectPollingPage("c1", "c2", 9002, 7002, invalid);
+		expectPollingPage("c1", "c2", 9002, 7002, snapshotWithCoordinates(7002, START));
+		Object poller = context.getBean("workChangePollingService");
+
+		ReflectionTestUtils.invokeMethod(poller, "pollPage", linkId);
+		scheduler.run();
+		assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(poller, "pollPage", linkId))
+			.isInstanceOf(PlatformVerificationException.class);
+		assertThat(tx(() -> entities.createQuery("select count(e) from PlatformWorkEvent e", Long.class)
+			.getSingleResult())).isEqualTo(1);
+		assertThat(storedCursor()).isEqualTo("c1");
+		assertThat(claims.count()).isEqualTo(1);
+
+		ReflectionTestUtils.invokeMethod(poller, "pollPage", linkId);
+		scheduler.run();
+		assertThat(storedCursor()).isEqualTo("c2");
+		assertThat(claims.count()).isEqualTo(2);
+		assertThat(history.count()).isEqualTo(2);
+		assertThat(source.pendingIds()).isEmpty();
+	}
+
+	@Test
+	void coordinateFreeStoredSnapshotIsPreservedAndIntakeContinues() throws Exception {
+		ObjectNode originalWork = snapshot(7001, START);
+		long eventId = event(9001, "1", 7001, CANCELLED, originalWork, "CANCELLED", "WEATHER");
+		String originalSnapshot = tx(() -> entities.createQuery("select e.workSnapshot from PlatformWorkEvent e where e.id = :id", String.class)
+			.setParameter("id", eventId).getSingleResult());
+		PlatformClaimEvents.Work work = tx(() -> source.verifiedWork(source.lockPending(eventId)));
+		assertThat(work.latitude()).isNull();
+		assertThat(work.longitude()).isNull();
+		assertThat(work.snapshot()).isEqualTo(originalSnapshot);
+		assertThat(intake.process(eventId)).isEqualTo("RECEIVED");
+		assertThat(claims.findAll().getFirst().getWorkSnapshot()).isEqualTo(originalSnapshot);
+		assertThat(tx(() -> entities.createQuery("select e.workSnapshot from PlatformWorkEvent e where e.id = :id", String.class)
+			.setParameter("id", eventId).getSingleResult())).isEqualTo(originalSnapshot)
+			.doesNotContain("agreedLatitude", "agreedLongitude");
+		mvc.perform(get("/api/claims/{id}", claims.findAll().getFirst().getId()).session(login(owner)))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.work.agreedLatitude").doesNotExist())
+			.andExpect(jsonPath("$.work.agreedLongitude").doesNotExist());
+	}
+
+	@Test
+	void laterVersionDoesNotReplaceOriginalCoordinates() {
+		long first = event(9001, "1", 7001, CANCELLED, snapshotWithCoordinates(7001, START), "CANCELLED", "WEATHER");
+		intake.process(first);
+		ObjectNode changedWork = snapshotWithCoordinates(7001, START)
+			.put("agreedLatitude", new BigDecimal("38.123456")).put("agreedLongitude", new BigDecimal("128.654321"));
+		long revised = event(9001, "2", 7001, CANCELLED, changedWork, "CANCELLED", "WEATHER");
+
+		assertThat(intake.process(revised)).isEqualTo("ALREADY_RECEIVED");
+		assertThat(claims.count()).isEqualTo(1);
+		assertThat(history.count()).isEqualTo(1);
+		var saved = json.readTree(claims.findAll().getFirst().getWorkSnapshot());
+		assertThat(saved.get("agreedLatitude").decimalValue()).isEqualByComparingTo("37.123456");
+		assertThat(saved.get("agreedLongitude").decimalValue()).isEqualByComparingTo("127.654321");
+		assertThat(claims.findAll().getFirst().getTriggerEventId()).isEqualTo(first);
 	}
 
 	@ParameterizedTest
@@ -300,13 +361,19 @@ class ClaimIntakeTests {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"workerId", "assignmentId", "agreedTimeZone", "agreedDailyWage"})
+	@ValueSource(strings = {"workerId", "assignmentId", "agreedTimeZone", "agreedDailyWage",
+		"agreedLatitude", "agreedLongitude", "latitudeOnly", "longitudeOnly", "coordinateText"})
 	void invalidStoredSnapshotRemainsPending(String field) {
 		ObjectNode work = snapshot(7001, START);
 		switch (field) {
 			case "workerId", "assignmentId" -> work.put(field, 999999);
 			case "agreedTimeZone" -> work.put(field, "invalid-zone");
 			case "agreedDailyWage" -> work.put(field, 0);
+			case "agreedLatitude" -> work.put(field, 90.000001).put("agreedLongitude", 127);
+			case "agreedLongitude" -> work.put("agreedLatitude", 37).put(field, -180.000001);
+			case "latitudeOnly" -> work.put("agreedLatitude", 37);
+			case "longitudeOnly" -> work.put("agreedLongitude", 127);
+			case "coordinateText" -> work.put("agreedLatitude", "37.123456").put("agreedLongitude", 127);
 			default -> throw new IllegalArgumentException(field);
 		}
 		long eventId = event(9001, "1", 7001, CANCELLED, work, "CANCELLED", "WEATHER");
@@ -466,7 +533,7 @@ class ClaimIntakeTests {
 
 	@Test
 	void ownListAndDetailReturnSnapshotsAndDenyOtherAccounts() throws Exception {
-		intake.process(event(9001, "1", 7001, CANCELLED, snapshot(7001, START), "CANCELLED", "WEATHER"));
+		intake.process(event(9001, "1", 7001, CANCELLED, snapshotWithCoordinates(7001, START), "CANCELLED", "WEATHER"));
 		long claimId = claims.findAll().getFirst().getId();
 		MockHttpSession session = login(owner);
 		mvc.perform(get("/api/claims").session(session)).andExpect(status().isOk())
@@ -475,7 +542,11 @@ class ClaimIntakeTests {
 		mvc.perform(get("/api/claims/{id}", claimId).session(session)).andExpect(status().isOk())
 			.andExpect(jsonPath("$.claim.id").value(claimId)).andExpect(jsonPath("$.intakeSource.changeId").value(9001))
 			.andExpect(jsonPath("$.work.assignmentId").value(7001)).andExpect(jsonPath("$.work.agreedDailyWage").value(120000))
-			.andExpect(jsonPath("$.work.agreedTimeZone").value("GMT+9"));
+			.andExpect(jsonPath("$.work.agreedTimeZone").value("GMT+9"))
+			.andExpect(jsonPath("$.work.agreedLatitude").isNumber())
+			.andExpect(jsonPath("$.work.agreedLatitude").value(37.123456))
+			.andExpect(jsonPath("$.work.agreedLongitude").isNumber())
+			.andExpect(jsonPath("$.work.agreedLongitude").value(127.654321));
 		tx(() -> {
 			field(entities.find(type("platform.PlatformLink"), linkId), "revokedAt", LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
 			return null;
@@ -493,6 +564,31 @@ class ClaimIntakeTests {
 		for (String id : List.of("0", "-1", "abc", "9223372036854775808")) {
 			mvc.perform(get("/api/claims/" + id).session(session)).andExpect(status().isBadRequest());
 		}
+	}
+
+	private void expectPollingPage(String cursor, String nextCursor, long changeId, long assignmentId, ObjectNode work) {
+		ObjectNode change = json.createObjectNode().put("changeId", changeId).put("sourceVersion", "1")
+			.put("assignmentId", assignmentId).put("changeType", "CANCELLED").put("reasonCode", "WEATHER")
+			.put("weatherReasonCode", "RAIN").put("reasonDetail", "기상 사유 취소")
+			.put("effectiveAt", CANCELLED.toString()).put("recordedAt", CANCELLED.toString())
+			.put("updatedAt", CANCELLED.toString());
+		ObjectNode page = json.createObjectNode().put("workerId", 77).put("nextCursor", nextCursor).put("hasMore", false);
+		page.putArray("items").add(change);
+		String query = cursor == null ? "?limit=100" : "?cursor=" + cursor + "&limit=100";
+		farm.server().expect(requestTo("http://farm.test/api/internal/insurance/workers/77/work-changes" + query))
+			.andRespond(withSuccess(json.writeValueAsString(page), MediaType.APPLICATION_JSON));
+		farm.server().expect(requestTo("http://farm.test/api/internal/insurance/workers/77/work-assignments/" + assignmentId))
+			.andRespond(withSuccess(json.writeValueAsString(work), MediaType.APPLICATION_JSON));
+	}
+
+	private String storedCursor() {
+		return tx(() -> entities.createQuery("select c.cursor from PlatformWorkCursor c where c.workerId = 77", String.class)
+			.getSingleResult());
+	}
+
+	private ObjectNode snapshotWithCoordinates(long assignmentId, OffsetDateTime start) {
+		return snapshot(assignmentId, start)
+			.put("agreedLatitude", new BigDecimal("37.123456")).put("agreedLongitude", new BigDecimal("127.654321"));
 	}
 
 	private long event(long changeId, String version, long assignmentId, OffsetDateTime occurred,

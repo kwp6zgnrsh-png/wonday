@@ -1,6 +1,7 @@
 package com.wonday.insurance.platform;
 
 import jakarta.validation.Validator;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -71,7 +72,8 @@ public class PlatformClaimEvents {
 			events.findById(event.id()).orElseThrow().captureSnapshot(snapshot);
 		}
 		return new Work(snapshot, assignment.agreedWorkDate(), assignment.agreedTimeZone(),
-			assignment.agreedStartAt().withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime().truncatedTo(ChronoUnit.MICROS));
+			assignment.agreedStartAt().withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime().truncatedTo(ChronoUnit.MICROS),
+			assignment.agreedLatitude(), assignment.agreedLongitude());
 	}
 
 	@Transactional(propagation = Propagation.MANDATORY)
@@ -95,5 +97,7 @@ public class PlatformClaimEvents {
 	public record Event(long id, long memberId, Long workerId, long assignmentId, String type,
 		String reasonCode, LocalDateTime occurredAt, String workSnapshot, boolean activeLink) {}
 
-	public record Work(String snapshot, LocalDate workDate, String timeZone, LocalDateTime startAt) {}
+	// 좌표가 모두 null이면 미확보다. 접수는 진행하고, 이후 관측소 선정 단계에서 이 상태를 구분한다.
+	public record Work(String snapshot, LocalDate workDate, String timeZone, LocalDateTime startAt,
+		BigDecimal latitude, BigDecimal longitude) {}
 }
