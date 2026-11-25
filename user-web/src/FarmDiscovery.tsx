@@ -95,8 +95,9 @@ function FarmCropBackground() {
         </div>);
 }
 
-export function FarmHome({ employer, jobs, preview, preferences, availableDates, onSettings, onOpen, applicationCount, favoriteCount, onBrowse, onManage, onInsurance, onCreate, onProfile, onBookmarks, favoriteIds = [], onToggleFavorite }: {
+export function FarmHome({ displayName, employer, jobs, preview, preferences, availableDates, onSettings, onOpen, applicationCount, favoriteCount, onBrowse, onManage, onInsurance, onCreate, onProfile, onBookmarks, favoriteIds = [], onToggleFavorite }: {
   employer: boolean;
+  displayName?: string;
   jobs: FarmJob[];
   favoriteIds?: readonly number[];
   onToggleFavorite?: (job: FarmJob) => void;
@@ -119,7 +120,7 @@ export function FarmHome({ employer, jobs, preview, preferences, availableDates,
       <section className={employer ? "farm-home-spotlight" : "farm-home-spotlight farm-worker-spotlight"} aria-labelledby="farm-home-heading">
         {!employer && <FarmCropBackground />}
         <div className="farm-home-heading">
-          <h2 id="farm-home-heading">{employer ? "이온농장" : "김하루"}님, 반가워요.</h2>
+          <h2 id="farm-home-heading">{displayName || (employer ? "이온농장" : "김하루")}님, 반가워요.</h2>
           <span className="farm-location"><FarmIcon name="pin" />경기도</span>
         </div>
         {employer ? <button type="button" className="farm-home-banner" onClick={onCreate}>
@@ -176,6 +177,7 @@ export function FarmHome({ employer, jobs, preview, preferences, availableDates,
 
 export function FarmJobList({ employer, jobs, mode, onModeChange, filters, onFilterChange, searchFilters, onSearchFilterChange, preferences, onSettings, onOpen, openDays, availableDates, favoriteIds = [], onToggleFavorite }: {
   employer: boolean;
+  displayName?: string;
   jobs: FarmJob[];
   favoriteIds?: readonly number[];
   onToggleFavorite?: (job: FarmJob) => void;
@@ -229,8 +231,9 @@ export function FarmJobList({ employer, jobs, mode, onModeChange, filters, onFil
   );
 }
 
-export function FarmProfile({ employer, metrics, children, activeMetric, onMetricSelect, onManage, onCreate, onInsurance, onLogout }: {
+export function FarmProfile({ displayName, employer, metrics, children, activeMetric, onMetricSelect, onManage, onCreate, onInsurance, onLogout }: {
   employer: boolean;
+  displayName?: string;
   metrics: ReadonlyArray<readonly [string, number]>;
   children?: ReactNode;
   activeMetric?: string;
@@ -246,10 +249,10 @@ export function FarmProfile({ employer, metrics, children, activeMetric, onMetri
       <section className="farm-profile-hero" aria-labelledby="farm-profile-title">
         <FarmCropBackground />
         <div className="farm-profile-account">
-          <span className="farm-profile-avatar" aria-hidden="true">{employer ? "온" : "하"}</span>
+          <span className="farm-profile-avatar" aria-hidden="true">{displayName?.slice(0, 1) || (employer ? "온" : "하")}</span>
           <div>
             <p>{employer ? "고용주" : "근로자"} 계정</p>
-            <strong>{employer ? "이온농장" : "김하루"}님</strong>
+            <strong>{displayName || (employer ? "이온농장" : "김하루")}님</strong>
           </div>
         </div>
         <div className="farm-profile-metrics" role="group" aria-label="내 일자리 현황">

@@ -50,11 +50,14 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
           onClick={() => { setCategory(item); setSelectedDate(""); }}>{item}</button>)}
       </div>
       <div className="farm-home-job-controls">
+        <div className="farm-home-list-toolbar">
         <div className="farm-home-view-toggle" role="group" aria-label="일자리 보기 방식">
           {["목록형", "캘린더형"].map((item) => <button key={item} type="button" aria-pressed={view === item}
             onClick={() => { setView(item); }}>
             <FarmIcon name={item === "목록형" ? "clipboard" : "calendar"} />{item}
           </button>)}
+        </div>
+        <p className="farm-home-results" role="status">{view === "캘린더형" && (selectedDate ? `${dateLabel(selectedDate)} · ` : `${Number(month.slice(5))}월 · `)}모집 공고 <strong>{results.length}건</strong></p>
         </div>
         {category === "지역별 일자리" && <FarmRegionMap jobs={jobs} selected={region} onChoose={(value) => {
             setRegion(value); setSelectedDate("");
@@ -98,7 +101,6 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
           <p>공고가 있는 날짜를 눌러 일자리를 확인해 보세요.</p>
           {selectedDate && <button type="button" className="farm-calendar-reset" onClick={() => { setSelectedDate(""); }}>이 달 전체 보기</button>}
         </div>}
-        <p className="farm-home-results" role="status">{view === "캘린더형" && (selectedDate ? `${dateLabel(selectedDate)} · ` : `${Number(month.slice(5))}월 · `)}모집 공고 <strong>{results.length}건</strong></p>
         <div className="farm-home-job-rows">
           <FarmCursorList items={results} pageSize={4} queryKey={JSON.stringify([category, view, region, month, selectedDate, preferences])} renderItem={(job) => {
             const dates = jobDates.get(job.id) ?? [];

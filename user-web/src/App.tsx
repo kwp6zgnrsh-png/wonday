@@ -1,3 +1,6 @@
+import FarmSignup from "./FarmSignup";
+import { hashFarmPassword } from "./farmRegistration";
+import type { FarmMember } from "./farmRegistration";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import "./App.css";
@@ -266,6 +269,9 @@ function App() {
   const [app, setApp] = useState("home");
   const [tab, setTab] = useState("홈");
   const [role, setRole] = useSaved("onday-role", "근로자");
+  const [farmMembers, setFarmMembers] = useSaved<FarmMember[]>("wonday-farm-members-v1", []);
+  const [farmMemberId, setFarmMemberId] = useSaved("wonday-farm-member-id", "");
+  const farmMember = farmMembers.find((member) => member.id === farmMemberId);
   const [farmLogin, setFarmLogin] = useSaved("onday-farm-login", false);
   const [insLogin, setInsLogin] = useSaved("onday-ins-login", false);
   const [largeText, setLargeText] = useSaved("wonday-large-text-v2", false);
@@ -526,7 +532,7 @@ id: "AS-DEMO-5",
   const isEmployer = role === "고용주";
   const guideTitle = modal || (app === "farm"
     ? platformVisit ? "근로자 계정 확인"
-      : !farmLogin ? "플랫폼 로그인"
+      : !farmLogin ? tab === "회원가입" ? "회원가입" : "플랫폼 로그인"
       : work ? "근무 상세"
       : detail ? "공고 상세"
       : tab === "일자리" ? farmBrowseMode
@@ -541,7 +547,7 @@ id: "AS-DEMO-5",
   const guideDescription = modal ? dialogDescriptions[modal] ?? "상세 내용을 확인하세요."
     : app === "farm"
       ? platformVisit ? "근로자 체험 계정을 확인한 뒤 보험 가입으로 돌아가세요."
-        : !farmLogin ? "근로자 또는 고용주를 선택하고 로그인하세요."
+        : !farmLogin ? tab === "회원가입" ? "내국인·외국인을 구분해 가입하세요. 등록번호는 입력 형식만 확인하며, 실제 본인인증은 제공되지 않아요." : "근로자 또는 고용주를 선택하고 로그인하세요."
         : work ? "근무 일정과 작업 장소, 진행 상태를 확인하세요."
         : detail ? isEmployer ? "공고의 근무 일정과 지원자를 확인하세요." : "일급과 작업 조건을 확인하고 가능한 날짜에 지원하세요."
         : tab === "홈" ? isEmployer ? "공고를 등록하고 모집 현황을 확인하세요." : "모집 중인 일자리와 지원 현황을 확인하세요. 지역별 일자리는 목록이나 지도에서 선택할 수 있어요. 지도는 끌어서 이동하고, Ctrl 또는 Shift + 휠로 확대·축소하세요."
@@ -574,6 +580,7 @@ id: "AS-DEMO-5",
       setShowConnection(true);
       return;
     }
+    if (!farmLogin && tab === "회원가입") return nav("홈");
     if (!farmLogin) return open("home");
     if (work) return setWork(null);
     if (detail) { setDetail(null); setSelected([]); return; }
@@ -751,7 +758,7 @@ id: "AS-DEMO-5",
         <p>
           {platformVisit ? "등록된 근로자 체험 계정을 확인하면 보험 가입으로 돌아갑니다." : insurance
             ? "나의 계약과 보상 내역을 확인하세요."
-            : "사전에 등록된 체험 계정으로 이용해 보세요."}
+            : "가입한 계정이나 체험 계정으로 로그인하세요."}
         </p>
         {!insurance && !platformVisit && (
           <div className="segmented">
@@ -767,7 +774,7 @@ id: "AS-DEMO-5",
           </div>
         )}
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             if (platformVisit && !insurance) {
               const login = new FormData(e.currentTarget);
@@ -786,8 +793,26 @@ id: "AS-DEMO-5",
               setAccount(String(new FormData(e.currentTarget).get("account")).trim());
               setInsLogin(true);
               resumeInsuranceAction();
-            } else setFarmLogin(true);
-            notify("체험 계정으로 로그인했어요.");
+            } else {
+              const fields = new FormData(e.currentTarget);
+              const loginId = String(fields.get("account") ?? "").trim();
+              const password = String(fields.get("password") ?? "");
+              const member = farmMembers.find((entry) => entry.id.toLowerCase() === loginId.toLowerCase());
+              if (member) {
+                try {
+                  if (await hashFarmPassword(password, member.salt) !== member.passwordHash) return notify("아이디와 비밀번호를 확인해 주세요.");
+                } catch { return notify("로그인 정보를 확인하지 못했어요. 다시 시도해 주세요."); }
+                setFarmMemberId(member.id);
+                setRole(member.role);
+              } else {
+                const expectedId = role === "고용주" ? "farmer.demo" : "worker.demo";
+                if (loginId !== expectedId || password !== "onday2026") return notify("아이디와 비밀번호를 확인해 주세요.");
+                setFarmMemberId("");
+              }
+              setFarmLogin(true);
+              nav("홈");
+            }
+            notify("로그인했어요.");
           }}
         >
           <label>
@@ -813,6 +838,7 @@ id: "AS-DEMO-5",
             로그인 <span>↗</span>
           </button>
         </form>
+        {!insurance && !platformVisit && <button type="button" className="text-button farm-signup-link" onClick={() => nav("회원가입")}>처음이신가요? 회원가입</button>}
         {insurance && (
           <button
             className="text-button"
@@ -1010,7 +1036,7 @@ id: "AS-DEMO-5",
                   <InsuranceIcon name="launcher" />
                 </button>}
               </div>
-              {app === "farm" && (tab !== "홈" || !!detail || !!work || !farmLogin || platformVisit) && <button type="button" className="farm-header-back" aria-label="뒤로 가기" onClick={goFarmBack}><FarmIcon name="back" /><span>뒤로</span></button>}
+              {app === "farm" && (farmLogin || platformVisit || tab === "회원가입") && (tab !== "홈" || !!detail || !!work || platformVisit) && <button type="button" className="farm-header-back" aria-label="뒤로 가기" onClick={goFarmBack}><FarmIcon name="back" /><span>뒤로</span></button>}
               {app === "farm" && farmLogin && !platformVisit && tab === "마이페이지" && !detail && !work && <h2 className="farm-header-page-title" id="farm-profile-title">마이페이지</h2>}
             </header>
             )}
@@ -1037,7 +1063,15 @@ id: "AS-DEMO-5",
                 />
               ) : app === "farm" ? (
                 !farmLogin || platformVisit ? (
-                  loginForm()
+                  !platformVisit && tab === "회원가입" ? <FarmSignup initialRole={role} members={farmMembers}
+                    onCancel={() => nav("홈")} onRegister={(member) => {
+                      setFarmMembers([...farmMembers, member]);
+                      setFarmMemberId(member.id);
+                      setRole(member.role);
+                      setFarmLogin(true);
+                      nav("홈");
+                      notify("회원가입을 완료했어요.");
+                    }} /> : loginForm()
                 ) : (
                   <>
                     {work ? (
@@ -1308,7 +1342,7 @@ id: "AS-DEMO-5",
                     ) : (
                       <>
                         {tab === "홈" && (
-                          <FarmHome employer={isEmployer} favoriteIds={farmFavorites} onToggleFavorite={isEmployer ? undefined : toggleFarmFavorite}
+                          <FarmHome displayName={farmMember?.name} employer={isEmployer} favoriteIds={farmFavorites} onToggleFavorite={isEmployer ? undefined : toggleFarmFavorite}
                             jobs={openFarmJobs}
                             preferences={farmPreferences} availableDates={availableFarmDates}
                             onSettings={() => openFarmProfile("맞춤 설정")} onOpen={openFarmJob}
@@ -1543,7 +1577,7 @@ id: "AS-DEMO-5",
                           </>
                         )}
                         {tab === "마이페이지" && (
-                          <FarmProfile employer={isEmployer}
+                          <FarmProfile displayName={farmMember?.name} employer={isEmployer}
                             metrics={isEmployer ? [
                               ["등록 공고", jobs.length],
                               ["모집 중", jobs.filter((job) => countOpenDays(job) > 0).length],
