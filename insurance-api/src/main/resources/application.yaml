@@ -16,8 +16,8 @@ insurance:
     service-token: ${FARM_API_SERVICE_TOKEN:}
     consent-version: farm-platform-v1
     polling:
+      # 활성화하면 GMT+9 기준 매일 18시에 조회한다. 간격 기반 delay-ms 설정은 사용하지 않는다.
       enabled: ${FARM_WORK_POLLING_ENABLED:false}
-      delay-ms: ${FARM_WORK_POLLING_DELAY_MS:60000}
       page-size: 100
       max-pages-per-worker: 10
 

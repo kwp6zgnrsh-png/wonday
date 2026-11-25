@@ -19,8 +19,8 @@ class WorkChangeScheduler {
 	private final WorkChangePollingService polling;
 	private final WorkPollingProperties properties;
 
-	@Scheduled(fixedDelayString = "${insurance.farm.polling.delay-ms}",
-		initialDelayString = "${insurance.farm.polling.delay-ms}")
+	// 실행 PC의 시간대와 무관하게 GMT+9 기준 매일 18시에 한 회차를 시작한다.
+	@Scheduled(cron = "0 0 18 * * *", zone = "GMT+9")
 	public void poll() {
 		// 한 근로자의 페이지 수를 제한해 다른 근로자의 수집이 계속 밀리지 않게 한다.
 		for (long linkId : links.findPollingLinkIds()) {
@@ -29,10 +29,10 @@ class WorkChangeScheduler {
 					if (!polling.pollPage(linkId)) break;
 				}
 			} catch (RuntimeException exception) {
-				// 실패한 페이지만 롤백되므로 다음 실행은 마지막으로 커밋된 커서에서 재개한다.
+				// 실패한 페이지만 롤백한다. 다음 날 18시에 마지막 성공 커서부터 다시 조회한다.
 				String code = exception instanceof PlatformVerificationException platformException
 					? platformException.getCode() : exception.getClass().getSimpleName();
-				log.warn("Farm work polling failed for link {} ({}). Retrying from saved cursor next cycle.",
+				log.warn("Farm work polling failed for link {} ({}). Retrying from saved cursor at next daily run.",
 					linkId, code);
 			}
 		}
