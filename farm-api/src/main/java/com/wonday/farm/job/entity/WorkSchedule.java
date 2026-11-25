@@ -57,6 +57,10 @@ public class WorkSchedule {
 	@Column(name = "terms_version", nullable = false)
 	private int termsVersion;
 
+	// 기존 컬럼을 사용한다. JOB-07에서 새로 기록하는 모집 취소 시각은 UTC로 보관한다.
+	@Column(name = "cancelled_at")
+	private LocalDateTime cancelledAt;
+
 	public WorkSchedule(JobPosting posting, CreateJobPostingRequest.Schedule schedule) {
 		jobPosting = posting;
 		workDate = schedule.workDate();
@@ -89,5 +93,13 @@ public class WorkSchedule {
 		breakStartAt = conditions.breakStartAt();
 		breakEndAt = conditions.breakEndAt();
 		termsVersion = nextVersion;
+	}
+
+	// 서비스의 권한·시작 시각·확정자 검사를 통과한 뒤 호출한다.
+	// 조건과 지원 이력을 지우지 않으며, 재요청이 와도 최초 취소 시각을 덮어쓰지 않는다.
+	public void cancelRecruitment(LocalDateTime cancelledAtUtc) {
+		if (status == Status.REMOVED) return;
+		status = Status.REMOVED;
+		cancelledAt = cancelledAtUtc;
 	}
 }
