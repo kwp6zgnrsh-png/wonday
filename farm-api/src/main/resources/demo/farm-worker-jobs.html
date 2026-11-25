@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>근로자 공고 조회 데모 · WON데이</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, 'Malgun Gothic', sans-serif; color: #173328; background: #edf4ef; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; padding: 2rem 1rem 3rem; }
+    main { max-width: 76rem; margin: auto; }
+    header, .panel, .job-card { background: white; border: 1px solid #cddfd3; border-radius: .8rem; padding: 1.1rem; }
+    header, .panel { margin-bottom: 1rem; }
+    .brand { color: #216345; font-weight: 750; margin: 0 0 .4rem; }
+    h1 { margin: 0 0 .6rem; font-size: clamp(1.4rem, 4vw, 2rem); }
+    h2 { margin: 0 0 1rem; font-size: 1.15rem; }
+    h3 { margin: 0 0 .7rem; font-size: 1.05rem; }
+    p { line-height: 1.6; }
+    .muted { color: #53685c; font-size: .9rem; }
+    .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; }
+    .toolbar p { flex: 1; margin: 0; }
+    button, input, select, .button { font: inherit; min-height: 2.75rem; border-radius: .45rem; }
+    button, .button { padding: .6rem .8rem; border: 1px solid #9ab2a3; background: #f0f7f2; color: #18492f; cursor: pointer; font-weight: 650; }
+    button:hover, .button:hover { background: #dcece1; }
+    .button { display: inline-block; text-decoration: none; }
+    button:disabled { opacity: .55; cursor: default; }
+    input, select { padding: .6rem; border: 1px solid #839c8d; background: white; color: inherit; min-width: 0; }
+    input { width: 12rem; max-width: 100%; }
+    label { font-weight: 650; font-size: .9rem; }
+    :focus-visible { outline: 3px solid #28754e; outline-offset: 3px; }
+    .layout { display: grid; grid-template-columns: minmax(17rem, 1fr) minmax(0, 1.6fr); gap: 1rem; }
+    .job-card { margin-top: .8rem; }
+    .job-card p { margin: .35rem 0; }
+    .job-card ul { padding-left: 1.2rem; line-height: 1.7; }
+    .notice { padding: .85rem 1rem; border: 1px solid #bed8c7; border-radius: .6rem; background: #f6fbf7; white-space: pre-wrap; }
+    .notice[data-error=true] { color: #912b25; border-color: #e2bcb8; background: #fff5f3; }
+    .badge { display: inline-block; padding: .25rem .6rem; border-radius: .4rem; background: #e6f2e9; font-weight: 700; }
+    .badge[data-error=true] { color: #912b25; background: #ffe8e3; }
+    .availability { display: inline-block; border-radius: .35rem; padding: .25rem .5rem; background: #fff1d9; color: #6f4d10; }
+    .availability[data-available=true] { background: #e6f2e9; color: #18492f; }
+    dl { margin: .75rem 0; }
+    dl div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: .6rem; padding: .3rem 0; }
+    dt { color: #53685c; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .description { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    th, td { padding: .7rem .45rem; text-align: left; border-bottom: 1px solid #dfe8e2; vertical-align: top; }
+    .schedule-table { min-width: 43rem; }
+    pre { padding: 1rem; background: #f3f6f4; border-radius: .5rem; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; line-height: 1.6; }
+    summary { cursor: pointer; padding: .5rem 0; font-weight: 650; }
+    @media (max-width: 850px) { .layout { grid-template-columns: 1fr; } body { padding: 1rem .65rem; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="brand">WON데이 농업 플랫폼 · farm-demo</p>
+    <h1>근로자 공고 목록 · 상세</h1>
+    <p class="muted">실제 서버의 조회 결과를 표시합니다. 이 화면에서는 조회만 가능하며, 날짜별 지원 가능 여부는 조회 시점 기준입니다.</p>
+    <div class="toolbar">
+      <p id="account">로그인 상태를 확인하고 있습니다.</p>
+      <a class="button" href="/demo/login">로그인 · 계정 전환</a>
+    </div>
+  </header>
+  <p id="notice" class="notice" role="status" aria-live="polite">잠시 기다려 주세요.</p>
+
+  <div class="layout">
+    <section class="panel" aria-labelledby="list-heading">
+      <h2 id="list-heading">1. 공고 목록</h2>
+      <form id="list-form" class="toolbar">
+        <label for="size">페이지당 공고</label>
+        <select id="size"><option value="10">10개</option><option value="20" selected>20개</option><option value="50">50개</option></select>
+        <button id="reload" type="submit">목록 새로 조회</button>
+      </form>
+      <p class="muted">시작 전 모집 중인 날짜가 있는 공고를 보여줍니다. 정원이 찬 공고도 표시됩니다.</p>
+      <p id="list-empty" hidden>현재 목록에 표시할 공고가 없습니다. 기존 공고 ID를 알고 있다면 상세에서 직접 조회할 수 있습니다.</p>
+      <div id="job-list"></div>
+      <div class="toolbar">
+        <button id="previous" type="button" disabled>이전</button>
+        <p id="page-label">조회 대기</p>
+        <button id="next" type="button" disabled>다음</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="detail-heading">
+      <h2 id="detail-heading">2. 공고 상세와 날짜별 상태</h2>
+      <form id="detail-form" class="toolbar">
+        <label for="posting-id">공고 ID</label>
+        <input id="posting-id" inputmode="numeric" placeholder="예: 101" autocomplete="off" required>
+        <button id="open-detail" type="submit">상세 조회</button>
+      </form>
+      <p class="muted">목록에서 빠진 공고도 ID로 조회할 수 있습니다. 마감·취소·지난 날짜는 상세에 남아 있습니다.</p>
+      <div id="detail-placeholder">목록의 상세 보기 또는 공고 ID 입력으로 조회해 주세요.</div>
+      <article id="detail" hidden>
+        <h3 id="detail-title" tabindex="-1"></h3>
+        <a id="detail-link" href="/demo/worker-jobs">현재 공고 상세 링크</a>
+        <dl id="detail-info"></dl>
+        <p id="description" class="description"></p>
+        <p id="availability-summary" class="notice"></p>
+        <div class="table-wrap">
+          <table class="schedule-table">
+            <caption>날짜별 근무 조건과 서버의 지원 가능 판정</caption>
+            <thead><tr><th scope="col">날짜·일정</th><th scope="col">근무·휴게</th><th scope="col">모집 상태</th><th scope="col">인원</th><th scope="col">지원 가능 여부</th></tr></thead>
+            <tbody id="schedules"></tbody>
+          </table>
+        </div>
+        <p id="no-schedules" hidden>등록된 날짜가 없습니다.</p>
+        <p class="muted">일시는 표시된 공고 시간대 기준입니다. 응답의 초·소수점 값을 그대로 표시합니다.</p>
+      </article>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="result-heading">
+    <h2 id="result-heading">3. API 응답 확인</h2>
+    <p><span id="status-code" class="badge">응답 대기</span> <span id="request-name"></span></p>
+    <p id="response-message">실제 상태코드·오류 메시지를 표시합니다.</p>
+    <details><summary>응답 JSON 보기</summary><pre id="response-body">아직 응답이 없습니다.</pre></details>
+    <details><summary>최근 조회 요청</summary><div class="table-wrap"><table><thead><tr><th scope="col">시각</th><th scope="col">요청</th><th scope="col">HTTP</th></tr></thead><tbody id="request-log"></tbody></table></div></details>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const statuses = { OPEN: '모집 중', PAUSED: '일시중단', CLOSED: '모집 마감', REMOVED: '모집 취소' };
+  const reasons = {
+    RECRUITMENT_PAUSED: '모집 일시중단', RECRUITMENT_CLOSED: '모집 마감', RECRUITMENT_CANCELLED: '모집 취소',
+    SCHEDULE_STATUS_UNAVAILABLE: '일정 상태 확인 필요', TIME_ZONE_UNAVAILABLE: '시간대 확인 필요',
+    SCHEDULE_START_TIME_UNAVAILABLE: '시작 시각 확인 필요', SCHEDULE_STARTED: '시작 시각 경과',
+    CAPACITY_FULL: '정원 충족', ALREADY_CONFIRMED: '이미 확정된 근무', ALREADY_APPLIED: '이미 지원 대기 중',
+    APPLICATION_STATUS_UNAVAILABLE: '지원 상태 확인 필요'
+  };
+  let account = null;
+  let busy = false;
+  let page = 0;
+  let hasNext = false;
+  let listLoaded = false;
+  let detailButtons = [];
+
+  function node(tag, value, className = '') {
+    const item = document.createElement(tag);
+    if (value !== undefined) item.textContent = String(value);
+    if (className) item.className = className;
+    return item;
+  }
+  function notice(message, error = false) {
+    $('notice').textContent = message;
+    $('notice').dataset.error = String(error);
+  }
+  function controls(working) {
+    busy = working;
+    for (const id of ['reload', 'size', 'posting-id', 'open-detail']) $(id).disabled = working;
+    $('previous').disabled = working || !listLoaded || page === 0;
+    $('next').disabled = working || !listLoaded || !hasNext;
+    detailButtons.forEach((button) => { button.disabled = working; });
+  }
+  function clearDetail() {
+    $('detail').hidden = true;
+    $('detail-placeholder').hidden = false;
+    $('detail-title').textContent = '';
+    $('detail-info').replaceChildren();
+    $('description').textContent = '';
+    $('schedules').replaceChildren();
+  }
+  function clearList() {
+    $('job-list').replaceChildren();
+    $('list-empty').hidden = true;
+    $('page-label').textContent = '조회 대기';
+    detailButtons = [];
+    listLoaded = false;
+    hasNext = false;
+  }
+  function clearData() { clearList(); clearDetail(); }
+  function showResult(result) {
+    $('status-code').textContent = String(result.status);
+    $('status-code').dataset.error = String(!result.ok);
+    $('request-name').textContent = `GET ${result.path}`;
+    const body = result.data;
+    $('response-message').textContent = result.ok ? '서버가 조회를 정상 처리했습니다.' :
+      `${body?.code || result.statusText || '조회 실패'}${body?.message ? ' · ' + body.message : ''}${body?.field ? ' · 항목: ' + body.field : ''}`;
+    $('response-body').textContent = result.text || '(응답 본문 없음)';
+  }
+  async function request(path, visible = true) {
+    if (visible) {
+      $('status-code').textContent = '응답 대기';
+      $('status-code').dataset.error = 'false';
+      $('request-name').textContent = `GET ${path}`;
+      $('response-message').textContent = '서버 응답을 기다리고 있습니다.';
+      $('response-body').textContent = '';
+    }
+    let response;
+    let raw;
+    try {
+      // 조회 요청에는 CSRF 토큰이 필요 없다. 동일 출처 세션 쿠키를 브라우저가 전송한다.
+      response = await fetch(path, { credentials: 'same-origin', cache: 'no-store' });
+      raw = await response.text();
+    } catch (error) {
+      if (visible) {
+        $('status-code').textContent = response ? String(response.status) : '응답 없음';
+        $('status-code').dataset.error = 'true';
+        $('response-message').textContent = response ? '응답 본문을 읽지 못했습니다.' : 'HTTP 응답을 받지 못했습니다. 서버 연결을 확인해 주세요.';
+        $('response-body').textContent = response ? '(응답 본문 읽기 실패)' : '(HTTP 응답 없음)';
+      }
+      throw error;
+    }
+    let data = null;
+    if (raw) { try { data = JSON.parse(raw); } catch { /* JSON이 아니어도 응답 원문을 유지한다. */ } }
+    const result = { path, status: response.status, statusText: response.statusText, ok: response.ok, text: raw, data };
+    if (visible) {
+      showResult(result);
+      const row = node('tr');
+      for (const value of [new Date().toLocaleTimeString('ko-KR'), `GET ${path}`, result.status]) row.append(node('td', value));
+      $('request-log').prepend(row);
+      while ($('request-log').children.length > 12) $('request-log').lastElementChild.remove();
+    }
+    return result;
+  }
+  async function readAccount() {
+    const result = await request('/api/auth/me', false);
+    if (!result.ok) {
+      showResult(result);
+      account = null;
+      clearData();
+      $('account').textContent = '로그인이 필요합니다.';
+      notice(`로그인 상태 확인 실패: HTTP ${result.status}. 로그인 화면에서 다시 로그인해 주세요.`, true);
+      return false;
+    }
+    const current = result.data;
+    if (!current || !Number.isSafeInteger(current.id) || !['WORKER', 'EMPLOYER'].includes(current.role)) {
+      throw new Error('로그인 정보 응답 형식을 확인할 수 없습니다.');
+    }
+    if (account && (account.id !== current.id || account.role !== current.role)) clearData();
+    account = current;
+    $('account').textContent = `${current.name} · ${current.role === 'WORKER' ? '근로자' : '고용주'} · 회원 ID ${current.id}`;
+    // 고용주도 실제 목록 요청을 보내 서버의 403 응답을 확인할 수 있게 한다.
+    return true;
+  }
+  function failed(result, operation) {
+    if (result.status === 401 || result.status === 403) clearData();
+    if (result.status === 401) { account = null; $('account').textContent = '로그인이 필요합니다.'; }
+    notice(`${operation} 실패: HTTP ${result.status}. ${result.status === 403 ? '근로자 계정으로 로그인해 주세요.' : '아래 응답의 코드와 메시지를 확인해 주세요.'}`, true);
+  }
+  function codeLabel(name, code) { return `${name ?? '미등록 코드'} (${code ?? '코드 없음'})`; }
+  function localTime(value) { return value == null ? '미입력' : String(value).replace('T', ' '); }
+  function availability(schedule) {
+    const allowed = schedule.canApply === true;
+    const label = allowed ? '지원 가능' : `지원 불가 · ${reasons[schedule.unavailableReason] || schedule.unavailableReason || '조건 확인 필요'}`;
+    const item = node('span', label, 'availability');
+    item.dataset.available = String(allowed);
+    return item;
+  }
+  function info(label, value) {
+    const row = node('div');
+    row.append(node('dt', label), node('dd', value));
+    $('detail-info').append(row);
+  }
+  async function loadList(requestedPage) {
+    clearList();
+    const result = await request(`/api/job-postings?page=${requestedPage}&size=${encodeURIComponent($('size').value)}`);
+    if (!result.ok) { failed(result, '공고 목록 조회'); return false; }
+    const body = result.data;
+    if (!body || !Array.isArray(body.jobPostings) || !Number.isInteger(body.page) || typeof body.hasNext !== 'boolean') {
+      throw new Error('공고 목록 응답 형식을 확인할 수 없습니다.');
+    }
+    page = body.page;
+    hasNext = body.hasNext;
+    listLoaded = true;
+    $('page-label').textContent = `${page + 1}페이지 · ${body.jobPostings.length}개`;
+    $('list-empty').hidden = body.jobPostings.length !== 0;
+    for (const posting of body.jobPostings) {
+      const card = node('article', undefined, 'job-card');
+      card.append(node('h3', `${posting.title} · #${posting.jobPostingId}`), node('p', posting.workLocation),
+        node('p', `${codeLabel(posting.cropName, posting.cropCode)} / ${codeLabel(posting.workTypeName, posting.workTypeCode)}`, 'muted'),
+        node('p', `날짜별 정원 ${posting.headcount}명 · 일급 ${Number(posting.dailyWage).toLocaleString('ko-KR')}원`));
+      const dates = node('ul');
+      for (const schedule of posting.recruitingSchedules || []) {
+        const line = node('li');
+        line.append(node('span', `${schedule.workDate} · 남은 자리 ${schedule.remainingSlots}명 `), availability(schedule));
+        dates.append(line);
+      }
+      card.append(dates);
+      const button = node('button', '상세 보기');
+      button.type = 'button';
+      button.disabled = busy;
+      button.addEventListener('click', () => run(async () => {
+        if (await readAccount()) await loadDetail(String(posting.jobPostingId));
+      }));
+      detailButtons.push(button);
+      card.append(button);
+      $('job-list').append(card);
+    }
+    notice(body.jobPostings.length ? '공고 목록을 조회했습니다. 상세 보기에서 모든 날짜를 확인하세요.' : '조회 성공 · 현재 목록에 표시할 공고가 없습니다.');
+    return true;
+  }
+  async function loadDetail(id) {
+    clearDetail();
+    $('posting-id').value = id;
+    const result = await request(`/api/job-postings/${encodeURIComponent(id)}`);
+    if (!result.ok) { failed(result, '공고 상세 조회'); return; }
+    const posting = result.data;
+    if (!posting || posting.jobPostingId == null || !Array.isArray(posting.schedules)) {
+      throw new Error('공고 상세 응답 형식을 확인할 수 없습니다.');
+    }
+    $('detail-title').textContent = `${posting.title} · #${posting.jobPostingId}`;
+    info('작업지', posting.workLocation);
+    info('작목', codeLabel(posting.cropName, posting.cropCode));
+    info('작업 유형', codeLabel(posting.workTypeName, posting.workTypeCode));
+    info('시간대', posting.timeZone ?? '미설정');
+    info('정원 / 일급', `${posting.headcount}명 / ${Number(posting.dailyWage).toLocaleString('ko-KR')}원`);
+    $('description').textContent = posting.description;
+    let applicable = 0;
+    for (const schedule of posting.schedules) {
+      const row = node('tr');
+      const dateCell = node('td');
+      dateCell.append(node('div', schedule.workDate), node('div', `일정 #${schedule.workScheduleId} · 버전 ${schedule.termsVersion}`, 'muted'));
+      const timeCell = node('td');
+      timeCell.append(node('div', localTime(schedule.plannedStartAt)), node('div', `~ ${localTime(schedule.plannedEndAt)}`));
+      timeCell.append(node('div', schedule.breakStartAt == null && schedule.breakEndAt == null ? '휴게 없음' :
+        `휴게 ${localTime(schedule.breakStartAt)} ~ ${localTime(schedule.breakEndAt)}`, 'muted'));
+      const applyCell = node('td');
+      applyCell.append(availability(schedule));
+      row.append(dateCell, timeCell, node('td', statuses[schedule.status] || schedule.status),
+        node('td', `확정 ${schedule.confirmedCount}명 / 정원 ${posting.headcount}명 · 남은 자리 ${schedule.remainingSlots}명`), applyCell);
+      $('schedules').append(row);
+      if (schedule.canApply === true) applicable++;
+    }
+    $('no-schedules').hidden = posting.schedules.length !== 0;
+    $('availability-summary').textContent = applicable ? `현재 지원 가능한 날짜: ${applicable}개` : '현재 지원 가능한 날짜가 없습니다.';
+    const url = new URL(location.href);
+    url.searchParams.set('jobPostingId', String(posting.jobPostingId));
+    $('detail-link').href = url.pathname + url.search;
+    history.replaceState(null, '', url.pathname + url.search);
+    $('detail').hidden = false;
+    $('detail-placeholder').hidden = true;
+    $('detail-title').focus();
+    notice('공고 상세를 조회했습니다. 날짜별 모집 상태와 지원 불가 사유를 확인하세요.');
+  }
+  async function run(action) {
+    if (busy) return;
+    controls(true);
+    try { await action(); }
+    catch (error) { notice(`조회 결과를 확인할 수 없습니다. ${error.message}`, true); }
+    finally { controls(false); }
+  }
+  $('list-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    run(async () => { if (await readAccount()) await loadList(0); });
+  });
+  $('previous').addEventListener('click', () => run(async () => { if (await readAccount()) await loadList(Math.max(page - 1, 0)); }));
+  $('next').addEventListener('click', () => run(async () => { if (await readAccount()) await loadList(page + 1); }));
+  $('detail-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const id = $('posting-id').value.trim();
+    if (!id) { notice('공고 ID를 입력해 주세요.', true); return; }
+    run(async () => { if (await readAccount()) await loadDetail(id); });
+  });
+  const initialId = new URL(location.href).searchParams.get('jobPostingId');
+  run(async () => {
+    if (!await readAccount()) return;
+    await loadList(0);
+    if (initialId && account?.role === 'WORKER') await loadDetail(initialId);
+  });
+})();
+</script>
+</body>
+</html>

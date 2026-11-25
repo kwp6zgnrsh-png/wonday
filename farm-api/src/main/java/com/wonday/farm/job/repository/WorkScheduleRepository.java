@@ -1,6 +1,7 @@
 package com.wonday.farm.job.repository;
 
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 import java.time.LocalDate;
 
@@ -12,6 +13,52 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface WorkScheduleRepository extends JpaRepository<WorkSchedule, Long> {
+	// 근로자 조회용이다. 잠금을 걸거나 다른 고용주의 비공개 회원 정보를 읽지 않는다.
+	@Query("""
+		select schedule from WorkSchedule schedule
+		join fetch schedule.jobPosting posting
+		where posting.id in :postingIds
+		order by posting.id desc, schedule.workDate, schedule.id
+		""")
+	List<WorkSchedule> findForWorkerPostings(@Param("postingIds") Collection<Long> postingIds);
+
+	@Query(value = """
+		select schedule.id as workScheduleId,
+		       count(distinct case when change_record.id is null or change_record.change_type <> 'CANCELLED'
+		             then assignment.id end) as confirmedCount
+		from work_schedule schedule
+		left join application app on app.work_schedule_id = schedule.id
+		left join work_assignment assignment on assignment.application_id = app.id
+		left join work_change change_record on change_record.assignment_id = assignment.id
+		where schedule.id in (:scheduleIds)
+		group by schedule.id
+		""", nativeQuery = true)
+	List<OccupyingCount> countWorkerScheduleAssignments(@Param("scheduleIds") Collection<Long> scheduleIds);
+
+	// 해당 근로자 자신의 지원만 읽는다. 다른 지원자의 이름·전화번호·식별정보는 조회하지 않는다.
+	@Query(value = """
+		select app.work_schedule_id as workScheduleId, app.status as applicationStatus,
+		       assignment.id as assignmentId, change_record.change_type as changeType
+		from application app
+		left join work_assignment assignment on assignment.application_id = app.id
+		left join work_change change_record on change_record.assignment_id = assignment.id
+		where app.worker_id = :workerId and app.work_schedule_id in (:scheduleIds)
+		""", nativeQuery = true)
+	List<WorkerApplication> findWorkerApplications(@Param("workerId") long workerId,
+		@Param("scheduleIds") Collection<Long> scheduleIds);
+
+	interface OccupyingCount {
+		Long getWorkScheduleId();
+		long getConfirmedCount();
+	}
+
+	interface WorkerApplication {
+		Long getWorkScheduleId();
+		String getApplicationStatus();
+		Long getAssignmentId();
+		String getChangeType();
+	}
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	Optional<WorkSchedule> findByIdAndJobPosting_Id(long id, long jobPostingId);
 
