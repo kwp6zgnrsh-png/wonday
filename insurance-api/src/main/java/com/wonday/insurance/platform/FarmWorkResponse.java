@@ -2,9 +2,11 @@ package com.wonday.insurance.platform;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 final class FarmWorkResponse {
 
@@ -32,6 +34,7 @@ final class FarmWorkResponse {
 		@NotNull OffsetDateTime recordedAt,
 		@NotNull OffsetDateTime updatedAt) {}
 
+	// 이전 API의 좌표 없는 약정도 읽을 수 있도록 좌표에는 NotNull을 적용하지 않는다.
 	record Assignment(
 		@NotNull @Positive Long assignmentId,
 		@NotNull @Positive Long workerId,
@@ -45,5 +48,9 @@ final class FarmWorkResponse {
 		@NotNull OffsetDateTime agreedEndAt,
 		OffsetDateTime agreedBreakStartAt,
 		OffsetDateTime agreedBreakEndAt,
-		@NotNull @Positive Long agreedDailyWage) {}
+		@NotNull @Positive Long agreedDailyWage,
+		@DecimalMin("-90") @DecimalMax("90")
+		@JsonDeserialize(using = CoordinateDeserializer.class) BigDecimal agreedLatitude,
+		@DecimalMin("-180") @DecimalMax("180")
+		@JsonDeserialize(using = CoordinateDeserializer.class) BigDecimal agreedLongitude) {}
 }

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import static com.wonday.insurance.platform.FarmWorkResponse.*;
 
 import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -84,6 +85,7 @@ class WorkChangePollingTests {
 		assertThat(stored.getOccurredAt()).isEqualTo(LocalDateTime.of(2026, 11, 23, 22, 0));
 		assertThat(stored.getSourcePayload()).contains("weatherReasonCode", "recordedAt");
 		assertThat(stored.getWorkSnapshot()).contains("GMT+9", "120000", "agreedWorkDate");
+		assertThat(stored.getWorkSnapshot()).contains("agreedLatitude", "37.123456", "agreedLongitude", "127.654321");
 		assertThat(cursors.findById(123L).orElseThrow().getCursor()).isEqualTo("c2");
 		verify(farm, times(2)).assignment(123, 7001);
 	}
@@ -287,6 +289,6 @@ class WorkChangePollingTests {
 	static Assignment assignment(long id) {
 		return new Assignment(id,123L,TIME.minusDays(3),LocalDate.of(2026,11,24),"GMT+9",
 			"farm","CABBAGE","HARVEST",TIME.plusHours(1),TIME.plusHours(10),
-			TIME.plusHours(5),TIME.plusHours(6),120000L);
+			TIME.plusHours(5),TIME.plusHours(6),120000L, new BigDecimal("37.123456"), new BigDecimal("127.654321"));
 	}
 }

@@ -48,6 +48,8 @@ class FarmWorkClient {
 			|| !work.agreedEndAt().isAfter(work.agreedStartAt())) {
 			throw invalidResponse();
 		}
+		// 둘 다 없으면 이전 약정과의 호환을 위해 허용한다. 한쪽만 있으면 저장·커서 전진을 막는다.
+		if ((work.agreedLatitude() == null) != (work.agreedLongitude() == null)) throw invalidResponse();
 		try {
 			// 신규 약정은 GMT+9를 쓰며 과거 약정도 수신된 시간대를 기준으로 날짜를 검증한다.
 			ZoneId zone = ZoneId.of(work.agreedTimeZone());
