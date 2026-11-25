@@ -38,6 +38,7 @@ public class SecurityConfig {
 					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
 					.requestMatchers(HttpMethod.GET, "/api/job-postings/mine").hasRole("EMPLOYER")
 					.requestMatchers(HttpMethod.PUT, "/api/job-postings/*/schedules/*").hasRole("EMPLOYER")
+					.requestMatchers(HttpMethod.POST, "/api/job-postings/*/schedules/*/cancel").hasRole("EMPLOYER")
 					.anyRequest().denyAll();
 			})
 			// 인증이 필요한 API를 세션 없이 호출하면 401을 반환한다.
@@ -59,6 +60,11 @@ public class SecurityConfig {
 						response.setStatus(HttpStatus.FORBIDDEN.value());
 						response.setContentType("application/json;charset=UTF-8");
 						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 일정을 수정할 수 있습니다.\"}");
+					} else if (request.getServletPath().matches("/api/job-postings/[^/]+/schedules/[^/]+/cancel")
+							&& request.getMethod().equals("POST") && !(exception instanceof CsrfException)) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 날짜 모집을 취소할 수 있습니다.\"}");
 					} else {
 						new AccessDeniedHandlerImpl().handle(request, response, exception);
 					}
