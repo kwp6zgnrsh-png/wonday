@@ -1121,3 +1121,71 @@ dd {
     font-size: 10px;
   }
 }
+
+/* Keep form semantics while styling the opened picker as part of the app. */
+@supports (appearance: base-select) {
+  select:not([multiple]):not([size]),
+  select:not([multiple]):not([size])::picker(select) {
+    appearance: base-select;
+  }
+  select:not([multiple]):not([size]) {
+    --select-tone: var(--farm-green, #176a9b);
+    --select-tint: var(--farm-mint, #eaf4fb);
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+  select:not([multiple]):not([size]):open {
+    border-color: var(--select-tone);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--select-tone) 12%, transparent);
+  }
+  select:not([multiple]):not([size])::picker-icon {
+    color: var(--select-tone);
+    font-size: 12px;
+    transition: rotate .16s ease;
+  }
+  select:not([multiple]):not([size]):open::picker-icon { rotate: 180deg; }
+  select:not([multiple]):not([size])::picker(select) {
+    min-width: anchor-size(width);
+    max-width: calc(100vw - 32px);
+    max-height: min(300px, 45dvh);
+    margin-block: 6px;
+    padding: 6px;
+    border: 1px solid var(--farm-line, #d6e5ed);
+    border-radius: 14px;
+    background: #fff;
+    color: var(--farm-ink, #203b4a);
+    box-shadow: 0 10px 28px #183c2824;
+    font: inherit;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--farm-green, #176a9b) transparent;
+  }
+  select:not([multiple]):not([size]) option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 9px 12px;
+    border-radius: 9px;
+    background: #fff;
+    color: var(--farm-ink, #203b4a);
+    font: inherit;
+    white-space: normal;
+    cursor: pointer;
+  }
+  select:not([multiple]):not([size]) option:hover,
+  select:not([multiple]):not([size]) option:focus-visible {
+    background: var(--farm-mint, #eaf4fb);
+    outline: 2px solid var(--farm-green, #176a9b);
+    outline-offset: -2px;
+  }
+  select:not([multiple]):not([size]) option:checked {
+    background: var(--farm-green, #176a9b);
+    color: #fff;
+    font-weight: 600;
+  }
+  select:not([multiple]):not([size]) option::checkmark { color: inherit; }
+  select:not([multiple]):not([size]) option:disabled { opacity: .45; cursor: default; }
+  select:not([multiple]):not([size]):disabled { cursor: default; }
+}

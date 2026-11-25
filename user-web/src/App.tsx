@@ -394,10 +394,24 @@ id: "AS-DEMO-5",
   const [pendingJoin, setPendingJoin] = useState(false);
   const isEnrolling = app === "insurance" && step >= 0;
   const isClaimGuide = app === "insurance" && tab === "보험금 청구" && claimView === "guide";
+  const [insuranceLaunching, setInsuranceLaunching] = useState(false);
+  const insuranceLaunchTimer = useRef<number | undefined>(undefined);
   const toastTimer = useRef<number | undefined>(undefined);
   const farmDatesRef = useRef<HTMLElement>(null);
   const farmScreenHistory = useRef<FarmScreenState[]>([]);
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  useEffect(() => () => {
+    window.clearTimeout(toastTimer.current);
+    window.clearTimeout(insuranceLaunchTimer.current);
+  }, []);
+  function launchInsurance() {
+    if (insuranceLaunching) return;
+    setModal("");
+    setInsuranceLaunching(true);
+    insuranceLaunchTimer.current = window.setTimeout(() => {
+      open("insurance");
+      setInsuranceLaunching(false);
+    }, 1000);
+  }
   function startEnrollment() {
     setEnrollmentComplete(false);
     setPendingJoin(false);
@@ -530,7 +544,7 @@ id: "AS-DEMO-5",
         : !farmLogin ? "근로자 또는 고용주를 선택하고 로그인하세요."
         : work ? "근무 일정과 작업 장소, 진행 상태를 확인하세요."
         : detail ? isEmployer ? "공고의 근무 일정과 지원자를 확인하세요." : "일급과 작업 조건을 확인하고 가능한 날짜에 지원하세요."
-        : tab === "홈" ? isEmployer ? "공고를 등록하고 모집 현황을 확인하세요." : "모집 중인 일자리를 둘러보고 지원 현황과 찜한 공고를 확인하세요."
+        : tab === "홈" ? isEmployer ? "공고를 등록하고 모집 현황을 확인하세요." : "모집 중인 일자리와 지원 현황을 확인하세요. 지역별 일자리는 목록이나 지도에서 선택할 수 있어요. 지도는 끌어서 이동하고, Ctrl 또는 Shift + 휠로 확대·축소하세요."
         : farmScreenDescriptions[guideTitle] ?? "계정과 서비스 설정을 확인하세요."
       : showConnection && isEnrolling ? "플랫폼 계정을 연결하고 가입에 필요한 정보를 확인하세요."
         : isEnrolling ? enrollmentSteps[step].stageIndex === 3 ? "결제 방법을 선택하고 모의 결제로 가입을 마치세요." : "이 단계의 정보를 확인하고 다음 단계로 진행하세요."
@@ -617,7 +631,8 @@ id: "AS-DEMO-5",
   }
 
   function farmJobCard(job: Job) {
-    return <FarmJobCard key={job.id} job={job} openDays={countOpenDays(job)} onOpen={() => openFarmJob(job)} />;
+    return <FarmJobCard key={job.id} job={job} openDays={countOpenDays(job)} onOpen={() => openFarmJob(job)}
+      favorite={farmFavorites.includes(job.id)} onFavoriteChange={isEmployer ? undefined : () => toggleFarmFavorite(job)} />;
   }
 
   function farmWorkCard(entry: Work) {
@@ -703,14 +718,12 @@ id: "AS-DEMO-5",
     app === "farm"
       ? role === "고용주"
         ? ["내 공고", "공고 등록", "홈", "알림", "MY"]
-        : ["일자리", "맞춤", "홈", "내 근무", "MY"]
+        : ["일자리", "WONDAY", "홈", "내 근무", "MY"]
       : ["상품", "보험금 청구", "홈", "보험료 납입", "MY"];
   const insuranceTabIcons = ["products", "claim", "home", "payment", "profile"] as const;
   const farmTabIcons = isEmployer ? ["products", "plus", "home", "bell", "profile"] as const
     : ["products", "grid", "home", "calendar", "profile"] as const;
-  const isTabActive = (label: string) => app === "farm" && label === "맞춤"
-    ? tab === "일자리" && farmBrowseMode === "맞춤 일자리"
-    : app === "farm" && label === "일자리" ? tab === "일자리" && farmBrowseMode !== "맞춤 일자리"
+  const isTabActive = (label: string) => app === "farm" && label === "일자리" ? tab === "일자리"
     : app === "farm" && label === "MY" ? tab === "마이페이지" : tab === label;
   const inProgressClaims = claims.filter((claim) => !["지급 완료", "미지급"].includes(claim.status));
   const visibleClaims = filter === "전체" ? claims
@@ -872,10 +885,26 @@ id: "AS-DEMO-5",
         </footer>
       </aside>
       <main className={"phone " + (app === "home" ? "launcher" : isEnrolling ? "enrolling" : "") + (largeText ? app === "insurance" ? " insurance-large-text" : app === "farm" ? " farm-large-text" : "" : "")}>
-        <div className="status-bar">
-          <b>9:41</b>
-          <span className="island" />
-          <span>▮▮▮ ◒ ▰</span>
+        <div className="status-bar" role="group" aria-label="기기 상태 미리보기">
+          <b className="status-time">9:41</b>
+          <span className="island" aria-hidden="true" />
+          <span className="status-indicators" role="img" aria-label="신호 양호, Wi-Fi 연결, 배터리 80%">
+            <svg className="status-signal" viewBox="0 0 20 14" fill="currentColor" aria-hidden="true">
+              <rect x="0" y="9" width="3.5" height="5" rx=".8" />
+              <rect x="5.5" y="6" width="3.5" height="8" rx=".8" />
+              <rect x="11" y="3" width="3.5" height="11" rx=".8" />
+              <rect x="16.5" width="3.5" height="14" rx=".8" />
+            </svg>
+            <svg className="status-wifi" viewBox="0 0 18 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M1.5 4a11.1 11.1 0 0 1 15 0M4.5 7.2a6.6 6.6 0 0 1 9 0M7.4 10.2a2.4 2.4 0 0 1 3.2 0" />
+              <circle cx="9" cy="12.5" r=".8" fill="currentColor" stroke="none" />
+            </svg>
+            <svg className="status-battery" viewBox="0 0 28 14" fill="currentColor" aria-hidden="true">
+              <rect x=".6" y="1" width="23.5" height="12" rx="3" fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth="1.2" />
+              <rect x="2.5" y="3" width="16" height="8" rx="1.4" />
+              <path d="M25.6 4.5c2.4.4 2.4 4.6 0 5Z" opacity=".5" />
+            </svg>
+          </span>
         </div>
         {app === "home" ? (
           <>
@@ -982,6 +1011,7 @@ id: "AS-DEMO-5",
                 </button>}
               </div>
               {app === "farm" && (tab !== "홈" || !!detail || !!work || !farmLogin || platformVisit) && <button type="button" className="farm-header-back" aria-label="뒤로 가기" onClick={goFarmBack}><FarmIcon name="back" /><span>뒤로</span></button>}
+              {app === "farm" && farmLogin && !platformVisit && tab === "마이페이지" && !detail && !work && <h2 className="farm-header-page-title" id="farm-profile-title">마이페이지</h2>}
             </header>
             )}
             <div
@@ -1012,12 +1042,23 @@ id: "AS-DEMO-5",
                   <>
                     {work ? (
                       <>
-                        <Badge>{work.status}{work.demo ? " · 체험" : ""}</Badge>
-                        <h2>
-                          {day(work.date)}
-                          <br />
-                          {work.job.title}
-                        </h2>
+                        {work.reason && (
+                          <Card tone="farm-work-change-reason">
+                            <h3>{work.cancelledBy === "근로자" ? "본인이 기록한 취소" : "고용주가 기록한 변경"}</h3>
+                            <p>
+                              {work.category} · {work.reason}
+                            </p>
+                            <p>{work.at?.replace("T", " ")} (KST)</p>
+                          </Card>
+                        )}
+                        <div className="farm-work-heading">
+                          <Badge>{work.status}{work.demo ? " · 체험" : ""}</Badge>
+                          <h2>
+                            {day(work.date)}
+                            <br />
+                            {work.job.title}
+                          </h2>
+                        </div>
                         <Card>
                           <h3>{work.status === "지원 중" || work.status === "지원 취소" ? "지원한 근무 조건" : "확정 당시 근무 조건"}</h3>
                           <dl>
@@ -1039,15 +1080,6 @@ id: "AS-DEMO-5",
                         </Card>
                         <FarmWorkplaceMap address={work.job.place} registeredPin={work.job.workplacePin} />
                         <WorkplaceWeather address={work.job.place} />
-                        {work.reason && (
-                          <Card>
-                            <h3>{work.cancelledBy === "근로자" ? "본인이 기록한 취소" : "고용주가 기록한 변경"}</h3>
-                            <p>
-                              {work.category} · {work.reason}
-                            </p>
-                            <p>{work.at?.replace("T", " ")} (KST)</p>
-                          </Card>
-                        )}
                         {!isEmployer && work.worker === "김하루" && ["지원 중", "근무 확정"].includes(work.status) && (
                           <div className="farm-work-detail-actions">
                             <button type="button" className="farm-cancel-action" disabled={!!workerCancellationBlockedReason(work)}
@@ -1072,7 +1104,7 @@ id: "AS-DEMO-5",
                           </>
                         ) : (
                           <button
-                            className="primary"
+                            className="primary farm-compensation-button"
                             onClick={() => {
                               const claim = claims.find((c) => c.work.id === work.id);
                               open("insurance");
@@ -1087,7 +1119,7 @@ id: "AS-DEMO-5",
                               }
                             }}
                           >
-                            보험 앱에서 확인하기 ↗
+                            WONDAY 보험에서 보상 확인하기 ↗
                           </button>
                         )}
                       </>
@@ -1276,7 +1308,7 @@ id: "AS-DEMO-5",
                     ) : (
                       <>
                         {tab === "홈" && (
-                          <FarmHome employer={isEmployer}
+                          <FarmHome employer={isEmployer} favoriteIds={farmFavorites} onToggleFavorite={isEmployer ? undefined : toggleFarmFavorite}
                             jobs={openFarmJobs}
                             preferences={farmPreferences} availableDates={availableFarmDates}
                             onSettings={() => openFarmProfile("맞춤 설정")} onOpen={openFarmJob}
@@ -1287,7 +1319,7 @@ id: "AS-DEMO-5",
                             onProfile={() => openFarmProfile()} onBookmarks={() => openFarmProfile("찜한 일자리")} />
                         )}
                         {["일자리", "내 공고"].includes(tab) && (
-                          <FarmJobList employer={isEmployer} jobs={listedJobs}
+                          <FarmJobList employer={isEmployer} jobs={listedJobs} favoriteIds={farmFavorites} onToggleFavorite={isEmployer ? undefined : toggleFarmFavorite}
                             mode={farmBrowseMode} onModeChange={openFarmList} filters={farmFilters}
                             onFilterChange={setFarmFilters} preferences={farmPreferences}
                             searchFilters={farmSearchFilters} onSearchFilterChange={setFarmSearchFilters}
@@ -1476,7 +1508,6 @@ id: "AS-DEMO-5",
                         )}
                         {tab === "내 근무" && (
                           <>
-                            <p className="eyebrow">MY WORKING DAYS</p>
                             <h2>차곡차곡, 나의 하루</h2>
                             <FarmWorkPeriodFilter period={myWorkPeriod} range={myWorkRange} direction={myWorkPeriodDirection}
                               onDirectionChange={setMyWorkPeriodDirection}
@@ -1906,15 +1937,22 @@ id: "AS-DEMO-5",
                   key={t}
                   className={[isTabActive(t) ? "active" : "", app === "farm" && t === "홈" ? "farm-home-nav-button" : ""].filter(Boolean).join(" ")}
                   aria-current={isTabActive(t) ? "page" : undefined}
-                  onClick={() => {
-                    if (app === "farm" && t === "맞춤") openFarmList("맞춤 일자리");
+                  onClick={(event) => {
+                    if (app === "farm" && t === "홈" && tab === "홈" && !detail && !work && !platformVisit) {
+                      event.currentTarget.closest(".phone")?.querySelector<HTMLElement>(".farm-screen")?.scrollTo({
+                        top: 0,
+                        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+                      });
+                    }
+                    else if (app === "farm" && t === "WONDAY") setModal("보험 앱으로 이동할까요?");
                     else if (app === "farm" && t === "MY") openFarmProfile();
                     else if (app === "farm" && t === "알림") setModal("알림");
                     else nav(t);
                   }}
                 >
                   <span aria-hidden="true">
-                    {app === "insurance" ? <InsuranceIcon name={insuranceTabIcons[i]} /> :
+                    {app === "farm" && t === "WONDAY" ? <FarmIcon name="shield" /> :
+                      app === "insurance" ? <InsuranceIcon name={insuranceTabIcons[i]} /> :
                       farmTabIcons[i] === "plus" ? <FarmIcon name="plus" /> :
                       farmTabIcons[i] === "calendar" ? <FarmIcon name="calendar" /> :
                       farmTabIcons[i] === "grid" ? <FarmIcon name="grid" /> :
@@ -1927,6 +1965,10 @@ id: "AS-DEMO-5",
             </>)}
           </>
         )}
+        {insuranceLaunching && <div className="insurance-launch-splash" role="status" aria-live="polite">
+          <img src={wooriSymbol} width={64} height={64} alt="우리금융그룹 로고" />
+          <strong className="insurer-wordmark">우리손해보험</strong>
+        </div>}
         <div className="home-indicator" />
         {toast && (
           <div className="toast" role="status">
@@ -1951,7 +1993,13 @@ id: "AS-DEMO-5",
                 ×
               </button>
               <h2 onClick={modal === "지원 완료" ? () => setModal("") : undefined}>{modal === "취소 확인" && cancellationTarget ? cancellationTarget.status === "지원 중" ? "지원을 취소할까요?" : "근무를 취소할까요?" : modal}</h2>
-              {modal === "지원 완료" ? (
+              {modal === "보험 앱으로 이동할까요?" ? <div className="insurance-launch-confirm">
+                <p>우리손해보험에서 보험과 보상 정보를 확인할 수 있어요.</p>
+                <div>
+                  <button type="button" className="secondary" autoFocus onClick={() => setModal("")}>취소</button>
+                  <button type="button" className="primary" onClick={launchInsurance}>이동하기</button>
+                </div>
+              </div> : modal === "지원 완료" ? (
                 <FarmApplicationBanner onInsurance={() => { setModal(""); setApp("insurance"); nav("상품"); }} onDismiss={() => {
                   setModal("");
                   setApp("farm");

@@ -1,9 +1,10 @@
+import FarmFavoriteButton from "./FarmFavoriteButton";
 import { useState } from "react";
 import FarmCursorList from "./FarmCursorList";
 import type { FarmJob } from "./FarmDiscovery";
 import FarmIcon from "./FarmIcon";
 import FarmLocationDisclosure from "./FarmLocationDisclosure";
-import { FarmFilterFields } from "./FarmSearchControls";
+import FarmRegionMap from "./FarmRegionMap";
 import { emptyFarmFilters, hasFarmFilters, searchFarmJobs } from "./farmSearch";
 import type { FarmFilters } from "./farmSearch";
 import { calendarJobHeat, shiftWorkMonth, workCalendarCells } from "./farmJobCalendar";
@@ -12,8 +13,10 @@ const categories = ["전체 일자리", "맞춤 일자리", "지역별 일자리
 const dateLabel = (value: string) => value.slice(5).replace("-", ".");
 const won = new Intl.NumberFormat("ko-KR");
 
-export default function FarmHomeJobs({ jobs, preferences, availableDates, onSettings, onOpen }: {
+export default function FarmHomeJobs({ jobs, preferences, availableDates, onSettings, onOpen, favoriteIds = [], onToggleFavorite }: {
   jobs: FarmJob[];
+  favoriteIds?: readonly number[];
+  onToggleFavorite?: (job: FarmJob) => void;
   preferences: FarmFilters;
   availableDates: (job: FarmJob) => string[];
   onSettings: () => void;
@@ -53,9 +56,8 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
             <FarmIcon name={item === "목록형" ? "clipboard" : "calendar"} />{item}
           </button>)}
         </div>
-        {category === "지역별 일자리" && <FarmFilterFields fields={["region"]}
-          filters={{ ...emptyFarmFilters, region }} jobs={jobs} onChange={(value) => {
-            setRegion(value.region); setSelectedDate("");
+        {category === "지역별 일자리" && <FarmRegionMap jobs={jobs} selected={region} onChoose={(value) => {
+            setRegion(value); setSelectedDate("");
           }} />}
         {category === "맞춤 일자리" && !needsPreferences && <div className="farm-home-match-note">
           <span>{Object.values(preferences).filter(Boolean).join(" · ")}</span>
@@ -110,7 +112,10 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
               <span className="farm-home-job-facts"><span>근무시간</span><span>{job.start}–{job.end} · 하루 {job.count}명</span></span>
               <span className="farm-home-job-wage">일급 <strong>{won.format(job.wage)}원</strong></span>
               </button>
-              <FarmLocationDisclosure job={job} />
+              <div className="farm-job-list-actions">
+                <FarmLocationDisclosure job={job} />
+                {onToggleFavorite && <FarmFavoriteButton title={job.title} selected={favoriteIds.includes(job.id)} onClick={() => onToggleFavorite(job)} />}
+              </div>
             </article>;
           }} />
         </div>

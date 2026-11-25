@@ -117,7 +117,7 @@ export const browseModes = ["일자리 상세검색", "맞춤 일자리", "지�
 export type FarmBrowseMode = (typeof browseModes)[number];
 export const profileJobTabs = ["지원한 일자리", "제안받은 일자리", "찜한 일자리", "맞춤 일자리"] as const;
 export type FarmProfilePage = (typeof profileJobTabs)[number] | "맞춤 설정" | "이력서·경력";
-export type FarmResume = { summary: string; experience: string };
+export type FarmResume = { summary: string; experience: string; vehicleOwnership?: "예" | "아니오" };
 
 function clean(value: string = "") {
   return value.normalize("NFKC").trim().replace(/\s+/g, " ");

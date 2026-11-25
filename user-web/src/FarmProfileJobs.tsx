@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { FarmFilterFields } from "./FarmSearchControls";
-import { emptyFarmFilters, hasFarmFilters, profileJobTabs } from "./farmSearch";
+import { emptyFarmFilters, hasFarmFilters } from "./farmSearch";
 import type { FarmFilters, FarmProfilePage, FarmResume } from "./farmSearch";
 import type { FarmJob } from "./FarmDiscovery";
 
@@ -19,14 +19,18 @@ export default function FarmProfileJobs({ page, onPageChange, applied, saved, ma
   onBrowse: () => void;
 }) {
   const [draft, setDraft] = useState(preferences);
+  const settingsForm = useRef<HTMLFormElement>(null);
+  useLayoutEffect(() => {
+    const form = settingsForm.current;
+    const screen = form?.closest<HTMLElement>(".farm-screen");
+    if (!form || !screen) return;
+    const formBounds = form.getBoundingClientRect();
+    const screenBounds = screen.getBoundingClientRect();
+    const inset = Math.max(12, (screen.clientHeight - formBounds.height) / 2);
+    screen.scrollTo({ top: screen.scrollTop + formBounds.top - screenBounds.top - inset, behavior: "instant" });
+  }, [page]);
   return (
-    <section className="farm-profile-section farm-profile-jobs" aria-labelledby="farm-profile-work">
-      <h3 id="farm-profile-work">일자리 관리</h3>
-      <div className="farm-segmented farm-profile-tabs" role="group" aria-label="마이페이지 일자리 메뉴">
-        {profileJobTabs.map((item) => (
-          <button key={item} type="button" aria-pressed={page === item} onClick={() => onPageChange(item)}>{item}</button>
-        ))}
-      </div>
+    <section className="farm-profile-section farm-profile-jobs" aria-label="내 일자리와 프로필 설정">
       <div className="farm-profile-tools">
         <button type="button" aria-pressed={page === "맞춤 설정"} onClick={() => { setDraft(preferences); onPageChange("맞춤 설정"); }}>맞춤 설정</button>
         <button type="button" aria-pressed={page === "이력서·경력"} onClick={() => onPageChange("이력서·경력")}>이력서·경력</button>
@@ -46,8 +50,7 @@ export default function FarmProfileJobs({ page, onPageChange, applied, saved, ma
         </div>
       ))}
       {page === "맞춤 설정" && (
-        <form className="farm-profile-form" onSubmit={(event) => { event.preventDefault(); onSavePreferences(draft); }}>
-          <h3>맞춤 설정</h3>
+        <form ref={settingsForm} aria-label="맞춤 설정" className="farm-profile-form" onSubmit={(event) => { event.preventDefault(); onSavePreferences(draft); }}>
           <FarmFilterFields fields={["region", "group", "crop", "experience", "type"]} filters={draft} jobs={jobs} onChange={setDraft} />
           <div className="farm-filter-actions">
             <button type="button" className="secondary" onClick={() => setDraft(emptyFarmFilters)}>조건 초기화</button>
@@ -56,17 +59,26 @@ export default function FarmProfileJobs({ page, onPageChange, applied, saved, ma
         </form>
       )}
       {page === "이력서·경력" && (
-        <form className="farm-profile-form" onSubmit={(event) => {
+        <form ref={settingsForm} aria-label="이력서·경력" className="farm-profile-form" onSubmit={(event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
           onSaveResume({
             summary: String(form.get("summary") ?? "").trim(),
             experience: String(form.get("experience") ?? "").trim(),
+            vehicleOwnership: form.get("vehicleOwnership") === "예" ? "예" : "아니오",
           });
         }}>
-          <h3>이력서·경력</h3>
           <label>자기소개 <textarea name="summary" defaultValue={resume.summary} maxLength={800} /></label>
           <label>농작업 경험 <textarea name="experience" defaultValue={resume.experience} maxLength={800} /></label>
+          <fieldset className="farm-vehicle-ownership">
+            <legend>차량 소유 여부</legend>
+            <div>
+              {["예", "아니오"].map((value) => <label key={value}>
+                <input type="radio" name="vehicleOwnership" value={value} required defaultChecked={resume.vehicleOwnership === value} />
+                {value}
+              </label>)}
+            </div>
+          </fieldset>
           <button type="submit" className="primary">이력서 저장</button>
         </form>
       )}
