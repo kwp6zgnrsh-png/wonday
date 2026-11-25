@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -65,6 +68,7 @@ class ClaimIntakeTests {
 	@Autowired PasswordEncoder passwords;
 	@Autowired FarmStub farm;
 	@Autowired ApplicationContext context;
+	@Autowired DataSource dataSource;
 	@MockitoBean Clock clock;
 	@MockitoSpyBean ClaimHistoryRepository history;
 	private Account owner;
@@ -152,11 +156,37 @@ class ClaimIntakeTests {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"2026-11-23T23:59:59+09:00", "2026-11-24T08:00:00+09:00",
-		"2026-11-24T08:00:00.000001+09:00"})
-	void excludesPreviousLocalDayAndCancellationAtOrAfterStart(String time) {
+	@ValueSource(strings = {"2026-11-23T00:00:00+09:00", "2026-11-23T23:59:59.999999+09:00",
+		"2026-11-24T00:00:00+09:00", "2026-11-24T07:59:59.999999+09:00", "2026-11-22T15:00:00Z"})
+	void receivesCancellationsFromPreviousLocalMidnightUntilStart(String time) {
 		long eventId = event(9001, "1", 7001, OffsetDateTime.parse(time), snapshot(7001, START), "CANCELLED", "WEATHER");
-		assertThat(intake.process(eventId)).isEqualTo("NOT_SAME_DAY_BEFORE_START");
+		assertThat(intake.process(eventId)).isEqualTo("RECEIVED");
+		assertThat(claims.count()).isEqualTo(1);
+		assertThat(history.count()).isEqualTo(1);
+		assertThat(result(eventId)).isEqualTo("RECEIVED");
+		assertThat(source.pendingIds()).isEmpty();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"2026-11-22T23:59:59.999999+09:00", "2026-11-24T08:00:00+09:00",
+		"2026-11-24T08:00:00.000001+09:00"})
+	void excludesBeforePreviousLocalMidnightAndCancellationAtOrAfterStart(String time) {
+		long eventId = event(9001, "1", 7001, OffsetDateTime.parse(time), snapshot(7001, START), "CANCELLED", "WEATHER");
+		assertThat(intake.process(eventId)).isEqualTo("OUTSIDE_CANCELLATION_WINDOW");
+		assertThat(claims.count()).isZero();
+		assertThat(history.count()).isZero();
+		assertThat(source.pendingIds()).isEmpty();
+	}
+
+	@Test
+	void previousDayCancellationStillRequiresCoverageAtOccurrence() {
+		tx(() -> {
+			field(entities.find(type("contract.InsuranceContract"), contractId), "coverageFrom",
+				utc(START.withHour(0)));
+			return null;
+		});
+		long eventId = event(9001, "1", 7001, START.minusDays(1), snapshot(7001, START), "CANCELLED", "WEATHER");
+		assertThat(intake.process(eventId)).isEqualTo("NO_COVERED_CONTRACT");
 		assertThat(claims.count()).isZero();
 	}
 
@@ -198,17 +228,21 @@ class ClaimIntakeTests {
 		assertThat(claims.count()).isZero();
 	}
 
-	@Test
-	void usesWorkLocationTimeZone() {
+	@ParameterizedTest
+	@CsvSource({"2026-11-24T07:00:00-08:00,RECEIVED", "2026-11-23T08:00:00Z,RECEIVED",
+		"2026-11-23T07:59:59.999999Z,OUTSIDE_CANCELLATION_WINDOW"})
+	void usesOriginalWorkLocationTimeZoneForExistingAgreements(String occurred, String expected) {
 		OffsetDateTime start = OffsetDateTime.parse("2026-11-24T08:00:00-08:00");
 		ObjectNode work = snapshot(7001, start).put("agreedTimeZone", "America/Los_Angeles");
-		long eventId = event(9001, "1", 7001, start.minusHours(1), work, "CANCELLED", "WEATHER");
-		assertThat(intake.process(eventId)).isEqualTo("RECEIVED");
+		long eventId = event(9001, "1", 7001, OffsetDateTime.parse(occurred), work, "CANCELLED", "WEATHER");
+		assertThat(intake.process(eventId)).isEqualTo(expected);
 	}
 
-	@Test
-	void repeatedEventAndNewVersionKeepOriginalIntakeEvidenceAndFinalStatus() {
-		long first = event(9001, "1", 7001, CANCELLED, snapshot(7001, START), "CANCELLED", "WEATHER");
+	@ParameterizedTest
+	@ValueSource(strings = {"2026-11-24T07:00:00+09:00", "2026-11-23T00:00:00+09:00"})
+	void repeatedEventAndNewVersionKeepOriginalIntakeEvidenceAndFinalStatus(String time) {
+		OffsetDateTime occurred = OffsetDateTime.parse(time);
+		long first = event(9001, "1", 7001, occurred, snapshot(7001, START), "CANCELLED", "WEATHER");
 		intake.process(first);
 		assertThat(intake.process(first)).isEqualTo("ALREADY_PROCESSED");
 		ClaimCase original = claims.findAll().getFirst();
@@ -216,7 +250,7 @@ class ClaimIntakeTests {
 			field(claims.findById(original.getId()).orElseThrow(), "status", "PAID");
 			return null;
 		});
-		long revised = event(9001, "2", 7001, CANCELLED, snapshot(7001, START), "CANCELLED", "WEATHER");
+		long revised = event(9001, "2", 7001, occurred, snapshot(7001, START), "CANCELLED", "WEATHER");
 		assertThat(intake.process(revised)).isEqualTo("ALREADY_RECEIVED");
 		assertThat(claims.count()).isEqualTo(1);
 		assertThat(history.count()).isEqualTo(1);
@@ -282,9 +316,10 @@ class ClaimIntakeTests {
 		assertThat(claims.count()).isZero();
 	}
 
-	@Test
-	void historyFailureRollsBackClaimAndProcessingProgressThenRetries() {
-		long eventId = event(9001, "1", 7001, CANCELLED, snapshot(7001, START), "CANCELLED", "WEATHER");
+	@ParameterizedTest
+	@ValueSource(strings = {"2026-11-24T07:00:00+09:00", "2026-11-23T00:00:00+09:00"})
+	void historyFailureRollsBackClaimAndProcessingProgressThenRetries(String time) {
+		long eventId = event(9001, "1", 7001, OffsetDateTime.parse(time), snapshot(7001, START), "CANCELLED", "WEATHER");
 		doThrow(new IllegalStateException("temporary storage failure")).when(history).saveAndFlush(any());
 		scheduler.run();
 		assertThat(claims.count()).isZero();
@@ -297,6 +332,52 @@ class ClaimIntakeTests {
 		assertThat(claims.count()).isEqualTo(1);
 		assertThat(history.count()).isEqualTo(1);
 		assertThat(result(eventId)).isEqualTo("RECEIVED");
+	}
+
+	@Test
+	void migrationRequeuesOldTimeExclusionsAndPreservesCursorAndPaidClaim() {
+		long previousDay = event(9001, "1", 7001, START.minusDays(1), snapshot(7001, START), "CANCELLED", "WEATHER");
+		long tooEarly = event(9002, "1", 7002, START.minusDays(2), snapshot(7002, START), "CANCELLED", "WEATHER");
+		long alreadyReceived = event(9003, "1", 7003, CANCELLED, snapshot(7003, START), "CANCELLED", "WEATHER");
+		long nonWeather = event(9004, "1", 7004, CANCELLED, snapshot(7004, START), "CANCELLED", "FARM_CIRCUMSTANCES");
+		intake.process(alreadyReceived);
+		intake.process(nonWeather);
+		long paidClaimId = claims.findAll().getFirst().getId();
+		tx(() -> {
+			for (long eventId : List.of(previousDay, tooEarly)) {
+				Object stored = entities.find(type("platform.PlatformWorkEvent"), eventId);
+				field(stored, "intakeResult", "NOT_SAME_DAY_BEFORE_START");
+				field(stored, "intakeProcessedAt", LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
+			}
+			field(claims.findById(paidClaimId).orElseThrow(), "status", "PAID");
+			Object cursor = entity("platform.PlatformWorkCursor");
+			field(cursor, "workerId", 77L);
+			field(cursor, "cursor", "saved-cursor");
+			field(cursor, "updatedAt", LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
+			entities.persist(cursor);
+			return null;
+		});
+
+		// V5 당시의 제외 기록을 재현하고, 배포할 V6 SQL 자체를 실제 MySQL에서 검증한다.
+		var migration = new ResourceDatabasePopulator(new ClassPathResource(
+			"db/migration/V6__requeue_events_excluded_by_same_day_rule.sql"));
+		migration.execute(dataSource);
+		assertThat(source.pendingIds()).containsExactly(previousDay, tooEarly);
+		assertThat(result(previousDay)).isNull();
+		assertThat(result(tooEarly)).isNull();
+		assertThat(result(alreadyReceived)).isEqualTo("RECEIVED");
+		assertThat(result(nonWeather)).isEqualTo("NON_WEATHER_REASON");
+
+		scheduler.run();
+		assertThat(result(previousDay)).isEqualTo("RECEIVED");
+		assertThat(result(tooEarly)).isEqualTo("OUTSIDE_CANCELLATION_WINDOW");
+		assertThat(claims.count()).isEqualTo(2);
+		assertThat(history.count()).isEqualTo(2);
+		assertThat(claims.findById(paidClaimId).orElseThrow().getStatus()).isEqualTo("PAID");
+		assertThat(tx(() -> entities.createQuery("select c.cursor from PlatformWorkCursor c where c.workerId = 77", String.class)
+			.getSingleResult())).isEqualTo("saved-cursor");
+		migration.execute(dataSource);
+		assertThat(source.pendingIds()).isEmpty();
 	}
 
 	@Test

@@ -34,12 +34,12 @@ class ClaimIntakeService {
 		if (!"WEATHER".equals(event.reasonCode())) return finish(eventId, "NON_WEATHER_REASON");
 
 		PlatformClaimEvents.Work work = events.verifiedWork(event);
-		// '당일'은 약정 작업지의 현지 날짜로 판단한다. 신규 업무 시간대 표기는 GMT+9를 사용한다.
-		// 시작 전 여부는 양쪽 모두 UTC로 비교하므로 오프셋이나 서버 기본 시간대에 영향을 받지 않는다.
-		boolean sameDay = event.occurredAt().atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.of(work.timeZone()))
-			.toLocalDate().equals(work.workDate());
-		if (!sameDay || !event.occurredAt().isBefore(work.startAt())) {
-			return finish(eventId, "NOT_SAME_DAY_BEFORE_START");
+		// 전날 00:00부터 시작 직전까지 허용한다. '직전 24시간'이 아닌 약정 작업지의 달력 날짜 기준이다.
+		// 신규 약정은 GMT+9를 사용하며, 비교할 때는 전날 자정과 사건·근무 시작 시각을 모두 UTC로 맞춘다.
+		LocalDateTime earliestCancellation = work.workDate().minusDays(1).atStartOfDay(ZoneId.of(work.timeZone()))
+			.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+		if (event.occurredAt().isBefore(earliestCancellation) || !event.occurredAt().isBefore(work.startAt())) {
+			return finish(eventId, "OUTSIDE_CANCELLATION_WINDOW");
 		}
 		List<Long> contractIds = contracts.lockCoveredContractIds(event.memberId(), event.occurredAt());
 		if (contractIds.isEmpty()) return finish(eventId, "NO_COVERED_CONTRACT");

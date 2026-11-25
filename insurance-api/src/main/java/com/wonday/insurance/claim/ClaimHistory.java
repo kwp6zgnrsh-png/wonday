@@ -44,7 +44,7 @@ class ClaimHistory {
 		this.claimCaseId = claimCaseId;
 		this.action = "AUTO_RECEIVED";
 		this.toStatus = "REVIEWING";
-		this.reason = "기상 사유의 당일 시작 전 취소 자동 접수";
+		this.reason = "기상 사유의 근무 전날·당일 시작 전 취소 자동 접수";
 		this.createdAt = now;
 	}
 }
