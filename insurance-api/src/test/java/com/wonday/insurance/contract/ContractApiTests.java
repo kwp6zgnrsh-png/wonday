@@ -11,6 +11,8 @@ import com.jayway.jsonpath.JsonPath;
 import com.wonday.insurance.platform.FarmPlatformClient;
 import com.wonday.insurance.platform.FarmPlatformClient.VerifiedWorker;
 import com.wonday.insurance.platform.PlatformVerificationException;
+import com.wonday.insurance.member.IdentityCipher;
+import com.wonday.insurance.member.IdentityType;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Instant;
@@ -49,6 +51,7 @@ class ContractApiTests {
 	@Autowired ObjectMapper json;
 	@Autowired Clock clock;
 	@Autowired ContractService contracts;
+	@Autowired IdentityCipher identityCipher;
 	@MockitoBean FarmPlatformClient farm;
 	private long versionId;
 
@@ -101,8 +104,13 @@ class ContractApiTests {
 		tx(() -> {
 			assertThat(entities.createQuery("select m.phone from Member m where m.id = :id", String.class)
 				.setParameter("id", account.id()).getSingleResult()).isEqualTo("01000000000");
-			assertThat(entities.createQuery("select m.residentRegistrationNumber from Member m where m.id = :id", String.class)
-				.setParameter("id", account.id()).getSingleResult()).isEqualTo("0000000000000");
+			String ciphertext = entities.createQuery("select m.identityNumberCiphertext from Member m where m.id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult();
+			assertThat(ciphertext).startsWith("v1:").doesNotContain("0000000000000");
+			assertThat(identityCipher.decrypt(account.id(), IdentityType.RESIDENT_REGISTRATION_NUMBER, ciphertext))
+				.isEqualTo("0000000000000");
+			assertThat(entities.createNativeQuery("select resident_registration_number from member where id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult()).isNull();
 			assertThat(count("PlatformLink")).isEqualTo(1);
 			return null;
 		});
@@ -116,6 +124,28 @@ class ContractApiTests {
 		when(clock.instant()).thenReturn(Instant.parse("2026-05-09T15:00:00Z"));
 		mvc.perform(get("/api/contracts/{id}", id).session(account.session()))
 			.andExpect(jsonPath("$.status").value("EXPIRED"));
+	}
+
+	@Test
+	void foreignMemberDoesNotSendIdentityToTheLegacyFarmEndpoint() throws Exception {
+		Account account = account();
+		tx(() -> {
+			entities.createNativeQuery("update member set nationality_type = 'FOREIGN' where id = :id")
+				.setParameter("id", account.id()).executeUpdate();
+			return null;
+		});
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true)))
+			.andExpect(status().isServiceUnavailable())
+			.andExpect(jsonPath("$.code").value("FOREIGN_VERIFICATION_NOT_READY"));
+		verifyNoInteractions(farm);
+		tx(() -> {
+			assertThat(count("InsuranceContract")).isZero();
+			assertThat(count("PlatformLink")).isZero();
+			assertThat(entities.createQuery("select m.identityNumberCiphertext from Member m where m.id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult()).isNull();
+			return null;
+		});
 	}
 
 	@Test

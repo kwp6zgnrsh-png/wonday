@@ -145,9 +145,46 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 
 이번 구현에서 판매 기간의 DB 일시는 UTC로 해석한다. 프런트는 salesStartAt·salesEndAt을 표시할 때 UTC 기준으로 처리한다. 상품 등록·약정 데이터 입력은 별도 관리하며, 테스트의 예시 금액과 기준은 테스트용 값이다.
 
+#### 보험 회원 내·외국인 구분과 식별정보 저장
+
+`POST /api/auth/signup`(웹: `/api/insurance/auth/signup`)에 `nationalityType`을 추가한다.
+허용값은 `DOMESTIC`, `FOREIGN`이며 가입·본인 조회 응답에도 같은 필드를 반환한다.
+기존 요청의 필드 생략 또는 null은 내국인 가입으로 유지하고, 알 수 없는 코드·숫자 순번은 400으로 거부한다.
+계정 생성 때는 기존처럼 이름·로그인 ID·비밀번호를 받고 식별정보는 보험 상품 가입 단계에서 확인한다.
+내·외국인 모두 WORKER 계정을 사용한다. Spring Security의 서버 세션과 `INSURANCESESSION` 쿠키, CSRF·BCrypt 인증은 유지한다.
+본인 조회는 세션의 회원 ID로 DB를 읽으므로 세션에 내·외국인 속성을 추가하지 않는다.
+
+보험 서버 실행 전 `INSURANCE_IDENTITY_ENCRYPTION_KEY`에 **무작위 32바이트의 Base64**를 설정해야 한다.
+키가 없거나 형식이 잘못되면 시작을 중단한다. 아래 PowerShell 예시는 키를 화면에 출력하지 않고 현재 프로세스 환경에만 설정한다.
+실제 운영은 비밀 설정에 보관하고 배포·재시작 시 같은 키를 전달한다. 테스트 리소스의 공개 키는 운영에 사용하지 않는다.
+
+```powershell
+$identityKeyBytes = [byte[]]::new(32)
+$identityRandom = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$identityRandom.GetBytes($identityKeyBytes)
+$identityRandom.Dispose()
+$env:INSURANCE_IDENTITY_ENCRYPTION_KEY = [Convert]::ToBase64String($identityKeyBytes)
+```
+
+V7은 회원 구분·식별번호 종류·암호문 컬럼을 추가하고, V8 Java 마이그레이션은 기존 시연 주민등록번호를
+AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 앱 인스턴스를 중단하고 DB 백업·키 설정 후 적용한다.
+식별정보가 없는 기존 회원의 구분은 NULL로 유지하고, 기존 내국인 확인 성공 시 확정한다.
+기존 값의 형식이 13자리 숫자로 정규화되지 않으면 이관을 중단하므로 원본을 확인해 명시적으로 정정해야 한다.
+번호를 임의 생성하거나 잘못된 값을 조용히 버리지 않는다. MySQL의 DDL은 자동 커밋되므로 실패 이력을 확인하고
+데이터 정정·필요한 Flyway 복구 후 다시 적용한다. 기존 V1~V6 파일은 수정하지 않는다.
+
+새 가입도 평문을 저장하지 않으며 기존 평문 컬럼은 호환 확인을 위해 빈 상태로 남긴다.
+암호화는 매번 새 nonce를 사용하고 회원 ID·식별번호 종류도 인증하므로 암호문 변조·다른 회원으로 복사하면 복호화가 실패한다.
+키 자동 생성·매 재시작 재발급·다른 키로 임의 교체는 금지한다. 이전 키를 잃으면 기존 암호문을 복구할 수 없다.
+번호·암호문·키는 회원 및 계약 API 응답에 포함하지 않는다.
+
+이번 단계는 외국인 **계정 가입·로그인과 저장 구조 준비**까지다. 농업 V2 본인 확인은 다음 기능에서 연결한다.
+그 전에는 외국인의 보험 상품 가입을 503 `FOREIGN_VERIFICATION_NOT_READY`로 거부하고 기존 농업 본인 확인 API를 호출하지 않는다.
+기존 내국인 상품 가입·동의·계약·근무 수집·접수 흐름은 유지한다. 리워드·은행 앱·송금 기능은 이번 범위에 포함하지 않는다.
+
 #### 보험 상품 가입·농업 플랫폼 연동
 
-**선행 연동 작업:** 농업 담당자가 별도로 구현하는 `POST /api/internal/insurance/worker-verifications`가 필요하다. 이 경로는 서버용 Bearer 토큰으로 인증하고, 세션·CSRF 없이 근로자의 정규화된 이름·전화번호·주민등록번호를 확인해야 한다. 성공 시 workerId·name·phone, 불일치 시 404 `WORKER_IDENTITY_NOT_MATCHED`, 중복 시 409 `WORKER_IDENTITY_AMBIGUOUS`를 반환한다. 현재 저장소의 농업 서버에는 해당 API가 없어 보험 측 토큰 설정만으로 가입을 완료할 수 없다. 농업 구현과 양측 인증 규격을 맞춘 뒤 실제 보안 체인을 통과하는 가입 통합 검증이 필요하다. 보험 측 모의 응답 테스트는 이 통합 검증을 대신하지 않는다.
+기존 농업 서버의 `POST /api/internal/insurance/worker-verifications`로 내국인 근로자를 확인한다. 서버용 Bearer 토큰으로 인증하며 세션·CSRF 없이 정규화된 이름·전화번호·주민등록번호를 대조한다. 성공 시 workerId·name·phone, 불일치 시 404 `WORKER_IDENTITY_NOT_MATCHED`, 중복 시 409 `WORKER_IDENTITY_AMBIGUOUS`를 반환한다. 외국인 지원용 V2 경로로의 전환은 별도 기능이다.
 
 보험 회원가입과 로그인 후 `POST /api/contracts`로 상품에 가입한다. 로컬 웹의 경로는 `/api/insurance/contracts`다. 기존 인증과 동일하게 세션 쿠키와 CSRF 헤더를 보낸다.
 
@@ -168,7 +205,7 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 
 서버 설정에는 `FARM_API_BASE_URL`(로컬 기본값 http://127.0.0.1:8081)과 `FARM_API_SERVICE_TOKEN`을 사용한다. 인증 토큰이 설정돼야 확인 요청을 전송할 수 있다. 보험 서버는 `POST /api/internal/insurance/worker-verifications`에 Bearer 토큰과 identity JSON을 보내고, 농업 서버의 workerId·name·phone 응답을 확인한다. 이름과 전화번호가 요청과 일치하고 workerId가 양수여야 성공으로 처리한다. 연결·응답 시간 제한은 각각 3초다.
 
-확인 성공 후 연락처·시연 주민등록번호, 농업 계정 연결, 계약을 하나의 트랜잭션으로 저장한다. 요청 본문에 보험 회원 ID를 받는 대신 로그인 세션의 회원을 사용한다. 연락처는 확인된 농업 서버 전화번호를 저장한다. 연동 동의 버전은 `farm-platform-v1`을 사용한다.
+확인 성공 후 연락처·식별번호 종류·암호문, 농업 계정 연결, 계약을 하나의 트랜잭션으로 저장한다. 요청 본문에 보험 회원 ID를 받는 대신 로그인 세션의 회원을 사용한다. 연락처는 확인된 농업 서버 전화번호를 저장한다. 연동 동의 버전은 `farm-platform-v1`을 사용한다.
 
 보장은 가입 즉시 시작하고, 한국 시각의 같은 시점에서 3개월 뒤 종료한다. 2월 10일 가입하면 5월 10일까지이며, 말일에 해당 날짜가 없으면 해당 월의 말일을 적용한다. 응답의 acceptedAt·coverageFrom·coverageTo는 UTC 일시다. 가입 성공은 201과 계약 상세 및 Location 헤더를 반환한다. 보험 API의 Location은 `/api/contracts/{id}`이며, 개발 웹 프록시는 이를 `/api/insurance/contracts/{id}`로 변환하므로 웹에서 해당 헤더 경로로 상세를 조회할 수 있다.
 
