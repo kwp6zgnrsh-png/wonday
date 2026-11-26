@@ -30,7 +30,7 @@ class ContractService {
 	// 원격 본인 확인은 DB 쓰기 트랜잭션 전에 끝내 외부 응답을 기다리는 동안 회원 잠금을 잡지 않는다.
 	ContractView enroll(long memberId, ContractEnrollmentRequest request) {
 		products.requireAvailable(request.productVersionId(), now());
-		members.requireDomesticVerification(memberId);
+		members.requireMatchingNationality(memberId, request.identity().nationalityType());
 		var worker = farm.verify(request.identity());
 		long id;
 		try {
