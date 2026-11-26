@@ -87,7 +87,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        app: [user-web, admin-web]
+        app: [user-web, admin-web, won-banking-web]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -132,9 +132,10 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/farm-api/farm.jar artifacts/insurance-api/insurance.jar release/
-          mv artifacts/user-web artifacts/admin-web release/
+          mv artifacts/user-web artifacts/admin-web artifacts/won-banking-web release/
           test -s release/user-web/index.html
           test -s release/admin-web/index.html
+          test -s release/won-banking-web/index.html
       - name: Connect to Tailscale
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4
         with:
