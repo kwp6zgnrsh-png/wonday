@@ -182,6 +182,46 @@ AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 �
 기본값 false에서는 기존 내국인 API를 유지하고 외국인 상품 가입은 503 `FOREIGN_VERIFICATION_NOT_READY`로 처리한다.
 리워드·은행 앱·송금 기능과 별도로 적용하는 설정이며, 실제 농업 V2 배포·통신 검증 후 활성화한다.
 
+#### 본인 급여 계좌 등록 상태 조회
+
+보험 서버 `GET /api/platform/salary-account`(웹: `/api/insurance/platform/salary-account`)는 로그인한 근로자의
+활성 농업 연결로 현재 급여 계좌 등록 여부와 은행 코드만 조회한다. `INSURANCESESSION` 쿠키를 사용하며 GET에는 CSRF가 필요 없다.
+요청에 회원·근로자 ID를 받지 않는다. 관리자·미인증 요청은 거부하며, DB의 현재 회원 역할도 확인한다.
+
+```json
+{"registered": true, "bankCode": "020"}
+```
+
+타 은행도 동일하게 해당 3자리 문자열 코드를 반환한다. 미등록은 오류가 아니라 아래와 같은 200 응답이다.
+
+```json
+{"registered": false, "bankCode": null}
+```
+
+- 농업 호출: `GET /api/internal/insurance/workers/{workerId}/salary-account`, 기존 서버 Bearer 토큰 사용.
+- 농업 응답의 workerId가 요청과 같은 양의 정수인지, registered가 JSON boolean인지 검사한다.
+  등록 상태는 3자리 문자열 bankCode가 필수이고 미등록 상태는 bankCode가 명시적으로 null이어야 한다.
+- 유효 연결은 철회되지 않고 확인된 양의 근로자 ID·동의 버전이 있는 연결이다. 조회 전후 JPA 값 프로젝션으로
+  연결 ID·근로자 ID·동의 버전·현재 회원 역할을 다시 읽어 철회·연결 교체·버전 변경을 검사한다.
+  농업 응답을 기다리는 동안 DB 트랜잭션이나 행 잠금을 유지하지 않는다.
+- 계좌번호·예금주·잔액·거래 내역·외부 근로자 ID·리워드 대상 여부는 응답하지 않는다. 결과와 업무 오류는 `Cache-Control: no-store`로 반환한다.
+- 이번 단계에서는 상태를 DB에 저장하거나 리워드를 판정하지 않는다. 새 마이그레이션·스케줄러도 없다.
+  실패를 미등록으로 저장하지 않으며, 다시 요청하면 유효 연결로 재조회한다.
+
+| 상태 | 코드·처리 |
+|---|---|
+| 401 / 403 | 기존 세션 인증·근로자 권한 검사. DB 역할 불일치는 `WORKER_ACCOUNT_REQUIRED` |
+| 409 | `PLATFORM_LINK_REQUIRED`: 활성·확인된 농업 연결이 필요함 |
+| 409 | `PLATFORM_LINK_CHANGED`: 조회 도중 연결·동의가 변경됨. 다시 조회 필요 |
+| 404 | `WORKER_NOT_FOUND`: 농업에 연결 대상 근로자가 없음. 미등록과 구분 |
+| 502 | `INVALID_PLATFORM_RESPONSE`: 응답 형식·ID·등록 여부·은행 코드 오류 |
+| 503 | `SALARY_ACCOUNT_QUERY_NOT_READY`: 조회 기능 미활성화 |
+| 503 | `FARM_SERVICE_UNAVAILABLE`: 토큰 미설정·통신/시간 초과·그 밖의 농업 오류 |
+
+`FARM_SALARY_ACCOUNT_QUERY_ENABLED`의 기본값은 false다. 농업의 **보험 서버용 내부 조회 API**가 준비된 후 활성화한다.
+농업 마이페이지용 `/api/me/salary-account`와는 다른 API이며 그 세션을 보험 서버에서 사용하지 않는다.
+실제 농업 통신 검증은 후속으로 진행하고, 이번 검증에서는 합의한 응답과 실패 사례를 모의 처리한다.
+
 #### 보험 상품 가입·농업 플랫폼 연동
 
 농업 서버와의 확인 API는 서버용 Bearer 토큰으로 인증한다. 농업 로그인 세션·CSRF를 전달하지 않는다.

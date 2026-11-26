@@ -19,6 +19,8 @@ insurance:
     consent-version: farm-platform-v1
     # 농업 V2 배포·실제 통신 확인 후 활성화한다. 기본값은 기존 내국인 API 유지다.
     worker-verification-v2-enabled: ${FARM_WORKER_VERIFICATION_V2_ENABLED:false}
+    # 보험 서버용 급여 계좌 조회 API가 농업에 준비된 뒤 활성화한다. 마이페이지 API와는 별도다.
+    salary-account-query-enabled: ${FARM_SALARY_ACCOUNT_QUERY_ENABLED:false}
     polling:
       # 활성화하면 GMT+9 기준 매일 18시에 조회한다. 간격 기반 delay-ms 설정은 사용하지 않는다.
       enabled: ${FARM_WORK_POLLING_ENABLED:false}
