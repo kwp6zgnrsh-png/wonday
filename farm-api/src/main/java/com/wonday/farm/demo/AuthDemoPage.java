@@ -24,4 +24,9 @@ class AuthDemoPage {
 	Resource workerJobsPage() {
 		return new ClassPathResource("demo/farm-worker-jobs.html");
 	}
+
+	@GetMapping(value = "/demo/job-location", produces = "text/html;charset=UTF-8")
+	Resource jobLocationPage() {
+		return new ClassPathResource("demo/farm-job-location.html");
+	}
 }

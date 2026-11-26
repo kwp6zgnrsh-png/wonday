@@ -47,6 +47,7 @@ class MemberAuthApiTests {
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.name").value("보험 가입자"))
 			.andExpect(jsonPath("$.role").value("WORKER"))
+			.andExpect(jsonPath("$.nationalityType").value("DOMESTIC"))
 			.andExpect(jsonPath("$.passwordHash").doesNotExist());
 
 		Member member = members.findByLoginId(loginId).orElseThrow();
@@ -74,6 +75,65 @@ class MemberAuthApiTests {
 		mvc.perform(csrf(authenticated).authorize(post("/api/auth/logout"))).andExpect(status().isNoContent());
 		assertThat(authenticated.isInvalid()).isTrue();
 		mvc.perform(get("/api/auth/me")).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void domesticAndForeignMembersUseTheSameSignupLoginAndSessionFlow() throws Exception {
+		for (NationalityType nationality : NationalityType.values()) {
+			String loginId = newLoginId();
+			mvc.perform(post("/api/auth/signup").with(SecurityMockMvcRequestPostProcessors.csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+					{"loginId":"%s","name":"TEST WORKER","password":"%s","nationalityType":"%s"}
+					""".formatted(loginId, PASSWORD, nationality)))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.role").value("WORKER"))
+				.andExpect(jsonPath("$.nationalityType").value(nationality.name()));
+			Member member = members.findByLoginId(loginId).orElseThrow();
+			assertThat(member.getNationalityType()).isEqualTo(nationality);
+			assertThat(passwordEncoder.matches(PASSWORD, member.getPasswordHash())).isTrue();
+			MockHttpSession session = (MockHttpSession) mvc.perform(login(loginId, PASSWORD)
+				.with(SecurityMockMvcRequestPostProcessors.csrf())).andExpect(status().isNoContent())
+				.andReturn().getRequest().getSession(false);
+			mvc.perform(get("/api/auth/me").session(session))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(member.getId().intValue()))
+				.andExpect(jsonPath("$.nationalityType").value(nationality.name()))
+				.andExpect(jsonPath("$.identityNumber").doesNotExist())
+				.andExpect(jsonPath("$.identityNumberCiphertext").doesNotExist())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist());
+			mvc.perform(post("/api/auth/logout").session(session)
+				.with(SecurityMockMvcRequestPostProcessors.csrf())).andExpect(status().isNoContent());
+			assertThat(session.isInvalid()).isTrue();
+		}
+	}
+
+	@Test
+	void invalidNationalityCodesCannotCreateMembers() throws Exception {
+		long before = members.count();
+		for (String value : new String[]{"\"UNKNOWN\"", "\"외국인\"", "\"foreign\"", "0", "true", "{}", "[]"}) {
+			mvc.perform(post("/api/auth/signup").with(SecurityMockMvcRequestPostProcessors.csrf())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+					{"loginId":"%s","name":"TEST","password":"%s","nationalityType":%s}
+					""".formatted(newLoginId(), PASSWORD, value))).andExpect(status().isBadRequest());
+		}
+		assertThat(members.count()).isEqualTo(before);
+	}
+
+	@Test
+	void unclassifiedLegacyMemberCanKeepUsingTheExistingSession() throws Exception {
+		String loginId = newLoginId();
+		Member member = members.saveAndFlush(new Member(loginId, passwordEncoder.encode(PASSWORD),
+			"Legacy worker", MemberRole.WORKER, null));
+		MockHttpSession session = (MockHttpSession) mvc.perform(login(loginId, PASSWORD)
+			.with(SecurityMockMvcRequestPostProcessors.csrf())).andExpect(status().isNoContent())
+			.andReturn().getRequest().getSession(false);
+		mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.nationalityType").isEmpty());
+		org.springframework.test.util.ReflectionTestUtils.setField(member, "nationalityType", NationalityType.FOREIGN);
+		members.flush();
+		// 이미 발급한 세션으로도 DB의 최신 구분을 읽으며 인증 주체의 구조를 바꾸지 않는다.
+		mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.nationalityType").value("FOREIGN"));
 	}
 
 	@Test

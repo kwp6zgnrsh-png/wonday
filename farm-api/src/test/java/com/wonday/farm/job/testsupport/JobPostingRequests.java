@@ -1,5 +1,6 @@
 package com.wonday.farm.job.testsupport;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +26,8 @@ public final class JobPostingRequests {
 		body.put("cropCode", CROP_CODE);
 		body.put("workTypeCode", WORK_TYPE_CODE);
 		body.put("workLocation", "충청북도 충주시 예시농장");
+		body.put("latitude", new BigDecimal("37.123456"));
+		body.put("longitude", new BigDecimal("127.123456"));
 		body.put("timeZone", "GMT+9");
 		body.put("headcount", 2);
 		body.put("dailyWage", 120000);

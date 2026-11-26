@@ -118,7 +118,7 @@ class WorkerJobPostingApiTest {
 				101L, "배추 수확", "해남 예시농장", "VC02100100100102", "노지가을배추", "0058", "수확", 3, 120000L,
 				List.of(LocalDate.parse("2026-12-02")), List.of(
 					new WorkerJobPostingsResponse.RecruitingSchedule(201L, LocalDate.parse("2026-12-02"), 3L, 0L, false, "CAPACITY_FULL"),
-					new WorkerJobPostingsResponse.RecruitingSchedule(202L, LocalDate.parse("2026-12-03"), 1L, 2L, true, null)))),
+					new WorkerJobPostingsResponse.RecruitingSchedule(202L, LocalDate.parse("2026-12-03"), 1L, 2L, true, null)), null, null)),
 				0, 20, true));
 
 			var response = perform(get("/api/job-postings"));
@@ -271,6 +271,6 @@ class WorkerJobPostingApiTest {
 
 	private static WorkerJobPostingResponse detail(List<WorkerJobPostingResponse.Schedule> schedules) {
 		return new WorkerJobPostingResponse(101L, "배추 수확", "설명", "해남 예시농장", "VC02100100100102", "노지가을배추",
-			"0058", "수확", "GMT+9", 3, 120000L, schedules);
+			"0058", "수확", "GMT+9", 3, 120000L, schedules, null, null);
 	}
 }

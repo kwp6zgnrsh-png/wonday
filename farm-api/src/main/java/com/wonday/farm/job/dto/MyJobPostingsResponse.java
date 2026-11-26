@@ -1,5 +1,6 @@
 package com.wonday.farm.job.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,7 +19,9 @@ public record MyJobPostingsResponse(List<Posting> jobPostings) {
 		String timeZone,
 		int headcount,
 		long dailyWage,
-		List<Schedule> schedules
+		List<Schedule> schedules,
+		BigDecimal latitude,
+		BigDecimal longitude
 	) {}
 
 	public record Schedule(

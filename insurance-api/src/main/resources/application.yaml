@@ -8,6 +8,8 @@ server:
         same-site: lax
 
 insurance:
+  identity:
+    encryption-key: ${INSURANCE_IDENTITY_ENCRYPTION_KEY:}
   claim-intake:
     enabled: ${CLAIM_INTAKE_ENABLED:true}
     delay-ms: ${CLAIM_INTAKE_DELAY_MS:60000}

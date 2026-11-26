@@ -2,6 +2,7 @@ package com.wonday.farm.job.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -151,7 +152,8 @@ class CreateJobPostingRequestValidationTest {
 		Builder schedules(List<CreateJobPostingRequest.Schedule> value) { schedules = value; return this; }
 
 		CreateJobPostingRequest build() {
-			return new CreateJobPostingRequest(title, description, cropCode, workTypeCode, workLocation, timeZone,
+			return new CreateJobPostingRequest(title, description, cropCode, workTypeCode, workLocation,
+				new BigDecimal("37.123456"), new BigDecimal("127.123456"), timeZone,
 				headcount, dailyWage, schedules);
 		}
 	}

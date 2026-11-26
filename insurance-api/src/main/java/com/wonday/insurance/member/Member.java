@@ -38,18 +38,33 @@ class Member {
 	@Column(length = 32)
 	private String phone;
 
-	@Column(name = "resident_registration_number", length = 32)
-	private String residentRegistrationNumber;
+	@Enumerated(EnumType.STRING)
+	@Column(name = "nationality_type", length = 16)
+	private NationalityType nationalityType;
 
-	void updateEnrollmentContact(String phone, String residentRegistrationNumber) {
+	@Enumerated(EnumType.STRING)
+	@Column(name = "identity_type", length = 32)
+	private IdentityType identityType;
+
+	@Column(name = "identity_number_ciphertext", columnDefinition = "TEXT")
+	private String identityNumberCiphertext;
+
+	void updateDomesticEnrollmentContact(String phone, String ciphertext) {
 		this.phone = phone;
-		this.residentRegistrationNumber = residentRegistrationNumber;
+		this.nationalityType = NationalityType.DOMESTIC;
+		this.identityType = IdentityType.RESIDENT_REGISTRATION_NUMBER;
+		this.identityNumberCiphertext = ciphertext;
 	}
 
 	Member(String loginId, String passwordHash, String name, MemberRole role) {
+		this(loginId, passwordHash, name, role, NationalityType.DOMESTIC);
+	}
+
+	Member(String loginId, String passwordHash, String name, MemberRole role, NationalityType nationalityType) {
 		this.loginId = loginId;
 		this.passwordHash = passwordHash;
 		this.name = name;
 		this.role = role;
+		this.nationalityType = nationalityType;
 	}
 }

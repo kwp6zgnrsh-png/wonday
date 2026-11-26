@@ -411,6 +411,7 @@ class JobPostingQueryServiceTest {
 
 	private JobPosting posting(long id, int headcount) {
 		var request = new CreateJobPostingRequest("공고 " + id, "설명 " + id, "CROP-" + id, "WORK-" + id, "작업지 " + id,
+			new java.math.BigDecimal("37.123456"), new java.math.BigDecimal("127.123456"),
 			"GMT+9", headcount, 100000L + id * 1000, List.of());
 		JobPosting posting = new JobPosting(employer, request);
 		ReflectionTestUtils.setField(posting, "id", id);
