@@ -1,6 +1,7 @@
 package com.wonday.farm.auth;
 
 import com.wonday.farm.member.MemberRole;
+import com.wonday.farm.member.identity.NationalityType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,11 +21,11 @@ public class AuthApi {
 	// Windows PowerShell 5.1에서 한글 이름을 올바르게 읽도록 응답에 UTF-8을 명시한다.
 	@GetMapping(value = "/me", produces = "application/json;charset=UTF-8")
 	public MemberResponse me(@AuthenticationPrincipal FarmPrincipal member) {
-		// 로그인 세션의 사용자로 본인을 식별하며, 응답은 회원 ID·이름·역할로 제한한다.
-		return new MemberResponse(member.memberId(), member.displayName(), member.role());
+		// 로그인 때 DB에서 읽은 국적을 추가한다. 기존 미이관 계정은 null이며 식별번호는 반환하지 않는다.
+		return new MemberResponse(member.memberId(), member.displayName(), member.role(), member.nationalityType());
 	}
 
 	record CsrfResponse(String headerName, String token) {}
 
-	record MemberResponse(long id, String name, MemberRole role) {}
+	record MemberResponse(long id, String name, MemberRole role, NationalityType nationalityType) {}
 }

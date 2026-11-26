@@ -13,7 +13,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-// 농업 플랫폼에서 사전에 등록한 하나의 계정을 기존 member 테이블에 매핑한다.
+// 사전 등록 계정과 신규 가입 계정을 같은 member 테이블에 매핑한다.
 @Entity
 @Table(name = "member")
 public class Member {
@@ -54,6 +54,11 @@ public class Member {
 		this.passwordHash = passwordHash;
 		this.name = name;
 		this.role = role.name();
+	}
+
+	public Member(String loginId, String passwordHash, String name, String phone, MemberRole role) {
+		this(loginId, passwordHash, name, role);
+		this.phone = phone;
 	}
 
 	// 새 가입 기능은 회원 ID를 발급받은 뒤 같은 트랜잭션 안에서 호출한다.

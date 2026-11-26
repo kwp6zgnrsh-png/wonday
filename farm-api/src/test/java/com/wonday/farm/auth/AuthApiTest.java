@@ -18,7 +18,7 @@ class AuthApiTest {
 	}
 
 	@Test
-	void meReturnsOnlyIdNameAndRoleOfPrincipal() {
+	void meReturnsIdNameRoleAndNullableNationalityOfPrincipal() {
 		var principal = new FarmPrincipal(3L, "employer", "{bcrypt}hash", "고용주", MemberRole.EMPLOYER);
 
 		var response = api.me(principal);
@@ -26,9 +26,10 @@ class AuthApiTest {
 		assertThat(response.id()).isEqualTo(3L);
 		assertThat(response.name()).isEqualTo("고용주");
 		assertThat(response.role()).isEqualTo(MemberRole.EMPLOYER);
+		assertThat(response.nationalityType()).isNull();
 		// 응답 레코드에는 로그인 ID와 비밀번호 해시가 들어갈 자리가 없다.
 		assertThat(AuthApi.MemberResponse.class.getRecordComponents())
 			.extracting(component -> component.getName())
-			.containsExactly("id", "name", "role");
+			.containsExactly("id", "name", "role", "nationalityType");
 	}
 }
