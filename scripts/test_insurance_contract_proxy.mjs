@@ -27,6 +27,9 @@ const upstream = createHttpServer((request, response) => {
   } else if (request.method === 'GET' && request.url === '/api/claims/99') {
     response.writeHead(200, { 'Content-Type': 'application/json' })
     response.end(JSON.stringify({ claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } }))
+  } else if (request.method === 'GET' && request.url === '/api/platform/salary-account') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ registered: true, bankCode: '020' }))
   } else {
     response.writeHead(404)
     response.end()
@@ -47,7 +50,11 @@ try {
         host: '127.0.0.1',
         port: 0,
         strictPort: true,
-        proxy: { '/api/insurance/contracts': { target }, '/api/insurance/claims': { target } },
+        proxy: {
+          '/api/insurance/contracts': { target },
+          '/api/insurance/claims': { target },
+          '/api/insurance/platform/salary-account': { target },
+        },
       },
     })
     try {
@@ -74,6 +81,11 @@ try {
       assert.equal(claimDetail.status, 200)
       assert.deepEqual(await claimDetail.json(), { claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } })
       console.log('PASS ' + web + ': GET claim list and detail JSON')
+      const salary = await fetch(origin + '/api/insurance/platform/salary-account')
+      assert.equal(salary.status, 200)
+      assert.equal(salary.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await salary.json(), { registered: true, bankCode: '020' })
+      console.log('PASS ' + web + ': GET own salary account registration JSON')
     } finally {
       await vite.close()
     }
