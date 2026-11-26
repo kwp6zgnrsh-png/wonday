@@ -1,5 +1,20 @@
 # STEP04: Isolation Forest를 단계별로 실행하기
 
+## 실행 경로 구분
+
+원격 main의 단일 실행형 IF와 현재 사용 중인 확장형 IF·LOF·ECOD 워크플로를 함께 보존합니다.
+
+| 경로 | 실행 진입점 | 의존성 | 안내 |
+| --- | --- | --- | --- |
+| 확장형 IF · 현재 비교 기준 | `worker/code/step04/step04.py` | `worker/code/step04/requirements-pooled.txt` · Python 3.14 | 이 문서와 [공식 일강수량 복원](official_daily_reconstruction.md) |
+| LOF · 고정형 ECOD | `worker/code/step04_comparison/compare_models.py` | `worker/code/step04_comparison/requirements.txt` | [학습·비교 실행](lof_ecod_comparison.md) |
+| 원격의 단일 실행형 IF | `worker/code/step04/isolation_forest_scores.py` | `worker/code/step04/requirements.txt` · 기존 Python 3.11 기준 | [단일 실행형 안내](standalone_workflow.md) |
+
+확장형 내부 IF 구현은 `pooled_isolation_forest.py`에 있습니다. 기존 `step04.py` 및 LOF·ECOD 실행 명령은 유지합니다. 입력 열·모델·점수 저장 형식은 두 IF 경로 간에 다르므로 각 경로의 모델과 검증기를 함께 사용합니다. 현재 LOF·ECOD 비교의 기본 기준은 `step04_official_daily`이며 기존 결과 파일은 변경하지 않습니다.
+
+아래 내용은 확장형 `step04.py` 실행 안내입니다.
+
+
 공식 일강수량으로 선행강수 결측을 복원하는 새 실행은 [공식 일자료 복원 안내](official_daily_reconstruction.md)를 따르세요. 해당 모드는 STEP03과 기존 결과를 보존하며 별도 `step04_official_daily/` 폴더를 사용합니다. 아래는 기존 관측 기반 실행 안내입니다.
 
 이 문서는 저장소 루트에서 1~8번을 순서대로 실행하는 안내입니다. 전체 자료를 자동으로 학습하지 않으며, 각 명령은 해당 작업만 수행합니다. STEP03 원본과 산출물은 변경하지 않습니다.

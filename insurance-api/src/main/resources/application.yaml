@@ -8,10 +8,18 @@ server:
         same-site: lax
 
 insurance:
+  claim-intake:
+    enabled: ${CLAIM_INTAKE_ENABLED:true}
+    delay-ms: ${CLAIM_INTAKE_DELAY_MS:60000}
   farm:
     base-url: ${FARM_API_BASE_URL:http://127.0.0.1:8081}
     service-token: ${FARM_API_SERVICE_TOKEN:}
     consent-version: farm-platform-v1
+    polling:
+      # 활성화하면 GMT+9 기준 매일 18시에 조회한다. 간격 기반 delay-ms 설정은 사용하지 않는다.
+      enabled: ${FARM_WORK_POLLING_ENABLED:false}
+      page-size: 100
+      max-pages-per-worker: 10
 
 spring:
   config:

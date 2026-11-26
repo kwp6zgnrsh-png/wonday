@@ -29,7 +29,7 @@ public class SecurityConfig {
 				auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
 				// 데모 모드에서는 로그인 전에도 데모 페이지를 열 수 있다.
 				if (environment.matchesProfiles("farm-demo")) {
-					auth.requestMatchers(HttpMethod.GET, "/demo/login").permitAll();
+					auth.requestMatchers(HttpMethod.GET, "/demo/login", "/demo/jobs", "/demo/worker-jobs").permitAll();
 				}
 				// 로그인 전에 토큰을 발급할 수 있게 하고, 본인 조회는 농업 계정 역할로 제한한다.
 				auth.requestMatchers(HttpMethod.GET, "/", "/api/auth/csrf").permitAll()
@@ -37,6 +37,10 @@ public class SecurityConfig {
 					.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("EMPLOYER", "WORKER")
 					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
 					.requestMatchers(HttpMethod.GET, "/api/job-postings/mine").hasRole("EMPLOYER")
+					// /mine의 고용주 규칙을 먼저 적용하고 근로자의 목록·상세 조회를 구분한다.
+					.requestMatchers(HttpMethod.GET, "/api/job-postings", "/api/job-postings/*").hasRole("WORKER")
+					.requestMatchers(HttpMethod.PUT, "/api/job-postings/*/schedules/*").hasRole("EMPLOYER")
+					.requestMatchers(HttpMethod.POST, "/api/job-postings/*/schedules/*/cancel").hasRole("EMPLOYER")
 					.anyRequest().denyAll();
 			})
 			// 인증이 필요한 API를 세션 없이 호출하면 401을 반환한다.
@@ -53,6 +57,22 @@ public class SecurityConfig {
 						response.setStatus(HttpStatus.FORBIDDEN.value());
 						response.setContentType("application/json;charset=UTF-8");
 						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 내 공고를 조회할 수 있습니다.\"}");
+					} else if (request.getServletPath().matches("/api/job-postings/[^/]+/schedules/[^/]+")
+							&& request.getMethod().equals("PUT") && !(exception instanceof CsrfException)) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 일정을 수정할 수 있습니다.\"}");
+					} else if (request.getServletPath().matches("/api/job-postings/[^/]+/schedules/[^/]+/cancel")
+							&& request.getMethod().equals("POST") && !(exception instanceof CsrfException)) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 날짜 모집을 취소할 수 있습니다.\"}");
+					} else if (request.getMethod().equals("GET") &&
+							(request.getServletPath().equals("/api/job-postings")
+							|| request.getServletPath().matches("/api/job-postings/[^/]+"))) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"WORKER_ROLE_REQUIRED\",\"message\":\"근로자 계정만 공고 목록과 상세를 조회할 수 있습니다.\"}");
 					} else {
 						new AccessDeniedHandlerImpl().handle(request, response, exception);
 					}
