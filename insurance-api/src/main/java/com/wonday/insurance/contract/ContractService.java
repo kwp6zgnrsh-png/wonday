@@ -1,6 +1,7 @@
 package com.wonday.insurance.contract;
 
 import com.wonday.insurance.platform.FarmPlatformClient;
+import com.wonday.insurance.member.MemberEnrollmentService;
 import com.wonday.insurance.product.ProductEnrollmentCatalog;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -20,6 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 class ContractService {
 
 	private final FarmPlatformClient farm;
+	private final MemberEnrollmentService members;
 	private final ProductEnrollmentCatalog products;
 	private final ContractWriter writer;
 	private final ContractRepository contracts;
@@ -28,6 +30,7 @@ class ContractService {
 	// 원격 본인 확인은 DB 쓰기 트랜잭션 전에 끝내 외부 응답을 기다리는 동안 회원 잠금을 잡지 않는다.
 	ContractView enroll(long memberId, ContractEnrollmentRequest request) {
 		products.requireAvailable(request.productVersionId(), now());
+		members.requireDomesticVerification(memberId);
 		var worker = farm.verify(request.identity());
 		long id;
 		try {

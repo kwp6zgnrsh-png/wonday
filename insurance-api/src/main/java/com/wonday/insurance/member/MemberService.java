@@ -24,7 +24,7 @@ class MemberService implements UserDetailsService {
 	private final PasswordEncoder passwordEncoder;
 
 	@Transactional
-	public Member register(String loginId, String name, String password) {
+	public Member register(String loginId, String name, String password, NationalityType nationalityType) {
 		String normalizedLoginId = loginId.trim();
 		if (normalizedLoginId.isBlank() || loginId.codePoints().anyMatch(Character::isISOControl)) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid login ID");
@@ -35,7 +35,7 @@ class MemberService implements UserDetailsService {
 
 		try {
 			return members.saveAndFlush(new Member(normalizedLoginId, passwordEncoder.encode(password),
-				name.strip(), MemberRole.WORKER));
+				name.strip(), MemberRole.WORKER, nationalityType));
 		} catch (DataIntegrityViolationException exception) {
 			if (exception.getCause() instanceof ConstraintViolationException violation) {
 				String key = violation.getConstraintName();
@@ -53,5 +53,11 @@ class MemberService implements UserDetailsService {
 		return members.findByLoginId(loginId)
 			.map(MemberPrincipal::new)
 			.orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
+	}
+
+	@Transactional(readOnly = true)
+	public Member current(long memberId) {
+		return members.findById(memberId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Member does not exist"));
 	}
 }
