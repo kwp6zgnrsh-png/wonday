@@ -64,6 +64,8 @@ WHERE login_id = 'demo-worker' AND role = 'WORKER';
 
 `work_assignment`에 저장된 약정만 반환한다. 현재 공고에서 시간대·작업지·일급 등을 가져와 보완하지 않는다. 다른 근로자의 근무는 `404 WORK_ASSIGNMENT_NOT_FOUND`다. 휴게가 없으면 두 필드 모두 `null`이다.
 
+**2026-11-26 좌표 응답 추가:** `agreedLatitude`·`agreedLongitude`는 V7에서 추가한 약정 좌표를 JSON 숫자로 반환한다. 좌표 없는 기존 약정은 두 필드 모두 `null`이고, 한쪽만 있으면 `503 SERVICE_UNAVAILABLE`이다. 현재 공고에서 좌표를 가져와 채우지 않는다. 신규 공고의 좌표 저장·범위·반올림과 후속 확정 연결은 [좌표 API 문서](job-location-api.md)를 참고한다. 다른 필수 약정 누락에 대한 기존 오류 처리는 유지한다.
+
 - `agreedWorkDate`: 약정 현지 날짜
 - `agreedTimeZone`: 확정 당시 저장된 시간대 원문
 - 약정 근무·휴게 시각: 저장된 현지 일시에 약정 시간대의 오프셋 부여
@@ -100,6 +102,7 @@ Authorization: Bearer {token}
 이번 구현이 선정·취소·조기 종료 화면과 사용자 API까지 완성한 것은 아니다.
 
 - WORK-04의 확정 저장 시 날짜·시간대·약정 조건과 정확한 UTC 확정 시각을 함께 기록해야 한다.
+- 신규 확정은 공고의 좌표 누락을 먼저 거절하고, 저장된 주소·위도·경도를 약정에 함께 복사해야 한다. 확정 생성 API 자체는 아직 구현하지 않았다.
 - CHANGE 기능은 실제 시작 여부와 취소/조기 종료 가능 여부를 검증한 후 `WorkChangeRecorder.recordValidatedChange`를 호출한다.
 - 사유 보완은 `WorkChangeRecorder.reviseReason`을 사용한다.
 - 최초 취소 발생 시각은 서버가 부여한다. 조기 종료 발생 시각은 검증된 실제 종료 시각이다.

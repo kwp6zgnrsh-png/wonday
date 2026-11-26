@@ -1,5 +1,6 @@
 package com.wonday.farm.job.testsupport;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,7 +17,8 @@ public final class JobPostingFixtures {
 
 	public static CreateJobPostingRequest request(String timeZone, String description, CreateJobPostingRequest.Schedule... schedules) {
 		return new CreateJobPostingRequest("사과 수확 근로자 모집", description, JobPostingRequests.CROP_CODE,
-			JobPostingRequests.WORK_TYPE_CODE, "충청북도 충주시 예시농장", timeZone, 2, 120000L, List.of(schedules));
+			JobPostingRequests.WORK_TYPE_CODE, "충청북도 충주시 예시농장",
+			new BigDecimal("37.123456"), new BigDecimal("127.123456"), timeZone, 2, 120000L, List.of(schedules));
 	}
 
 	public static CreateJobPostingRequest one(String date, String start, String end, String breakStart, String breakEnd) {

@@ -17,17 +17,17 @@ import org.flywaydb.core.api.output.MigrateResult;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-// 기존 마이그레이션을 수정하지 않고, 격리 MySQL의 새 스키마에 V1~V6를 적용해 결과를 확인한다.
+// 기존 마이그레이션을 수정하지 않고, 격리 MySQL의 새 스키마에 V1~V7을 적용해 결과를 확인한다.
 @Tag("integration")
 class FlywayMigrationTests {
 
 	@Test
-	void emptyDatabaseAppliesV1ThroughV6() throws Exception {
+	void emptyDatabaseAppliesV1ThroughV7() throws Exception {
 		String schema = newSchema("mig_empty");
 		MigrateResult result = flyway(schema, null).migrate();
 
 		assertThat(result.success).isTrue();
-		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6");
+		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7");
 		try (Connection connection = MySqlTestDatabase.rootConnection(schema)) {
 			assertColumn(connection, schema, "job_posting", "time_zone", "varchar(64)", "YES", null);
 			assertColumn(connection, schema, "work_schedule", "terms_version", "int", "NO", "1");
@@ -38,7 +38,7 @@ class FlywayMigrationTests {
 	}
 
 	@Test
-	void existingV3DataIsPreservedAndUpgradedByV6() throws Exception {
+	void existingV3DataIsPreservedAndUpgradedByV7() throws Exception {
 		String schema = newSchema("mig_upgrade");
 		assertThat(flyway(schema, "3").migrate().success).isTrue();
 		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3");
@@ -55,7 +55,7 @@ class FlywayMigrationTests {
 
 		assertThat(result.success).isTrue();
 		assertThat(result.migrationsExecuted).isEqualTo(3);
-		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6");
+		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7");
 		try (Connection connection = MySqlTestDatabase.rootConnection(schema); Statement sql = connection.createStatement()) {
 			try (ResultSet rs = sql.executeQuery("SELECT title, time_zone, default_headcount FROM job_posting")) {
 				assertThat(rs.next()).isTrue();

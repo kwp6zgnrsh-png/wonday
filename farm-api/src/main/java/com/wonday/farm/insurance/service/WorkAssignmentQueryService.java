@@ -25,7 +25,8 @@ public class WorkAssignmentQueryService {
 			new InsuranceApiException(HttpStatus.NOT_FOUND, "WORK_ASSIGNMENT_NOT_FOUND",
 				"해당 근로자의 확정 근무를 찾을 수 없습니다."));
 		if (assignment.getAgreedWorkDate() == null || assignment.getConfirmedAtUtc() == null
-				|| (assignment.getAgreedBreakStartAt() == null) != (assignment.getAgreedBreakEndAt() == null)) {
+				|| (assignment.getAgreedBreakStartAt() == null) != (assignment.getAgreedBreakEndAt() == null)
+				|| (assignment.getAgreedLatitude() == null) != (assignment.getAgreedLongitude() == null)) {
 			// 기존 행의 누락 조건을 현재 공고로 채우면 약정을 바꾸게 되므로 추측해서 제공하지 않는다.
 			throw InsuranceApiException.unavailable();
 		}
@@ -37,6 +38,6 @@ public class WorkAssignmentQueryService {
 			InsuranceTime.local(assignment.getAgreedEndAt(), zone),
 			assignment.getAgreedBreakStartAt() == null ? null : InsuranceTime.local(assignment.getAgreedBreakStartAt(), zone),
 			assignment.getAgreedBreakEndAt() == null ? null : InsuranceTime.local(assignment.getAgreedBreakEndAt(), zone),
-			assignment.getAgreedDailyWage());
+			assignment.getAgreedDailyWage(), assignment.getAgreedLatitude(), assignment.getAgreedLongitude());
 	}
 }

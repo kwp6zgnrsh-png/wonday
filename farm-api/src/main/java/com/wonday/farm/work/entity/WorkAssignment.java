@@ -1,5 +1,6 @@
 package com.wonday.farm.work.entity;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -31,6 +32,11 @@ public class WorkAssignment {
 	private String agreedTimeZone;
 	@Column(name = "agreed_work_location", nullable = false, length = 500)
 	private String agreedWorkLocation;
+	// 확정 당시 저장된 좌표만 읽는다. 현재 공고 좌표로 과거 약정을 보완하지 않는다.
+	@Column(name = "agreed_latitude", precision = 9, scale = 6)
+	private BigDecimal agreedLatitude;
+	@Column(name = "agreed_longitude", precision = 9, scale = 6)
+	private BigDecimal agreedLongitude;
 	@Column(name = "agreed_crop_code", nullable = false, length = 40)
 	private String agreedCropCode;
 	@Column(name = "agreed_work_type_code", nullable = false, length = 40)

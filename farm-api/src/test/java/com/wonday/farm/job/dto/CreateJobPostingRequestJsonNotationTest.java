@@ -116,6 +116,7 @@ class CreateJobPostingRequestJsonNotationTest {
 	private static String json(String field, String value) {
 		return """
 			{"title":"t","description":"d","cropCode":"C","workTypeCode":"W","workLocation":"L","timeZone":"GMT+9",
+			 "latitude":37.123456,"longitude":127.123456,
 			 "headcount":2,"dailyWage":120000,
 			 "schedules":[{"workDate":%s,"plannedStartAt":%s,"plannedEndAt":%s,"breakStartAt":%s,"breakEndAt":%s}]}"""
 			.formatted(

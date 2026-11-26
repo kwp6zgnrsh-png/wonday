@@ -1,6 +1,9 @@
 package com.wonday.farm.job.entity;
 
+import java.math.BigDecimal;
+
 import com.wonday.farm.job.dto.CreateJobPostingRequest;
+import com.wonday.farm.job.validation.WorkLocationValidator;
 import com.wonday.farm.member.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -43,6 +46,13 @@ public class JobPosting {
 	@Column(name = "work_location", nullable = false, length = 500)
 	private String workLocation;
 
+	// 기존 공고에는 좌표가 없을 수 있다. 신규 등록은 요청 검증에서 양쪽 모두 필수다.
+	@Column(precision = 9, scale = 6)
+	private BigDecimal latitude;
+
+	@Column(precision = 9, scale = 6)
+	private BigDecimal longitude;
+
 	@Column(name = "time_zone", length = 64)
 	private String timeZone;
 
@@ -60,6 +70,8 @@ public class JobPosting {
 		cropCode = request.cropCode();
 		workTypeCode = request.workTypeCode();
 		workLocation = request.workLocation();
+		latitude = WorkLocationValidator.normalizeLatitude(request.latitude());
+		longitude = WorkLocationValidator.normalizeLongitude(request.longitude());
 		timeZone = request.timeZone();
 		headcount = request.headcount();
 		dailyWage = request.dailyWage();
