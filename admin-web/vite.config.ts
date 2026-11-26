@@ -8,6 +8,14 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     proxy: {
+      '/api/insurance/rewards/': {
+        target: 'http://127.0.0.1:8080',
+        rewrite: (path) => path.replace('/api/insurance/rewards/', '/api/rewards/'),
+      },
+      '/api/insurance/platform/salary-account': {
+        target: 'http://127.0.0.1:8080',
+        rewrite: (path) => path.replace('/api/insurance/platform/salary-account', '/api/platform/salary-account'),
+      },
       '/api/insurance/claims': {
         target: 'http://127.0.0.1:8080',
         rewrite: (path) => path.replace('/api/insurance/claims', '/api/claims'),

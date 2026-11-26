@@ -29,7 +29,11 @@ public class SecurityConfig {
 				auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
 				// 데모 모드에서는 로그인 전에도 데모 페이지를 열 수 있다.
 				if (environment.matchesProfiles("farm-demo")) {
-					auth.requestMatchers(HttpMethod.GET, "/demo/login", "/demo/jobs", "/demo/worker-jobs", "/demo/job-location", "/demo/worker-verification").permitAll();
+					auth.requestMatchers(HttpMethod.GET, "/demo/login", "/demo/signup", "/demo/jobs", "/demo/worker-jobs", "/demo/job-location", "/demo/worker-verification").permitAll();
+
+					// 가입 계좌의 실제 저장 여부만 본인 세션으로 확인한다. 기본 프로필에는 열리지 않는다.
+					auth.requestMatchers(HttpMethod.GET, "/demo/api/signup/salary-account").hasAnyRole("EMPLOYER", "WORKER");
+
 					// 보험 V2 간이 확인은 근로자 세션과 기존 CSRF 보호를 사용한다.
 					auth.requestMatchers(HttpMethod.POST, "/demo/api/insurance/v2/worker-verifications").hasRole("WORKER");
 					// 약정 확인은 데모 프로필에서만 세션으로 허용한다. 보험 서버 전용 경로는 그대로 둔다.
@@ -38,6 +42,8 @@ public class SecurityConfig {
 				// 로그인 전에 토큰을 발급할 수 있게 하고, 본인 조회는 농업 계정 역할로 제한한다.
 				auth.requestMatchers(HttpMethod.GET, "/", "/api/auth/csrf").permitAll()
 					.requestMatchers(HttpMethod.POST, LoginRequestFilter.LOGIN_PATH).permitAll()
+					// 가입 전에도 요청할 수 있지만 기존 CSRF 검사는 그대로 적용한다.
+					.requestMatchers(HttpMethod.POST, "/api/auth/signup").permitAll()
 					.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("EMPLOYER", "WORKER")
 					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
 					.requestMatchers(HttpMethod.GET, "/api/job-postings/mine").hasRole("EMPLOYER")

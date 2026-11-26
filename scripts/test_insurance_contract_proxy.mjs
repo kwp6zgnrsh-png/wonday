@@ -10,6 +10,8 @@ const { createServer } = await import(
 )
 
 // Exercise the real Vite configs with an isolated upstream; no account or DB writes.
+const reward = { id: 7, result: 'ELIGIBLE', reasonCode: 'WOORI_SALARY_ACCOUNT', bankCode: '020' }
+const requestKey = 'be7d745b-7632-4272-afc7-dba7f829971e'
 const upstream = createHttpServer((request, response) => {
   if (request.method === 'POST' && request.url === '/api/contracts') {
     request.resume()
@@ -27,6 +29,21 @@ const upstream = createHttpServer((request, response) => {
   } else if (request.method === 'GET' && request.url === '/api/claims/99') {
     response.writeHead(200, { 'Content-Type': 'application/json' })
     response.end(JSON.stringify({ claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } }))
+  } else if (request.method === 'GET' && request.url === '/api/platform/salary-account') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ registered: true, bankCode: '020' }))
+  } else if (request.method === 'POST' && request.url === '/api/rewards/salary-account/checks') {
+    request.resume()
+    assert.equal(request.headers['idempotency-key'], requestKey)
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify(reward))
+  } else if (request.method === 'GET' && request.url === '/api/rewards/salary-account/latest') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify(reward))
+  } else if (request.method === 'GET' && request.url === '/api/rewards/salary-account/checks?limit=2&beforeId=8') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ items: [reward], hasMore: false, nextBeforeId: null }))
   } else {
     response.writeHead(404)
     response.end()
@@ -47,7 +64,12 @@ try {
         host: '127.0.0.1',
         port: 0,
         strictPort: true,
-        proxy: { '/api/insurance/contracts': { target }, '/api/insurance/claims': { target } },
+        proxy: {
+          '/api/insurance/contracts': { target },
+          '/api/insurance/claims': { target },
+          '/api/insurance/platform/salary-account': { target },
+          '/api/insurance/rewards/': { target },
+        },
       },
     })
     try {
@@ -74,6 +96,27 @@ try {
       assert.equal(claimDetail.status, 200)
       assert.deepEqual(await claimDetail.json(), { claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } })
       console.log('PASS ' + web + ': GET claim list and detail JSON')
+      const salary = await fetch(origin + '/api/insurance/platform/salary-account')
+      assert.equal(salary.status, 200)
+      assert.equal(salary.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await salary.json(), { registered: true, bankCode: '020' })
+      console.log('PASS ' + web + ': GET own salary account registration JSON')
+      const checked = await fetch(origin + '/api/insurance/rewards/salary-account/checks', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': requestKey, Cookie: 'INSURANCESESSION=proxy-test' },
+      })
+      assert.equal(checked.status, 200)
+      assert.equal(checked.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await checked.json(), reward)
+      const latest = await fetch(origin + '/api/insurance/rewards/salary-account/latest')
+      assert.equal(latest.status, 200)
+      assert.equal(latest.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await latest.json(), reward)
+      const history = await fetch(origin + '/api/insurance/rewards/salary-account/checks?limit=2&beforeId=8')
+      assert.equal(history.status, 200)
+      assert.equal(history.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await history.json(), { items: [reward], hasMore: false, nextBeforeId: null })
+      console.log('PASS ' + web + ': POST reward check, forwarded session/key, GET latest and paginated history JSON')
     } finally {
       await vite.close()
     }

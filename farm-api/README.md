@@ -220,7 +220,20 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 
 회원 식별정보의 암호문·HMAC 저장과 V1 근로자 확인 API의 단계적 조회 전환은 [식별정보 문서](docs/member-identity-storage.md)를 참고한다. 기존 요청·응답·주민번호 컬럼은 유지한다. 기본 LEGACY 모드로 기존 조회를 보존하고, 확인된 내국인만 명시적으로 이관·검증한 후 ENCRYPTED로 전환한다. 실제 이관은 자동 실행하지 않는다.
 
-신규 V8은 선행 좌표 V7 다음에 적용해야 한다. 좌표 PR #18이 병합된 main의 V7을 통합했고, V8까지의 적용 순서·기존 회원 보존·DB 제약을 검증하는 통합 테스트를 갱신했다. [V8 통합 검증](docs/verification/2026-11-26-member-identity-v8-migration/VERIFICATION_REPORT.md)은 Testcontainers 격리 MySQL 8.4에서 해당 클래스만 실행해 7개 모두 통과했다. 실제 개발 DB와 이관 도구는 사용하지 않았다. 회원가입·V2 확인·급여 계좌·근무 완료는 후속 범위다.
+신규 V8은 선행 좌표 V7 다음에 적용해야 한다. [V8 통합 검증](docs/verification/2026-11-26-member-identity-v8-migration/VERIFICATION_REPORT.md)은 당시 Testcontainers 격리 MySQL 8.4에서 해당 클래스만 실행해 7개 모두 통과한 기록이다. 실제 개발 DB와 이관 도구는 사용하지 않았다. 이 결과는 V8까지의 검증 기록이며, V9 마이그레이션과 실제 DB에서의 회원가입 처리 검증을 대신하지 않는다.
 
+## 회원가입과 선택 급여 계좌 저장
 
-보험 V2 본인 확인 데모: farm-demo에서 /demo/worker-verification. 근로자 로그인 후 성공·불일치·입력 오류를 확인하며, CSRF는 자동 처리한다. 서버 전용 토큰 인증과는 별도로 확인하는 화면이다. 자세한 사용법은 docs/worker-verification-v2-api.md 참고.
+`POST /api/auth/signup`은 JSON과 기존 농업 CSRF를 사용한다. 회원 식별정보와 선택 급여 계좌를 한 트랜잭션으로 저장하고 201을 반환하지만 자동 로그인하지 않는다. 이후 기존 로그인 API를 호출하면 `/api/auth/me`에 `nationalityType`이 추가된다. 기존 미이관 계정은 null을 반환한다.
+
+신규 V9는 회원당 한 개의 급여 계좌 저장 테이블만 추가한다. 계좌번호는 하이픈을 제거한 숫자 1~30자리를 별도 키로 암호화하며 응답으로 반환하지 않는다. 계좌 입력 시 `FARM_SALARY_ACCOUNT_ENCRYPTION_KEY`가 필요하고, 모든 가입에는 기존 식별정보 암호화/HMAC 키가 필요하다. 계좌를 생략하면 계좌 키는 필요 없다. 실제 키는 저장소에 넣지 않는다.
+
+요청·응답·설정과 검증 범위는 [회원가입 API 문서](docs/signup-api.md)를 참고한다. farm-demo의 `/demo/signup`에서 선택 계좌를 포함하거나 생략한 가입, 별도 로그인, `/me`의 국적과 실제 계좌 등록 여부를 확인할 수 있다. CSRF는 자동 처리하고 요청 상태·오류를 표시한다. 데모 전용 계좌 조회는 본인 세션으로만 허용하고 번호·암호문은 반환하지 않는다.
+
+급여 계좌 관리 API·보험용 계좌 조회·근무 완료·user-web 연결은 별도 작업 범위다.
+
+## 보험 V2 본인 확인 데모
+
+farm-demo의 `/demo/worker-verification`에서 근로자 로그인 후 성공·불일치·입력 오류를 확인할 수 있다. CSRF는 자동 처리하며, 실제 내부 API의 서버 전용 Bearer 토큰 인증과는 별도로 확인하는 화면이다.
+
+요청·응답·설정과 검증 범위는 [보험 V2 문서](docs/worker-verification-v2-api.md)를 참고한다.
