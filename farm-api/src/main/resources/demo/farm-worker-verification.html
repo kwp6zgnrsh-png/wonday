@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>보험 V2 근로자 확인 · WON데이</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, 'Malgun Gothic', sans-serif; color: #173328; background: #edf4ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 2rem 1rem; }
+    main { max-width: 42rem; margin: auto; padding: clamp(1.2rem, 4vw, 2rem); background: white; border: 1px solid #cddfd3; border-radius: 1rem; }
+    h1 { font-size: 1.65rem; }
+    h2 { font-size: 1.1rem; }
+    p { line-height: 1.6; }
+    a { color: #1b5e3e; }
+    .note, #account { padding: 1rem; background: #f0f7f2; border-radius: .5rem; }
+    label { display: block; margin: 1rem 0 .4rem; font-weight: 650; }
+    input, select, button { font: inherit; min-height: 2.8rem; border: 1px solid #839c8d; border-radius: .5rem; }
+    input, select { width: 100%; padding: .65rem; background: white; color: inherit; }
+    fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+    .buttons { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.2rem; }
+    button { padding: .65rem 1rem; background: #edf4ef; color: #173328; cursor: pointer; }
+    button[type=submit] { background: #1b5e3e; color: white; }
+    button:disabled, fieldset:disabled { opacity: .6; }
+    :focus-visible { outline: 3px solid #28754e; outline-offset: 3px; }
+    #status { font-weight: 700; }
+    #status[data-error=true] { color: #a12c26; }
+    pre { padding: 1rem; background: #f4f6f4; border-radius: .5rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="/demo/login">로그인 · 다른 계정으로 전환</a></p>
+  <h1>보험 V2 근로자 확인</h1>
+  <p class="note">가상 정보만 입력하세요. 농업 플랫폼에 등록한 정보와 대조하며 실제 신원 인증은 하지 않습니다.
+    이 화면은 로그인한 근로자 본인만 확인합니다. V2와 같은 검증 서비스를 사용하지만,
+    내부 API의 Bearer 토큰 인증은 별도로 확인해야 합니다.</p>
+  <p id="account" role="status">로그인 상태를 확인하는 중입니다.</p>
+  <button id="refresh-session" type="button">로그인 상태 다시 확인</button>
+  <form id="verification-form" autocomplete="off">
+    <fieldset id="fields" disabled>
+      <label for="name">가입한 이름</label>
+      <input id="name" maxlength="100" required autocomplete="off">
+      <label for="phone">전화번호</label>
+      <input id="phone" type="tel" maxlength="100" placeholder="010-1234-5678" required autocomplete="off">
+      <label for="nationality">가입한 내·외국인 구분</label>
+      <select id="nationality">
+        <option value="DOMESTIC">내국인 (DOMESTIC)</option>
+        <option value="FOREIGN">외국인 (FOREIGN)</option>
+      </select>
+      <label for="identity">주민등록번호 · 외국인등록번호 (가상 정보)</label>
+      <input id="identity" type="password" maxlength="100" inputmode="numeric" placeholder="가상 13자리 · 하이픈 허용" required autocomplete="off">
+      <p>국적·식별정보가 저장된 계정이 필요합니다. 기존 demo-worker는 정보가 없어 404가 나올 수 있습니다.
+        signup에서 가입한 근로자 계정과 당시 입력한 가상 정보를 사용하세요.</p>
+      <div class="buttons">
+        <button type="submit">입력 정보 확인 · 정상 200</button>
+        <button id="mismatch" type="button">불일치 예시 · 404</button>
+        <button id="invalid" type="button">입력 오류 예시 · 400</button>
+      </div>
+    </fieldset>
+  </form>
+  <h2>응답 결과</h2>
+  <p id="status" role="status" aria-live="polite">아직 요청하지 않았습니다.</p>
+  <pre id="result" aria-label="응답 JSON">결과가 여기에 표시됩니다.</pre>
+  <p id="scenario">불일치 예시는 전송할 전화번호의 마지막 숫자만 바꾸고, 입력 오류 예시는 식별번호를 12자리로 보냅니다.
+    폼의 입력값 자체는 바꾸지 않습니다. 식별번호와 요청 본문은 결과에 표시하거나 저장하지 않습니다.</p>
+</main>
+<script>
+'use strict';
+const form = document.querySelector('#verification-form');
+const fields = document.querySelector('#fields');
+const account = document.querySelector('#account');
+const status = document.querySelector('#status');
+const result = document.querySelector('#result');
+const refresh = document.querySelector('#refresh-session');
+const identity = document.querySelector('#identity');
+let worker = false;
+let busy = false;
+
+function setStatus(message, error = false) {
+  status.textContent = message;
+  status.dataset.error = String(error);
+}
+function resetResult() {
+  result.textContent = '결과가 여기에 표시됩니다.';
+}
+async function session() {
+  if (busy) return;
+  busy = true;
+  worker = false;
+  fields.disabled = true;
+  refresh.disabled = true;
+  identity.value = '';
+  resetResult();
+  try {
+    const response = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store' });
+    if (response.status === 401) {
+      account.textContent = '로그인이 필요합니다. 위 링크에서 근로자 계정으로 로그인한 뒤 돌아와 주세요.';
+      setStatus('로그인 후 다시 확인해 주세요.');
+      return;
+    }
+    if (!response.ok) throw new Error('session');
+    const member = await response.json();
+    worker = member.role === 'WORKER';
+    account.textContent = worker
+      ? member.name + ' · 회원 ID ' + member.id + ' · 근로자 본인 정보만 확인할 수 있습니다.'
+      : '현재 계정은 고용주입니다. 근로자 계정으로 로그인해 주세요.';
+    if (worker && !document.querySelector('#name').value) document.querySelector('#name').value = member.name;
+    setStatus(worker ? '가입 당시 정보를 입력해 주세요.' : '근로자 계정이 필요합니다.', !worker);
+  } catch {
+    account.textContent = '로그인 상태를 읽지 못했습니다. 서버 연결을 확인하고 다시 눌러 주세요.';
+    setStatus('로그인 상태 확인 실패', true);
+  } finally {
+    busy = false;
+    refresh.disabled = false;
+    fields.disabled = !worker;
+  }
+}
+async function verify(mode) {
+  if (busy || !worker || !form.reportValidity()) return;
+  busy = true;
+  refresh.disabled = true;
+  fields.disabled = true;
+  resetResult();
+  setStatus('요청 중입니다.');
+  // 요청은 메모리에만 잠시 보관하고 URL·로그·브라우저 저장소에 넣지 않는다.
+  const payload = {
+    name: document.querySelector('#name').value,
+    phone: document.querySelector('#phone').value,
+    nationalityType: document.querySelector('#nationality').value,
+    identityNumber: identity.value
+  };
+  if (mode === 'mismatch') {
+    const phone = payload.phone.replace(/[\s-]/gu, '');
+    if (!/^[0-9]{10,11}$/.test(phone)) {
+      setStatus('불일치 예시는 먼저 올바른 전화번호 형식으로 입력해 주세요.', true);
+      busy = false;
+      refresh.disabled = false;
+      fields.disabled = false;
+      return;
+    }
+    payload.phone = phone.slice(0, -1) + String((Number(phone.at(-1)) + 1) % 10);
+  }
+  if (mode === 'invalid') payload.identityNumber = '000000000000';
+  try {
+    // 로그인할 때 토큰이 바뀔 수 있어 전송 직전에 같은 세션의 새 토큰을 받는다.
+    const tokenResponse = await fetch('/api/auth/csrf', { credentials: 'same-origin', cache: 'no-store' });
+    if (!tokenResponse.ok) throw new Error('csrf');
+    const csrf = await tokenResponse.json();
+    if (typeof csrf.headerName !== 'string' || typeof csrf.token !== 'string') throw new Error('csrf');
+    const response = await fetch('/demo/api/insurance/v2/worker-verifications', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', [csrf.headerName]: csrf.token },
+      body: JSON.stringify(payload)
+    });
+    // 응답 표시도 허용된 필드만 사용한다. 실패 응답이 HTML이어도 원문을 화면에 넣지 않는다.
+    let data = null;
+    try { data = await response.json(); } catch { /* 상태 코드로 안내한다. */ }
+    const display = response.ok && data
+      ? { workerId: data.workerId, name: data.name, phone: data.phone, nationalityType: data.nationalityType }
+      : { code: data?.code || 'HTTP_' + response.status, message: data?.message || '로그인·권한·CSRF 또는 서버 상태를 확인해 주세요.' };
+    setStatus('HTTP ' + response.status + (response.ok ? ' · 근로자 확인 성공' : ' · ' + display.message), !response.ok);
+    result.textContent = JSON.stringify(display, null, 2);
+    if (response.status === 401 || response.status === 403) worker = false;
+  } catch {
+    setStatus('요청하지 못했습니다. 서버 연결을 확인하고 다시 시도해 주세요.', true);
+  } finally {
+    delete payload.identityNumber;
+    busy = false;
+    refresh.disabled = false;
+    fields.disabled = !worker;
+  }
+}
+form.addEventListener('submit', event => { event.preventDefault(); verify('normal'); });
+document.querySelector('#mismatch').addEventListener('click', () => verify('mismatch'));
+document.querySelector('#invalid').addEventListener('click', () => verify('invalid'));
+refresh.addEventListener('click', session);
+// 뒤로 가기로 돌아올 때 이전 식별번호·성공 응답을 다시 표시하지 않는다.
+window.addEventListener('pagehide', () => { identity.value = ''; resetResult(); });
+window.addEventListener('pageshow', () => session());
+</script>
+</body>
+</html>
