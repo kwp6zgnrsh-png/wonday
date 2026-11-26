@@ -7,6 +7,7 @@
 | STEP01·02 | `worker/code/gyeonggi_weather.ipynb` | 기존 10분 자료 정제·작업일 집계 노트북 |
 | 기존 집계 스크립트 | `worker/code/preprocess_weather.py` | 지정 관측소의 작업시간 기상 집계 |
 | STEP03 | [step03/README.md](step03/README.md) | 전체 관측소 개별 위험지수 수치화 |
+| STEP04 | [step04/README.md](step04/README.md) | 원래 관측에서 특성 집계, Isolation Forest 두 모델 학습·점수·제외율 진단 |
 
 ## STEP03
 
@@ -21,3 +22,5 @@ python -B -m unittest discover -s worker/code/step03 -p test_weather_component_s
 STEP03의 현재 코드는 `worker/code/step03/`, 사용법은 `worker/docs/step03/README.md`, 최신 결과는 `worker/data/gyeonggi_processed/step03/`에 있습니다. 과거 검토 문서는 `worker/docs/step03/archive/`, 이전 결과는 결과 폴더의 `archive/`에 분리했습니다. STEP01·02와 공유하는 `weather_clean.csv`, `weather_workday_features.csv`는 기존 위치를 유지합니다.
 
 강수 분위수는 각 관측소의 2023년까지 가용자료로 정합니다. `weather_component_train.csv`는 STEP04 학습 입력이고, `weather_component_holdout.csv`는 2024~2025년 평가를 위해 보관한 입력입니다. 이 단계에서는 Isolation Forest를 학습하지 않습니다.
+
+STEP04는 원래 `weather_clean.csv`에서 고정 입력 특성을 다시 집계하고 STEP03의 전체 대상 행·작업 설정과 연결합니다. 모델별 입력 완전성으로 독립적으로 선별하며, `component_scores_complete`로 일괄 필터링하지 않습니다. 직접 1~8번 순서대로 실행하는 방법은 [STEP04 실행 안내](step04/README.md)를 참고하세요.

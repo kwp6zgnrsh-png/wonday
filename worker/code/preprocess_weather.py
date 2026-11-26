@@ -237,11 +237,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input-dir", type=Path, default=DATA_DIR / "gyeonggi-2016-2026-csv",
-        help="raw CSV folder (default: wonday/data/gyeonggi-2016-2026-csv)",
+        help="raw CSV folder (default: wonday/worker/data/gyeonggi-2016-2026-csv)",
     )
     parser.add_argument(
         "--output", type=Path,
-        help="destination CSV (default: wonday/data/gyeonggi_processed/weather_workday_features_<station>.csv)",
+        help="destination CSV (default: wonday/worker/data/gyeonggi_processed/weather_workday_features_<station>.csv)",
     )
     parser.add_argument("--station-code", default=DEFAULT_STATION, help="default: Gapyeong-eup")
     parser.add_argument(

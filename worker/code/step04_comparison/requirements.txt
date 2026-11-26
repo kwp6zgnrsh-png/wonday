@@ -1,0 +1,2 @@
+# Reuse the IF environment. PyOD is not required for the training-frozen variant.
+-r ../step04/requirements-pooled.txt
