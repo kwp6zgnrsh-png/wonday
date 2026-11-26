@@ -4,21 +4,43 @@ import com.wonday.insurance.member.MemberRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-class SalaryAccountQueryService {
+public class SalaryAccountQueryService {
 
 	private final PlatformLinkRepository links;
 	private final FarmSalaryAccountClient farm;
 
 	SalaryAccountStatus findMine(long memberId) {
+		Observation observation = observe(memberId);
+		if (observation.failure() != null) throw observation.failure();
+		return observation.account();
+	}
+
+	public Observation observe(long memberId) {
 		Snapshot before = snapshot(memberId, false);
-		// 원격 호출 동안 DB 트랜잭션·행 잠금을 유지하지 않는다. 저장·리워드 판정도 이 단계에서 하지 않는다.
-		SalaryAccountStatus status = farm.find(before.workerId());
+		SalaryAccountStatus status = null;
+		PlatformVerificationException failure = null;
+		// 실패도 동의·연결을 재확인한 근거와 함께 돌려준다. 예상하지 못한 코드 오류는 판정 결과로 바꾸지 않는다.
+		try {
+			status = farm.find(before.workerId());
+		} catch (PlatformVerificationException exception) {
+			if (exception.getStatus() != HttpStatus.NOT_FOUND && exception.getStatus() != HttpStatus.BAD_GATEWAY
+				&& exception.getStatus() != HttpStatus.SERVICE_UNAVAILABLE) throw exception;
+			failure = exception;
+		}
 		Snapshot after = snapshot(memberId, true);
 		if (!before.equals(after)) throw changed();
-		return status;
+		return new Observation(before, status, failure);
+	}
+
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void lockVerifiedLink(long memberId, Snapshot source) {
+		var link = links.lockSalaryLink(memberId, source.linkId()).orElseThrow(SalaryAccountQueryService::changed);
+		if (link.getWorkerId() != source.workerId() || !link.getConsentVersion().equals(source.consentVersion())) throw changed();
 	}
 
 	private Snapshot snapshot(long memberId, boolean afterRemoteCall) {
@@ -44,5 +66,12 @@ class SalaryAccountQueryService {
 			"PLATFORM_LINK_CHANGED", "Farm link or consent changed during the query; please try again");
 	}
 
-	private record Snapshot(long linkId, long workerId, String consentVersion) {}
+	// 내부 저장 근거다. 사용자 API에는 계좌번호·외부 근로자 ID·이 예외 객체를 반환하지 않는다.
+	public record Snapshot(long linkId, long workerId, String consentVersion) {}
+	public record Observation(Snapshot source, SalaryAccountStatus account, PlatformVerificationException failure) {
+		public Observation {
+			if (source == null || (account == null) == (failure == null)) throw new IllegalArgumentException("Invalid salary observation");
+		}
+		@Override public String toString() { return "SalaryAccountObservation[redacted]"; }
+	}
 }

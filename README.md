@@ -205,8 +205,8 @@ AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 �
   연결 ID·근로자 ID·동의 버전·현재 회원 역할을 다시 읽어 철회·연결 교체·버전 변경을 검사한다.
   농업 응답을 기다리는 동안 DB 트랜잭션이나 행 잠금을 유지하지 않는다.
 - 계좌번호·예금주·잔액·거래 내역·외부 근로자 ID·리워드 대상 여부는 응답하지 않는다. 결과와 업무 오류는 `Cache-Control: no-store`로 반환한다.
-- 이번 단계에서는 상태를 DB에 저장하거나 리워드를 판정하지 않는다. 새 마이그레이션·스케줄러도 없다.
-  실패를 미등록으로 저장하지 않으며, 다시 요청하면 유효 연결로 재조회한다.
+- 이 GET은 상태를 저장하거나 리워드를 판정하지 않는다. 다시 요청하면 유효 연결로 재조회한다.
+  판정·이력 저장은 아래의 별도 POST API를 사용한다.
 
 | 상태 | 코드·처리 |
 |---|---|
@@ -221,6 +221,60 @@ AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 �
 `FARM_SALARY_ACCOUNT_QUERY_ENABLED`의 기본값은 false다. 농업의 **보험 서버용 내부 조회 API**가 준비된 후 활성화한다.
 농업 마이페이지용 `/api/me/salary-account`와는 다른 API이며 그 세션을 보험 서버에서 사용하지 않는다.
 실제 농업 통신 검증은 후속으로 진행하고, 이번 검증에서는 합의한 응답과 실패 사례를 모의 처리한다.
+
+#### 급여 계좌 리워드 판정·이력
+
+| 농업 조회 결과 | result | reasonCode |
+|---|---|---|
+| 등록됨, 은행 코드 `020` | `ELIGIBLE` | `WOORI_SALARY_ACCOUNT` |
+| 등록됨, 다른 은행 | `INELIGIBLE` | `OTHER_BANK` |
+| 미등록 | `INELIGIBLE` | `NO_SALARY_ACCOUNT` |
+| 조회 실패·기능 미활성화 | `UNAVAILABLE` | `QUERY_FAILED` |
+
+규칙 버전은 `salary-woori-v1`이며 **농업에 우리은행 급여 계좌를 등록했는지**만 판정한다.
+은행 거래 실적·급여 입금 사실·할인 금액은 다루지 않으며, 판정만으로 할인·리워드를 지급하지 않는다.
+
+| 보험 API | 동작 |
+|---|---|
+| `POST /api/rewards/salary-account/checks` | 현재 상태를 조회해 판정 이력 저장. 필수 헤더 `Idempotency-Key: <UUID>` |
+| `GET /api/rewards/salary-account/latest` | 본인의 가장 최근 저장 이력. 이력 없으면 404 |
+| `GET /api/rewards/salary-account/checks?limit=20&beforeId=42` | 본인 이력을 ID 내림차순 조회. limit 1~100, 첫 페이지는 beforeId 생략 |
+
+웹에서는 `/api/rewards/` 대신 `/api/insurance/rewards/`를 사용한다. `INSURANCESESSION`으로 본인을 식별하며
+요청에 회원·근로자 ID를 받지 않는다. POST에는 기존 CSRF 헤더도 필요하다. 성공 응답은 200과 `Cache-Control: no-store`다.
+
+```json
+{
+  "id": 42,
+  "result": "ELIGIBLE",
+  "reasonCode": "WOORI_SALARY_ACCOUNT",
+  "registered": true,
+  "bankCode": "020",
+  "sourceErrorCode": null,
+  "ruleVersion": "salary-woori-v1",
+  "checkedAt": "2026-11-26T09:00:00.123456Z",
+  "recordedAt": "2026-11-26T09:00:00.234567Z"
+}
+```
+
+- 같은 회원·같은 UUID는 기존 이력을 그대로 반환한다. 대소문자 UUID는 동일하게 취급한다.
+  **새 조회·실패 후 재조회에는 새 UUID**를 사용한다. 이미 저장된 실패도 같은 키로는 바뀌지 않는다.
+  DB 저장 자체가 실패해 이력이 없다면 같은 키로 재시도할 수 있다.
+- 동시 중복 요청의 읽기 전용 농업 호출은 중복될 수 있지만 저장 이력과 반환 판정은 한 건이다.
+- 예상된 농업 404·502·503은 `UNAVAILABLE`로 기록하고 registered·bankCode를 null로 둔다.
+  sourceErrorCode는 `WORKER_NOT_FOUND`, `INVALID_PLATFORM_RESPONSE`, `FARM_SERVICE_UNAVAILABLE`,
+  `SALARY_ACCOUNT_QUERY_NOT_READY` 중 하나다. 미등록·타 은행으로 처리하지 않는다.
+- 인증·권한 오류(401/403), 잘못된 키·페이지(400), 유효 연결 없음·조회 중 연결 변경(409)은 이력을 만들지 않는다.
+  저장 직전 회원 역할과 연결·동의를 잠금으로 다시 확인한다. 농업 응답 대기 중에는 DB 잠금을 잡지 않는다.
+- 목록 응답은 `{items, hasMore, nextBeforeId}`다. hasMore가 true이면 nextBeforeId를 다음 beforeId로 전달한다.
+  최신 이력은 **가장 최근 저장된 판정**이며 실시간 자격 보장이 아니다. 최신이 UNAVAILABLE이면 과거 성공으로 대체하지 않는다.
+  동의 철회 후에도 현재 근로자 회원은 본인의 과거 이력을 조회할 수 있다.
+- V9가 `salary_reward_check`를 추가한다. 판정·사유·등록 여부·은행 코드·연결/동의 근거·확인/저장 시각·규칙 버전을
+  새 행으로 보존하며 계좌번호·신분증 번호·외부 오류 원문·할인 금액은 저장하지 않는다.
+  회원+요청 키 UNIQUE와 연결+회원 복합 FK로 중복 저장과 다른 회원 연결 사용을 차단한다.
+- 시각은 DB UTC(마이크로초), 응답 ISO 8601 `Z`이며 화면은 GMT+9로 표시한다.
+  새 스케줄러나 설정은 없고 기존 `FARM_SALARY_ACCOUNT_QUERY_ENABLED=false` 기본값을 유지한다.
+  실제 농업 통신 검증은 후속 작업이며 테스트는 모의 응답을 사용한다.
 
 #### 보험 상품 가입·농업 플랫폼 연동
 
