@@ -93,3 +93,69 @@
 .launcher .home-dock { margin-bottom: 17px; padding-block: 10px; }
 .launcher .home-dock .bank-dock img { width: 100%; height: 100%; border-radius: 15px; }
 @media (max-height: 780px) { .launcher .home-top { padding-top: 14px; } .launcher .home-top h2 { font-size: 31px; } .launcher .home-apps { gap: 12px; } .launcher .app-icon { width: 55px; height: 55px; } .launcher .home-note { display: none; } .launcher .home-dock { margin-top: auto; } }
+.phone.launcher { color: #fff; background: radial-gradient(ellipse at 62% 20%, #cbd3d2 0%, #acb9bb 25%, transparent 47%), radial-gradient(ellipse at 23% 72%, #657478 0%, #929e9f 32%, transparent 65%), linear-gradient(140deg, #d6dcdb, #53666b 65%, #b5bfbd); }
+.launcher::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 68% 28%, #e9ededaa, transparent 48%); }
+.launcher > * { position: relative; }
+.launcher .status-bar { color: #fff; }
+.iphone-widgets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 24px 23px 0; }
+.iphone-widgets > div { min-width: 0; text-align: center; }
+.iphone-widgets button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; height: 166px; padding: 16px; border-radius: 27px; text-align: left; color: #fff; box-shadow: inset 0 1px 1px #ffffff66, 0 6px 18px #20313717; }
+.iphone-weather-widget { background: linear-gradient(145deg, #315988, #7c9cc5); }
+.iphone-weather-widget > strong { font-size: 16px; font-weight: 600; }
+.iphone-weather-temp { font-size: 44px; font-weight: 300; line-height: 1.1; }
+.iphone-weather-cloud { margin-top: auto; font-size: 24px; line-height: 1; }
+.iphone-weather-widget > span:not([class]) { font-size: 12px; margin-top: 7px; }
+.iphone-weather-widget > small { font-size: 10px; margin-top: 4px; color: #e5edfa; }
+.iphone-calendar-widget { background: linear-gradient(145deg, #25282a, #080a0b); }
+.iphone-calendar-weekday { color: #ff827b; font-size: 12px; font-weight: 600; }
+.iphone-calendar-widget > strong { font-size: 43px; line-height: 1.15; font-weight: 350; margin: 3px 0 auto; }
+.iphone-calendar-event { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.iphone-calendar-event > i { width: 3px; height: 23px; background: #6cb2d5; border-radius: 3px; }
+.iphone-calendar-widget > small { font-size: 10px; color: #a8aeb1; margin: 7px 0 0; }
+.iphone-widget-label { display: block; font-size: 12px; margin-top: 8px; color: #fff; text-shadow: 0 1px 4px #18282b99; }
+.launcher .home-apps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 24px 21px 0; align-items: start; }
+.launcher .home-apps .app-icon { width: 62px; height: 62px; border-radius: 16px; margin-bottom: 8px; }
+.launcher .home-apps .bank-app-icon img { border-radius: 16px; }
+.launcher .home-apps b { font-size: 10px; color: #fff; text-shadow: 0 1px 3px #26373999; }
+.launcher .home-apps small { display: none; }
+.iphone-page-indicator { margin: auto auto 20px; display: flex; gap: 7px; padding-top: 26px; }
+.iphone-page-indicator > i { width: 6px; height: 6px; border-radius: 50%; background: #fff6; }
+.iphone-page-indicator > i:first-child { background: #fff; }
+.launcher .home-dock { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); justify-items: center; gap: 12px; margin: 0 14px 19px; padding: 16px 14px; border-radius: 32px; background: #e0e6e64d; backdrop-filter: blur(18px); border: 1px solid #ffffff55; }
+.launcher .home-dock button { width: 61px; height: 61px; border-radius: 17px; background: #fff; overflow: hidden; }
+.launcher .home-dock .bank-dock img { border-radius: 17px; }
+.launcher .home-indicator { position: absolute; }
+@media (max-width: 360px) { .iphone-widgets { gap: 10px; padding-inline: 16px; } .iphone-widgets button { padding: 13px; height: 155px; } .launcher .home-apps .app-icon { width: 53px; height: 53px; } .launcher .home-dock button { width: 53px; height: 53px; } }
+.studio-side .woori-sidebar-logo { display: block; width: 34px; height: 34px; object-fit: contain; }
+.studio-side .wordmark > .woori-oneday-name { margin: 0; color: #152c42; font-size: 29px; font-weight: 750; letter-spacing: -1px; }
+.studio-side .studio-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.studio-side .studio-links > button { min-width: 0; min-height: 60px; padding: 11px; font-size: 12px; }
+.studio-side .studio-links > button:first-child { grid-column: 1 / -1; }
+.studio-side .studio-links .farm-icon-line { width: 28px; height: 28px; color: #087abc; }
+.woori-sidebar-app-icon { display: block; width: 34px; height: 34px; border-radius: 9px; object-fit: contain; }
+.launcher .home-dock { background: #e5eeee26; border-color: #ffffff38; backdrop-filter: blur(14px) saturate(125%); box-shadow: inset 0 1px 0 #ffffff25, 0 5px 20px #263b4210; }
+.launcher .home-dock > button { display: grid; place-items: center; width: 100%; max-width: 61px; height: auto; aspect-ratio: 1; padding: 0; border-radius: 17px; background: #fff; }
+.launcher .home-dock > button > img { display: block; width: 72%; height: 72%; object-fit: contain; margin: 0; }
+.launcher .home-dock > .bank-dock > img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
+.iphone-weather-source { display: block; margin-top: 8px; color: #fff; font-size: 9px; text-shadow: 0 1px 3px #243941aa; }
+.launcher .iphone-native-dock > button > svg { width: 80%; height: 80%; display: block; }
+.launcher .iphone-native-dock > .ios-phone, .launcher .iphone-native-dock > .ios-messages { background: linear-gradient(#71ef82, #19c942); color: #fff; }
+.launcher .iphone-native-dock > .ios-safari { background: #fff; }
+.launcher .iphone-native-dock > .ios-music { background: linear-gradient(#ff6682, #f42552); color: #fff; }
+.ios-dock-dialog-shade { position: absolute; z-index: 10; inset: 0; display: grid; place-items: center; background: #14222d55; backdrop-filter: blur(5px); }
+.ios-dock-dialog-shade section { width: 80%; padding: 22px; border-radius: 22px; background: #f8fafbee; color: #172c43; text-align: center; }
+.ios-dock-dialog-shade h3 { margin: 0; font-size: 19px; }
+.ios-dock-dialog-shade p { font-size: 13px; line-height: 1.6; }
+.ios-dock-dialog-shade button { color: #087bea; width: 100%; padding: 10px; border-top: 1px solid #dae2e9; font-size: 16px; }
+.launcher .iphone-native-dock { margin: 0 12px 18px; padding: 18px 16px; gap: 16px; border-radius: 38px; background: #dce3e34a; border: 1px solid #ffffff65; backdrop-filter: blur(26px) saturate(135%); box-shadow: inset 0 2px 3px #ffffff55, inset 0 -2px 6px #52636822, 0 6px 20px #23383c15; }
+.launcher .iphone-native-dock > button { max-width: 65px; border-radius: 18px; background: transparent; box-shadow: 0 2px 5px #33454818; }
+.launcher .iphone-native-dock > button > img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
+.launcher .iphone-native-dock { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
+.phone.launcher { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Helvetica Neue", "Pretendard Variable", sans-serif; font-weight: 300; }
+.launcher .iphone-widgets button, .launcher .home-apps button { font-family: inherit; font-weight: 300; }
+.launcher .home-apps b, .launcher .iphone-weather-widget > strong, .launcher .iphone-calendar-weekday, .launcher .iphone-calendar-event, .launcher .iphone-widget-label { font-weight: 300; }
+.launcher .iphone-weather-temp, .launcher .iphone-calendar-widget > strong { font-weight: 200; }
+.won-imported-onboarding { display: flex; flex-direction: column; flex: 1; min-height: 0; background: #fff; }
+.won-imported-onboarding iframe { width: 100%; flex: 1; min-height: 0; border: 0; }
+.won-imported-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 5px; padding: 7px 10px; background: #f4f8ff; color: #3879b7; font-size: 10px; }
+.won-imported-toolbar button { padding: 6px 3px; font-size: 11px; color: #1479db; }

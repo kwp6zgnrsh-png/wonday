@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:onboarding": "vite build vendor/won-banking-web --config vendor/won-banking-web/vite.config.ts --outDir ../../public/won-banking-onboarding",
+    "build": "npm run build:onboarding && tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"

@@ -1,3 +1,5 @@
+import IphoneDock from "./IphoneDock";
+import IphoneHomeWidgets from "./IphoneHomeWidgets";
 import WooriBankingApp from "./WooriBankingApp";
 import wonBankingIcon from "./assets/won-banking-icon.png";
 import wonGlobalIcon from "./assets/won-global-icon.png";
@@ -895,7 +897,7 @@ id: "AS-DEMO-5",
             open("home");
           }}
         >
-          <Mark /> onday<span>온데이</span>
+          <img className="woori-sidebar-logo" src={wooriSymbol} alt="우리" /> <span className="woori-oneday-name">WON데이</span>
         </a>
         <div className="studio-copy">
           {(app !== "home" || modal) ? <div className="studio-screen-guide" role="status" aria-atomic="true">
@@ -912,10 +914,11 @@ id: "AS-DEMO-5",
           <p>
             일을 찾는 순간부터 하루를 마칠 때까지.
             <br />
-            온데이가 당신의 내일을 함께 준비해요.
+            WON데이가 당신의 내일을 함께 준비해요.
           </p>
           </>}
           <div className="studio-links">
+            <button className={app === "home" ? "active" : ""} onClick={() => open("home")}><FarmIcon name="grid" />홈 화면<span aria-hidden="true">↗</span></button>
             <button
               className={app === "farm" ? "active" : ""}
               onClick={() => open("farm")}
@@ -927,13 +930,15 @@ id: "AS-DEMO-5",
               className={app === "insurance" ? "active" : ""}
               onClick={() => open("insurance")}
             >
-              <Mark purple /> WONDAY 보험 <span>↗</span>
+              <img className="agriwork-shortcut-symbol" src={wooriSymbol} alt="" /> WON데이 보험 <span>↗</span>
             </button>
+            <button className={app === "banking" ? "active" : ""} onClick={() => open("banking")}><img className="woori-sidebar-app-icon" src={wonBankingIcon} alt="" />우리WON뱅킹<span aria-hidden="true">↗</span></button>
+            <button className={app === "global" ? "active" : ""} onClick={() => open("global")}><img className="woori-sidebar-app-icon" src={wonGlobalIcon} alt="" />우리WON글로벌<span aria-hidden="true">↗</span></button>
           </div>
         </div>
         <footer>
           <span>작은 안심이 모여, 더 나은 내일로.</span>
-          <span>© 2026 ONDAY</span>
+          <span>© 2026 WON데이</span>
         </footer>
       </aside>
       <main className={"phone " + (app === "home" ? "launcher" : app === "banking" || app === "global" ? "won-phone" : isEnrolling ? "enrolling" : "") + (largeText ? app === "insurance" ? " insurance-large-text" : app === "farm" ? " farm-large-text" : "" : "")}>
@@ -958,23 +963,9 @@ id: "AS-DEMO-5",
             </svg>
           </span>
         </div>
-        {app === "banking" || app === "global" ? <WooriBankingApp key={app} global={app === "global"} onClose={() => open("home")} onInsurance={() => open("insurance")} /> : app === "home" ? (
+        {app === "banking" || app === "global" ? <WooriBankingApp key={app} global={app === "global"} onClose={() => open("home")} onInsurance={() => setModal("보험 앱으로 이동할까요?")} /> : app === "home" ? (
           <>
-            <div className="home-top">
-              <p>11월 23일 월요일</p>
-              <h2>
-                오늘도,
-                <br />
-                좋은 하루.
-              </h2>
-              <div className="weather-widget">
-                <span>☀</span>
-                <div>
-                  <b>경기도</b>
-                  <p>오늘 예보는 보험 앱에서 확인할 수 있어요.</p>
-                </div>
-              </div>
-            </div>
+            <IphoneHomeWidgets onWeather={() => open("insurance")} onCalendar={() => { open("farm"); if (farmLogin) nav(role === "고용주" ? "내 공고" : "내 근무"); }} />
             <div className="home-apps">
               <button onClick={() => open("farm")}>
                 <span className="app-icon farm-icon"><img src={agriworkSymbol} width={51} height={51} alt="" /></span>
@@ -990,38 +981,8 @@ id: "AS-DEMO-5",
               </button>
               <button onClick={() => open("banking")}><span className="app-icon bank-app-icon"><img src={wonBankingIcon} alt="" /></span><b>우리WON뱅킹</b><small>나의 일상 금융</small></button>
               <button onClick={() => open("global")}><span className="app-icon bank-app-icon"><img src={wonGlobalIcon} alt="" /></span><b>우리WON글로벌</b><small>세계와 이어지는 금융</small></button>            </div>
-            <div className="home-note">
-              <span>✳</span>
-              <p>
-                당신의 땀이
-                <br />
-                <b>안심으로 돌아오도록.</b>
-              </p>
-            </div>
-            <div className="home-dock">
-              <button
-                aria-label={`${agriworkName} 앱 열기`}
-                className="farm-dock"
-                onClick={() => open("farm")}
-              >
-                <img src={agriworkSymbol} width={30} height={30} alt="" />
-              </button>
-              <button
-                aria-label="보험 앱 열기"
-                className="insurance-dock"
-                onClick={() => open("insurance")}
-              >
-                <img className="woori-symbol" src={wooriSymbol} alt="" />
-              </button>
-              <button className="bank-dock" aria-label="우리WON뱅킹 앱 열기" onClick={() => open("banking")}><img src={wonBankingIcon} alt="" /></button>
-              <button className="bank-dock" aria-label="우리WON글로벌 앱 열기" onClick={() => open("global")}><img src={wonGlobalIcon} alt="" /></button>
-              <button
-                aria-label="이용 안내"
-                onClick={() => setModal("이용 안내")}
-              >
-                ?
-              </button>
-            </div>
+            <div className="iphone-page-indicator" aria-hidden="true"><i /><i /></div>
+            <IphoneDock />
           </>
         ) : (
           <>
@@ -2010,7 +1971,7 @@ id: "AS-DEMO-5",
         )}
         {insuranceLaunching && <div className="insurance-launch-splash" role="status" aria-live="polite">
           <img src={wooriSymbol} width={64} height={64} alt="우리금융그룹 로고" />
-          <strong className="insurer-wordmark">우리WON뱅킹</strong>
+          <strong className="insurer-wordmark">우리 WON데이 보험</strong>
         </div>}
         <div className="home-indicator" />
         {toast && (
