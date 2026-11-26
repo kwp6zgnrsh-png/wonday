@@ -175,3 +175,21 @@ tasks.register('fullTest') {
 tasks.named('check') {
     dependsOn tasks.named('test')
 }
+
+/*
+ * JPA 식별정보 이관 도구. 기본은 미리보기이며 웹 서버·전체 Spring 컨텍스트·테스트를 실행하지 않는다.
+ * 실제 반영은 -PapplyIdentityMigration=true를 지정해야 한다. 비밀키·DB 비밀번호는 환경변수로만 받는다.
+ */
+tasks.register('migrateMemberIdentity', JavaExec) {
+    description = 'Previews verified domestic member identity migration; apply is explicitly opt-in.'
+    group = 'application'
+    dependsOn tasks.named('classes')
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.wonday.farm.member.identity.migration.MemberIdentityMigrationCommand'
+    if (project.hasProperty('confirmedDomesticMemberIds')) {
+        args '--confirmed-domestic-member-ids=' + project.property('confirmedDomesticMemberIds')
+    }
+    if (project.findProperty('applyIdentityMigration') == 'true') {
+        args '--apply'
+    }
+}

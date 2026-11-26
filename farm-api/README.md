@@ -213,3 +213,9 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 새 Spring 통합 테스트 클래스에는 `@Tag("integration")`과 `@Import(MySqlTestDatabase.class)`를 붙인다. 태그가 없으면 단위 테스트로 실행된다. 데모 프로필 테스트만 전용 인메모리 H2에서 계정을 등록한다.
 
 운영 코드 결함을 재현하는 테스트에는 `@Tag("known-defect")`를 붙인다. 이 테스트는 결함이 고쳐지기 전까지 실패하므로 `test`에서 빠지며, `.\gradlew.bat knownDefectTest`로 따로 실행한다. 결함을 고친 뒤 태그를 지우면 일반 테스트로 실행된다. 두 측정 모두 `FarmApiApplication`을 제외하고, 단위 측정은 필터 체인 조립만 하는 `SecurityConfig`도 제외한다. 각 리포트 폴더 옆에 같은 이름의 XML 파일도 만들어진다.
+
+## 회원 식별정보 저장 구조와 기존 확인 API
+
+회원 식별정보의 암호문·HMAC 저장과 V1 근로자 확인 API의 단계적 조회 전환은 [식별정보 문서](docs/member-identity-storage.md)를 참고한다. 기존 요청·응답·주민번호 컬럼은 유지한다. 기본 LEGACY 모드로 기존 조회를 보존하고, 확인된 내국인만 명시적으로 이관·검증한 후 ENCRYPTED로 전환한다. 실제 이관은 자동 실행하지 않는다.
+
+신규 V8은 선행 좌표 V7 다음에 적용해야 한다. 좌표 PR #18이 병합된 main의 V7을 통합했고, V8까지의 적용 순서·기존 회원 보존·DB 제약을 검증하는 통합 테스트를 갱신했다. [V8 통합 검증](docs/verification/2026-11-26-member-identity-v8-migration/VERIFICATION_REPORT.md)은 Testcontainers 격리 MySQL 8.4에서 해당 클래스만 실행해 7개 모두 통과했다. 실제 개발 DB와 이관 도구는 사용하지 않았다. 회원가입·V2 확인·급여 계좌·근무 완료는 후속 범위다.

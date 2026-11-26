@@ -11,6 +11,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import java.util.List;
 
 import com.wonday.farm.insurance.dto.WorkerVerificationRequest;
+import com.wonday.farm.member.identity.IdentityCrypto;
+import com.wonday.farm.member.identity.IdentityLookupMode;
 import com.wonday.farm.insurance.exception.InsuranceApiException;
 import com.wonday.farm.insurance.repository.WorkerVerificationRepository;
 import org.junit.jupiter.api.Nested;
@@ -26,7 +28,7 @@ class WorkerVerificationServiceTest {
 	private static final String RRN = "0000000000000";
 
 	private final WorkerVerificationRepository repository = mock(WorkerVerificationRepository.class);
-	private final WorkerVerificationService service = new WorkerVerificationService(repository);
+	private final WorkerVerificationService service = new WorkerVerificationService(repository, mock(IdentityCrypto.class), IdentityLookupMode.LEGACY);
 
 	@Nested
 	class InputValidation {
