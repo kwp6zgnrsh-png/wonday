@@ -178,13 +178,116 @@ AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 �
 키 자동 생성·매 재시작 재발급·다른 키로 임의 교체는 금지한다. 이전 키를 잃으면 기존 암호문을 복구할 수 없다.
 번호·암호문·키는 회원 및 계약 API 응답에 포함하지 않는다.
 
-이번 단계는 외국인 **계정 가입·로그인과 저장 구조 준비**까지다. 농업 V2 본인 확인은 다음 기능에서 연결한다.
-그 전에는 외국인의 보험 상품 가입을 503 `FOREIGN_VERIFICATION_NOT_READY`로 거부하고 기존 농업 본인 확인 API를 호출하지 않는다.
-기존 내국인 상품 가입·동의·계약·근무 수집·접수 흐름은 유지한다. 리워드·은행 앱·송금 기능은 이번 범위에 포함하지 않는다.
+농업 V2가 준비되면 `FARM_WORKER_VERIFICATION_V2_ENABLED=true`로 내·외국인의 공통 근로자 확인을 활성화한다.
+기본값 false에서는 기존 내국인 API를 유지하고 외국인 상품 가입은 503 `FOREIGN_VERIFICATION_NOT_READY`로 처리한다.
+리워드·은행 앱·송금 기능과 별도로 적용하는 설정이며, 실제 농업 V2 배포·통신 검증 후 활성화한다.
+
+#### 본인 급여 계좌 등록 상태 조회
+
+보험 서버 `GET /api/platform/salary-account`(웹: `/api/insurance/platform/salary-account`)는 로그인한 근로자의
+활성 농업 연결로 현재 급여 계좌 등록 여부와 은행 코드만 조회한다. `INSURANCESESSION` 쿠키를 사용하며 GET에는 CSRF가 필요 없다.
+요청에 회원·근로자 ID를 받지 않는다. 관리자·미인증 요청은 거부하며, DB의 현재 회원 역할도 확인한다.
+
+```json
+{"registered": true, "bankCode": "020"}
+```
+
+타 은행도 동일하게 해당 3자리 문자열 코드를 반환한다. 미등록은 오류가 아니라 아래와 같은 200 응답이다.
+
+```json
+{"registered": false, "bankCode": null}
+```
+
+- 농업 호출: `GET /api/internal/insurance/workers/{workerId}/salary-account`, 기존 서버 Bearer 토큰 사용.
+- 농업 응답의 workerId가 요청과 같은 양의 정수인지, registered가 JSON boolean인지 검사한다.
+  등록 상태는 3자리 문자열 bankCode가 필수이고 미등록 상태는 bankCode가 명시적으로 null이어야 한다.
+- 유효 연결은 철회되지 않고 확인된 양의 근로자 ID·동의 버전이 있는 연결이다. 조회 전후 JPA 값 프로젝션으로
+  연결 ID·근로자 ID·동의 버전·현재 회원 역할을 다시 읽어 철회·연결 교체·버전 변경을 검사한다.
+  농업 응답을 기다리는 동안 DB 트랜잭션이나 행 잠금을 유지하지 않는다.
+- 계좌번호·예금주·잔액·거래 내역·외부 근로자 ID·리워드 대상 여부는 응답하지 않는다. 결과와 업무 오류는 `Cache-Control: no-store`로 반환한다.
+- 이 GET은 상태를 저장하거나 리워드를 판정하지 않는다. 다시 요청하면 유효 연결로 재조회한다.
+  판정·이력 저장은 아래의 별도 POST API를 사용한다.
+
+| 상태 | 코드·처리 |
+|---|---|
+| 401 / 403 | 기존 세션 인증·근로자 권한 검사. DB 역할 불일치는 `WORKER_ACCOUNT_REQUIRED` |
+| 409 | `PLATFORM_LINK_REQUIRED`: 활성·확인된 농업 연결이 필요함 |
+| 409 | `PLATFORM_LINK_CHANGED`: 조회 도중 연결·동의가 변경됨. 다시 조회 필요 |
+| 404 | `WORKER_NOT_FOUND`: 농업에 연결 대상 근로자가 없음. 미등록과 구분 |
+| 502 | `INVALID_PLATFORM_RESPONSE`: 응답 형식·ID·등록 여부·은행 코드 오류 |
+| 503 | `SALARY_ACCOUNT_QUERY_NOT_READY`: 조회 기능 미활성화 |
+| 503 | `FARM_SERVICE_UNAVAILABLE`: 토큰 미설정·통신/시간 초과·그 밖의 농업 오류 |
+
+`FARM_SALARY_ACCOUNT_QUERY_ENABLED`의 기본값은 false다. 농업의 **보험 서버용 내부 조회 API**가 준비된 후 활성화한다.
+농업 마이페이지용 `/api/me/salary-account`와는 다른 API이며 그 세션을 보험 서버에서 사용하지 않는다.
+실제 농업 통신 검증은 후속으로 진행하고, 이번 검증에서는 합의한 응답과 실패 사례를 모의 처리한다.
+
+#### 급여 계좌 리워드 판정·이력
+
+| 농업 조회 결과 | result | reasonCode |
+|---|---|---|
+| 등록됨, 은행 코드 `020` | `ELIGIBLE` | `WOORI_SALARY_ACCOUNT` |
+| 등록됨, 다른 은행 | `INELIGIBLE` | `OTHER_BANK` |
+| 미등록 | `INELIGIBLE` | `NO_SALARY_ACCOUNT` |
+| 조회 실패·기능 미활성화 | `UNAVAILABLE` | `QUERY_FAILED` |
+
+규칙 버전은 `salary-woori-v1`이며 **농업에 우리은행 급여 계좌를 등록했는지**만 판정한다.
+은행 거래 실적·급여 입금 사실·할인 금액은 다루지 않으며, 판정만으로 할인·리워드를 지급하지 않는다.
+
+| 보험 API | 동작 |
+|---|---|
+| `POST /api/rewards/salary-account/checks` | 현재 상태를 조회해 판정 이력 저장. 필수 헤더 `Idempotency-Key: <UUID>` |
+| `GET /api/rewards/salary-account/latest` | 본인의 가장 최근 저장 이력. 이력 없으면 404 |
+| `GET /api/rewards/salary-account/checks?limit=20&beforeId=42` | 본인 이력을 ID 내림차순 조회. limit 1~100, 첫 페이지는 beforeId 생략 |
+
+웹에서는 `/api/rewards/` 대신 `/api/insurance/rewards/`를 사용한다. `INSURANCESESSION`으로 본인을 식별하며
+요청에 회원·근로자 ID를 받지 않는다. POST에는 기존 CSRF 헤더도 필요하다. 성공 응답은 200과 `Cache-Control: no-store`다.
+
+```json
+{
+  "id": 42,
+  "result": "ELIGIBLE",
+  "reasonCode": "WOORI_SALARY_ACCOUNT",
+  "registered": true,
+  "bankCode": "020",
+  "sourceErrorCode": null,
+  "ruleVersion": "salary-woori-v1",
+  "checkedAt": "2026-11-26T09:00:00.123456Z",
+  "recordedAt": "2026-11-26T09:00:00.234567Z"
+}
+```
+
+- 같은 회원·같은 UUID는 기존 이력을 그대로 반환한다. 대소문자 UUID는 동일하게 취급한다.
+  **새 조회·실패 후 재조회에는 새 UUID**를 사용한다. 이미 저장된 실패도 같은 키로는 바뀌지 않는다.
+  DB 저장 자체가 실패해 이력이 없다면 같은 키로 재시도할 수 있다.
+- 동시 중복 요청의 읽기 전용 농업 호출은 중복될 수 있지만 저장 이력과 반환 판정은 한 건이다.
+- 예상된 농업 404·502·503은 `UNAVAILABLE`로 기록하고 registered·bankCode를 null로 둔다.
+  sourceErrorCode는 `WORKER_NOT_FOUND`, `INVALID_PLATFORM_RESPONSE`, `FARM_SERVICE_UNAVAILABLE`,
+  `SALARY_ACCOUNT_QUERY_NOT_READY` 중 하나다. 미등록·타 은행으로 처리하지 않는다.
+- 인증·권한 오류(401/403), 잘못된 키·페이지(400), 유효 연결 없음·조회 중 연결 변경(409)은 이력을 만들지 않는다.
+  저장 직전 회원 역할과 연결·동의를 잠금으로 다시 확인한다. 농업 응답 대기 중에는 DB 잠금을 잡지 않는다.
+- 목록 응답은 `{items, hasMore, nextBeforeId}`다. hasMore가 true이면 nextBeforeId를 다음 beforeId로 전달한다.
+  최신 이력은 **가장 최근 저장된 판정**이며 실시간 자격 보장이 아니다. 최신이 UNAVAILABLE이면 과거 성공으로 대체하지 않는다.
+  동의 철회 후에도 현재 근로자 회원은 본인의 과거 이력을 조회할 수 있다.
+- V9가 `salary_reward_check`를 추가한다. 판정·사유·등록 여부·은행 코드·연결/동의 근거·확인/저장 시각·규칙 버전을
+  새 행으로 보존하며 계좌번호·신분증 번호·외부 오류 원문·할인 금액은 저장하지 않는다.
+  회원+요청 키 UNIQUE와 연결+회원 복합 FK로 중복 저장과 다른 회원 연결 사용을 차단한다.
+- 시각은 DB UTC(마이크로초), 응답 ISO 8601 `Z`이며 화면은 GMT+9로 표시한다.
+  새 스케줄러나 설정은 없고 기존 `FARM_SALARY_ACCOUNT_QUERY_ENABLED=false` 기본값을 유지한다.
+  실제 농업 통신 검증은 후속 작업이며 테스트는 모의 응답을 사용한다.
 
 #### 보험 상품 가입·농업 플랫폼 연동
 
-기존 농업 서버의 `POST /api/internal/insurance/worker-verifications`로 내국인 근로자를 확인한다. 서버용 Bearer 토큰으로 인증하며 세션·CSRF 없이 정규화된 이름·전화번호·주민등록번호를 대조한다. 성공 시 workerId·name·phone, 불일치 시 404 `WORKER_IDENTITY_NOT_MATCHED`, 중복 시 409 `WORKER_IDENTITY_AMBIGUOUS`를 반환한다. 외국인 지원용 V2 경로로의 전환은 별도 기능이다.
+농업 서버와의 확인 API는 서버용 Bearer 토큰으로 인증한다. 농업 로그인 세션·CSRF를 전달하지 않는다.
+
+| `FARM_WORKER_VERIFICATION_V2_ENABLED` | 확인 경로 | 대상·요청·응답 |
+|---|---|---|
+| false (기본값) | `POST /api/internal/insurance/worker-verifications` | 내국인만. 기존 `residentRegistrationNumber` 요청과 workerId·name·phone 응답 유지 |
+| true | `POST /api/internal/insurance/v2/worker-verifications` | 내·외국인 공통. nationalityType·identityNumber 요청, workerId·name·phone·nationalityType 응답 |
+
+보험 측 V2 연동 코드는 제공하지만 현재 농업 main에는 V2 경로가 없으므로 기본값을 유지한다.
+농업 담당자의 V2 구현·배포 후 true로 전환하고 실제 서버 통신을 검증한다. V2의 404·인증 오류·통신 오류 때
+기존 API로 자동 재전송하지 않는다. 외국인등록번호를 기존 내국인 API로 전송하지 않는다.
 
 보험 회원가입과 로그인 후 `POST /api/contracts`로 상품에 가입한다. 로컬 웹의 경로는 `/api/insurance/contracts`다. 기존 인증과 동일하게 세션 쿠키와 CSRF 헤더를 보낸다.
 
@@ -196,16 +299,32 @@ AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 �
   "identity": {
     "name": "김가상",
     "phone": "010-0000-0000",
-    "residentRegistrationNumber": "000000-0000000"
+    "nationalityType": "FOREIGN",
+    "identityNumber": "9001015000000"
   }
 }
 ```
 
-두 동의가 모두 있어야 가입할 수 있다. 상품 상세가 제공한 productVersionId를 사용한다. 고객 정보는 시연용 가상 정보로 준비한다. 이름 앞뒤 공백, 전화번호·주민등록번호의 하이픈과 공백을 정리한 뒤 합의한 농업 API에 전달한다.
+위 예시는 V2를 활성화한 외국인 가입 요청이며 가상 번호다. 내국인은 `nationalityType=DOMESTIC`과 주민등록번호를 사용한다.
+두 동의가 모두 있어야 가입할 수 있다. 상품 상세가 제공한 productVersionId를 사용한다.
+이름 앞뒤 공백, 전화번호·식별번호의 하이픈과 공백을 정리한다. 이름·전화번호·식별번호·구분은 JSON 문자열로만 받고
+전화번호는 10~11자리, 식별번호는 13자리 숫자인지 검사한다. 외국인 이름의 내부 공백·표기를 임의 변경하지 않는다.
 
-서버 설정에는 `FARM_API_BASE_URL`(로컬 기본값 http://127.0.0.1:8081)과 `FARM_API_SERVICE_TOKEN`을 사용한다. 인증 토큰이 설정돼야 확인 요청을 전송할 수 있다. 보험 서버는 `POST /api/internal/insurance/worker-verifications`에 Bearer 토큰과 identity JSON을 보내고, 농업 서버의 workerId·name·phone 응답을 확인한다. 이름과 전화번호가 요청과 일치하고 workerId가 양수여야 성공으로 처리한다. 연결·응답 시간 제한은 각각 3초다.
+기존 `identity.residentRegistrationNumber` 요청은 내국인 입력으로 계속 허용한다. 구분을 명시하면 DOMESTIC이어야 한다.
+새 `identityNumber`에는 `nationalityType`이 필수이며 두 번호 필드를 함께 보내면 null·동일값이어도 400이다.
+농업 서버에 보내는 JSON은 설정된 버전의 규격 하나로 변환한다. 번호를 응답하거나 오류 메시지에 넣지 않는다.
+
+서버 설정에는 `FARM_API_BASE_URL`(로컬 기본값 http://127.0.0.1:8081)과 `FARM_API_SERVICE_TOKEN`을 사용한다.
+인증 토큰이 설정돼야 확인 요청을 전송한다. 이름·전화번호가 요청과 일치하고 workerId가 양의 JSON 정수여야 한다.
+V2는 응답의 `nationalityType`도 필수이며 요청과 같아야 한다. 잘못된 자료형·번호 범위·누락·불일치는 502로 처리한다.
+연결·응답 시간 제한은 각각 3초다.
 
 확인 성공 후 연락처·식별번호 종류·암호문, 농업 계정 연결, 계약을 하나의 트랜잭션으로 저장한다. 요청 본문에 보험 회원 ID를 받는 대신 로그인 세션의 회원을 사용한다. 연락처는 확인된 농업 서버 전화번호를 저장한다. 연동 동의 버전은 `farm-platform-v1`을 사용한다.
+
+회원가입 때 선택한 내·외국인 구분과 요청이 다르면 원격 호출 전에 409 `NATIONALITY_TYPE_MISMATCH`로 거부한다.
+사전 확인은 JPA 값 프로젝션으로 조회해 회원 엔티티를 캐시에 남기지 않으며, 원격 호출이 끝난 뒤 회원 행을
+`PESSIMISTIC_WRITE`로 잠가 구분을 다시 확인한다. 구분 없는 기존 회원은 원격 확인·계약 저장이 모두 성공할 때만 확정한다.
+내국인은 주민등록번호, 외국인은 외국인등록번호 종류로 기존 AES-GCM 암호문 컬럼에 저장한다. 이번 기능의 DB 마이그레이션은 없다.
 
 보장은 가입 즉시 시작하고, 한국 시각의 같은 시점에서 3개월 뒤 종료한다. 2월 10일 가입하면 5월 10일까지이며, 말일에 해당 날짜가 없으면 해당 월의 말일을 적용한다. 응답의 acceptedAt·coverageFrom·coverageTo는 UTC 일시다. 가입 성공은 201과 계약 상세 및 Location 헤더를 반환한다. 보험 API의 Location은 `/api/contracts/{id}`이며, 개발 웹 프록시는 이를 `/api/insurance/contracts/{id}`로 변환하므로 웹에서 해당 헤더 경로로 상세를 조회할 수 있다.
 
@@ -216,6 +335,8 @@ AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 �
 | 동의 누락·입력 형식 오류 | 400 |
 | 농업 정보 불일치 | 404 및 WORKER_IDENTITY_NOT_MATCHED |
 | 농업 정보 중복 | 409 및 WORKER_IDENTITY_AMBIGUOUS |
+| 보험 회원의 내·외국인 구분과 요청 불일치 | 409 및 NATIONALITY_TYPE_MISMATCH |
+| V2 미활성 상태에서 외국인 확인 요청 | 503 및 FOREIGN_VERIFICATION_NOT_READY |
 | 다른 보험 회원에 이미 연결된 농업 계정 | 409 |
 | 다른 농업 계정으로 연결 변경 시도 | 409 |
 | 같은 상품의 유효 계약이 이미 있음 | 409 |

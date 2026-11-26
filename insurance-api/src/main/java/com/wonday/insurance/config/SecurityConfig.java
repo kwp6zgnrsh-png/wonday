@@ -29,6 +29,9 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.POST, "/api/contracts").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/contracts", "/api/contracts/*").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/claims", "/api/claims/*").hasRole("WORKER")
+				.requestMatchers(HttpMethod.GET, "/api/platform/salary-account").hasRole("WORKER")
+				.requestMatchers(HttpMethod.POST, "/api/rewards/salary-account/checks").hasRole("WORKER")
+				.requestMatchers(HttpMethod.GET, "/api/rewards/salary-account/checks", "/api/rewards/salary-account/latest").hasRole("WORKER")
 				.anyRequest().denyAll())
 			.exceptionHandling(exceptions -> exceptions
 				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))

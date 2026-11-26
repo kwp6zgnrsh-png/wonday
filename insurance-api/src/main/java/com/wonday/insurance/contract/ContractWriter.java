@@ -28,7 +28,7 @@ class ContractWriter {
 	@Transactional
 	public long create(long memberId, ContractEnrollmentRequest request, VerifiedWorker worker) {
 		// 동일 회원의 동시 가입을 직렬화하고 연락처·동의 연결·계약을 한 번에 저장한다.
-		members.lockWorkerAndSaveContact(memberId, worker.phone(), request.identity().residentRegistrationNumber());
+		members.lockWorkerAndSaveContact(memberId, request.identity(), worker.phone());
 		LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
 		var product = products.requireAvailable(request.productVersionId(), now);
 		if (contracts.hasCurrentContract(memberId, product.productId(), now)) {

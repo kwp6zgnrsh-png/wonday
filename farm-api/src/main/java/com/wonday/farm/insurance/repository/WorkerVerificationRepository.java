@@ -45,6 +45,31 @@ public interface WorkerVerificationRepository extends Repository<Member, Long> {
 	List<Match> findDomesticByIdentityHmac(@Param("name") String name, @Param("phone") String phone,
 		@Param("identityHmac") String identityHmac);
 
+	// V2는 국적이 명시된 암호화 저장 회원만 조회한다. 기존 원문·NULL 국적은 자동 보완하지 않는다.
+	@Query(value = """
+		select m.id as workerId,
+		       regexp_replace(m.name, '^[[:space:]]+|[[:space:]]+$', '') as name,
+		       regexp_replace(m.phone, '[-[:space:]]', '') as phone,
+		       m.nationality_type as nationalityType
+		from member m
+		where cast(m.role as binary) = cast('WORKER' as binary)
+		  and cast(m.nationality_type as binary) = cast(:nationalityType as binary)
+		  and cast(m.identity_type as binary) = cast(:identityType as binary)
+		  and m.identity_ciphertext is not null
+		  and m.identity_hmac = :identityHmac
+		  and cast(regexp_replace(m.name, '^[[:space:]]+|[[:space:]]+$', '') as binary) = cast(:name as binary)
+		  and regexp_replace(m.phone, '[-[:space:]]', '') = :phone
+		order by m.id
+		limit 2
+		""", nativeQuery = true)
+	List<V2Match> findByNationalityAndIdentityHmac(@Param("name") String name, @Param("phone") String phone,
+		@Param("nationalityType") String nationalityType, @Param("identityType") String identityType,
+		@Param("identityHmac") String identityHmac);
+
+	interface V2Match extends Match {
+		String getNationalityType();
+	}
+
 	interface Match {
 		long getWorkerId();
 		String getName();

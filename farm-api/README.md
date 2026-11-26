@@ -2,6 +2,8 @@
 
 ## 보험 서버 연동
 
+내·외국인 등록 정보 확인은 `POST /api/internal/insurance/v2/worker-verifications`로 추가했다. 기존 V1을 유지하고 같은 서버 토큰·no-store 정책을 사용한다. 국적·번호 종류·HMAC·이름·전화가 일치하는 WORKER만 반환하며 V1 또는 원문 조회로 fallback하지 않는다. 요청·응답·설정·검증 범위는 [보험 V2 문서](docs/worker-verification-v2-api.md)를 참고한다.
+
 본인 확인, 개인별 근무 변경 목록, 확정 약정 상세 API의 사용 방법과 후속 연결 사항은 [보험 연동 API 문서](docs/insurance-integration-api.md)를 참고한다. 서버 전용 Bearer 토큰을 사용하며 농업 앱의 로그인 세션과 분리한다. 팀 합의에 따라 보험 서버가 동의를 관리하고 농업 서버는 서버 토큰과 근로자·근무 소유 관계를 확인한다. 새 V5는 아직 DB에 적용하지 않았다.
 
 ## 공고와 여러 날짜 일정 등록
@@ -218,7 +220,7 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 
 회원 식별정보의 암호문·HMAC 저장과 V1 근로자 확인 API의 단계적 조회 전환은 [식별정보 문서](docs/member-identity-storage.md)를 참고한다. 기존 요청·응답·주민번호 컬럼은 유지한다. 기본 LEGACY 모드로 기존 조회를 보존하고, 확인된 내국인만 명시적으로 이관·검증한 후 ENCRYPTED로 전환한다. 실제 이관은 자동 실행하지 않는다.
 
-신규 V8은 선행 좌표 V7 다음에 적용해야 한다. [V8 통합 검증](docs/verification/2026-11-26-member-identity-v8-migration/VERIFICATION_REPORT.md)은 당시 Testcontainers 격리 MySQL 8.4에서 해당 클래스만 실행해 7개 모두 통과한 기록이다. 실제 개발 DB와 이관 도구는 사용하지 않았다. 후속 signup 변경의 V9와 수정된 테스트는 아직 실행 검증하지 않았다.
+신규 V8은 선행 좌표 V7 다음에 적용해야 한다. [V8 통합 검증](docs/verification/2026-11-26-member-identity-v8-migration/VERIFICATION_REPORT.md)은 당시 Testcontainers 격리 MySQL 8.4에서 해당 클래스만 실행해 7개 모두 통과한 기록이다. 실제 개발 DB와 이관 도구는 사용하지 않았다. 이 결과는 V8까지의 검증 기록이며, V9 마이그레이션과 실제 DB에서의 회원가입 처리 검증을 대신하지 않는다.
 
 ## 회원가입과 선택 급여 계좌 저장
 
@@ -226,12 +228,20 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 
 신규 V9는 회원당 한 개의 급여 계좌 저장 테이블만 추가한다. 계좌번호는 하이픈을 제거한 숫자 1~30자리를 별도 키로 암호화하며 응답으로 반환하지 않는다. 계좌 입력 시 `FARM_SALARY_ACCOUNT_ENCRYPTION_KEY`가 필요하고, 모든 가입에는 기존 식별정보 암호화/HMAC 키가 필요하다. 계좌를 생략하면 계좌 키는 필요 없다. 실제 키는 저장소에 넣지 않는다.
 
-요청·응답·설정과 검증 범위는 [회원가입 API 문서](docs/signup-api.md)를 참고한다. farm-demo의 `/demo/signup`에서 선택 계좌를 포함하거나 생략한 가입, 별도 로그인, /me의 국적과 실제 계좌 등록 여부를 확인할 수 있다. CSRF는 자동 처리하고 요청 상태·오류를 표시한다. 데모 전용 계좌 조회는 본인 세션으로만 허용하고 번호·암호문은 반환하지 않는다. 계좌 관리 API·보험 V2·보험 계좌 조회·근무 완료·user-web 연결은 후속 범위다.
-
+요청·응답·설정과 검증 범위는 [회원가입 API 문서](docs/signup-api.md)를 참고한다. farm-demo의 `/demo/signup`에서 선택 계좌를 포함하거나 생략한 가입, 별도 로그인, `/me`의 국적과 실제 계좌 등록 여부를 확인할 수 있다. CSRF는 자동 처리하고 요청 상태·오류를 표시한다. 데모 전용 계좌 조회는 본인 세션으로만 허용하고 번호·암호문은 반환하지 않는다.
 
 ## 근로자 본인 급여 계좌 관리
 
-GET·PUT·DELETE /api/me/salary-account를 추가했다. 근로자 세션·CSRF를 사용하고 조회 마스킹과 버전 충돌 409를 처리한다. signup 기반 salary-account 브랜치이며 신규 V10으로 해제 후에도 유지되는 회원 계좌 버전을 추가한다. 요청·응답과 미검증 범위는 [계좌 관리 API](docs/salary-account-api.md)를 참고한다.
+`GET`·`PUT`·`DELETE /api/me/salary-account`로 근로자 본인의 급여 계좌를 조회·등록·교체·해제한다. 기존 로그인 세션·CSRF를 사용하고, 조회 시 계좌번호를 마스킹하며 오래된 버전의 변경은 409로 거절한다.
 
+신규 V10에서 회원의 계좌 버전을 추가해 계좌 해제·재등록 후에도 과거 화면의 요청을 구분한다. 요청·응답과 검증 범위는 [계좌 관리 API 문서](docs/salary-account-api.md)를 참고한다.
 
-farm-demo의 /demo/salary-account에서 실제 급여 계좌 조회·등록·교체·해제와 마스킹·409를 확인할 수 있다. 근로자 로그인 후 CSRF·조회 버전을 자동 처리하고, 충돌 후에는 최신 조회를 요구한다. 두 창 확인 절차는 docs/salary-account-api.md의 farm-demo 절 참고.
+farm-demo의 `/demo/salary-account`에서 실제 급여 계좌 조회·등록·교체·해제와 마스킹·409를 확인할 수 있다. CSRF와 조회 당시 버전을 자동 전송하고, 충돌 후에는 최신 조회를 요구한다. 두 창 확인 절차는 계좌 관리 API 문서의 farm-demo 절을 참고한다.
+
+## 보험 V2 본인 확인 데모
+
+farm-demo의 `/demo/worker-verification`에서 근로자 로그인 후 성공·불일치·입력 오류를 확인할 수 있다. CSRF는 자동 처리하며, 실제 내부 API의 서버 전용 Bearer 토큰 인증과는 별도로 확인하는 화면이다.
+
+요청·응답·설정과 검증 범위는 [보험 V2 문서](docs/worker-verification-v2-api.md)를 참고한다.
+
+보험 서버용 급여 계좌 조회·근무 완료·user-web 연결은 별도 작업 범위다.

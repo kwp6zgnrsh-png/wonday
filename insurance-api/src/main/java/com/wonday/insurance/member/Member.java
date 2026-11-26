@@ -49,10 +49,10 @@ class Member {
 	@Column(name = "identity_number_ciphertext", columnDefinition = "TEXT")
 	private String identityNumberCiphertext;
 
-	void updateDomesticEnrollmentContact(String phone, String ciphertext) {
+	void updateEnrollmentContact(String phone, NationalityType nationalityType, String ciphertext) {
 		this.phone = phone;
-		this.nationalityType = NationalityType.DOMESTIC;
-		this.identityType = IdentityType.RESIDENT_REGISTRATION_NUMBER;
+		this.nationalityType = nationalityType;
+		this.identityType = IdentityType.forNationality(nationalityType);
 		this.identityNumberCiphertext = ciphertext;
 	}
 

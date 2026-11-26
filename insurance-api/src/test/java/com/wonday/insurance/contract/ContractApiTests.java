@@ -13,6 +13,8 @@ import com.wonday.insurance.platform.FarmPlatformClient.VerifiedWorker;
 import com.wonday.insurance.platform.PlatformVerificationException;
 import com.wonday.insurance.member.IdentityCipher;
 import com.wonday.insurance.member.IdentityType;
+import com.wonday.insurance.member.NationalityType;
+import com.wonday.insurance.platform.FarmPlatformProperties;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Instant;
@@ -22,6 +24,8 @@ import java.util.concurrent.*;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -40,7 +44,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest
+@SpringBootTest(properties = "insurance.farm.worker-verification-v2-enabled=true")
 @AutoConfigureMockMvc
 @Import(ContractApiTests.FixedClock.class)
 class ContractApiTests {
@@ -52,11 +56,13 @@ class ContractApiTests {
 	@Autowired Clock clock;
 	@Autowired ContractService contracts;
 	@Autowired IdentityCipher identityCipher;
+	@Autowired FarmPlatformProperties farmProperties;
 	@MockitoBean FarmPlatformClient farm;
 	private long versionId;
 
 	@BeforeEach
 	void prepare() {
+		assertThat(farmProperties.workerVerificationV2Enabled()).isTrue();
 		when(clock.instant()).thenReturn(Instant.parse("2026-02-09T15:00:00Z"));
 		when(farm.verify(any())).thenReturn(new VerifiedWorker(77, "테스트 근로자", "01000000000"));
 		tx(() -> {
@@ -127,21 +133,151 @@ class ContractApiTests {
 	}
 
 	@Test
-	void foreignMemberDoesNotSendIdentityToTheLegacyFarmEndpoint() throws Exception {
+	void foreignMemberEnrollsWithEncryptedForeignIdentityAndExistingSession() throws Exception {
+		Account account = account(NationalityType.FOREIGN);
+		when(farm.verify(any())).thenReturn(new VerifiedWorker(77, "TEST WORKER", "01000000000", NationalityType.FOREIGN));
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(v2Payload(NationalityType.FOREIGN).replace("테스트 근로자", " TEST WORKER ")))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.identityNumber").doesNotExist())
+			.andExpect(jsonPath("$.identityNumberCiphertext").doesNotExist());
+		verify(farm).verify(argThat(identity -> identity.nationalityType() == NationalityType.FOREIGN
+			&& identity.name().equals("TEST WORKER") && identity.phone().equals("01000000000")));
+		tx(() -> {
+			String ciphertext = entities.createQuery("select m.identityNumberCiphertext from Member m where m.id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult();
+			assertThat(identityCipher.decrypt(account.id(), IdentityType.FOREIGN_REGISTRATION_NUMBER, ciphertext))
+				.isEqualTo("9001015000000");
+			assertThat(entities.createQuery("select m.identityType from Member m where m.id = :id", IdentityType.class)
+				.setParameter("id", account.id()).getSingleResult()).isEqualTo(IdentityType.FOREIGN_REGISTRATION_NUMBER);
+			assertThat(entities.createNativeQuery("select resident_registration_number from member where id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult()).isNull();
+			assertThat(count("InsuranceContract")).isEqualTo(1);
+			assertThat(count("PlatformLink")).isEqualTo(1);
+			return null;
+		});
+		mvc.perform(get("/api/auth/me").session(account.session()))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.nationalityType").value("FOREIGN"));
+	}
+
+	@Test
+	void domesticMemberCanEnrollUsingCanonicalIdentityFields() throws Exception {
+		Account account = account();
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(v2Payload(NationalityType.DOMESTIC)))
+			.andExpect(status().isCreated());
+		verify(farm).verify(argThat(identity -> identity.nationalityType() == NationalityType.DOMESTIC
+			&& identity.identityNumber().equals("0000000000000")));
+	}
+
+	@Test
+	void nationalityMismatchIsRejectedBeforeCallingFarm() throws Exception {
+		for (NationalityType registered : NationalityType.values()) {
+			Account account = account(registered);
+			NationalityType requested = registered == NationalityType.DOMESTIC ? NationalityType.FOREIGN : NationalityType.DOMESTIC;
+			mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+				.contentType(MediaType.APPLICATION_JSON).content(v2Payload(requested)))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("NATIONALITY_TYPE_MISMATCH"));
+		}
+		verifyNoInteractions(farm);
+		assertThat(tx(() -> count("InsuranceContract"))).isZero();
+		assertThat(tx(() -> count("PlatformLink"))).isZero();
+	}
+
+	@Test
+	void memberNationalityIsRecheckedAfterRemoteVerificationUnderTheMemberLock() throws Exception {
+		Account account = account();
+		when(farm.verify(any())).thenAnswer(invocation -> {
+			tx(() -> {
+				entities.createNativeQuery("update member set nationality_type = 'FOREIGN' where id = :id")
+					.setParameter("id", account.id()).executeUpdate();
+				return null;
+			});
+			return new VerifiedWorker(77, "테스트 근로자", "01000000000");
+		});
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(v2Payload(NationalityType.DOMESTIC)))
+			.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("NATIONALITY_TYPE_MISMATCH"));
+		assertNoEnrollmentState(account);
+		assertThat(tx(() -> entities.createQuery("select m.nationalityType from Member m where m.id = :id", NationalityType.class)
+			.setParameter("id", account.id()).getSingleResult())).isEqualTo(NationalityType.FOREIGN);
+	}
+
+	@ParameterizedTest
+	@ValueSource(ints = {404, 503})
+	void failedForeignVerificationSavesNoContactLinkOrContract(int status) throws Exception {
+		Account account = account(NationalityType.FOREIGN);
+		when(farm.verify(any())).thenThrow(new PlatformVerificationException(HttpStatus.valueOf(status),
+			status == 404 ? "WORKER_IDENTITY_NOT_MATCHED" : "FARM_SERVICE_UNAVAILABLE", "Verification failed"));
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(v2Payload(NationalityType.FOREIGN)))
+			.andExpect(status().is(status));
+		assertNoEnrollmentState(account);
+	}
+
+	@Test
+	void unclassifiedMemberAdoptsNationalityOnlyAfterVerificationAndCommit() throws Exception {
 		Account account = account();
 		tx(() -> {
-			entities.createNativeQuery("update member set nationality_type = 'FOREIGN' where id = :id")
+			entities.createNativeQuery("update member set nationality_type = null where id = :id")
 				.setParameter("id", account.id()).executeUpdate();
 			return null;
 		});
+		when(farm.verify(any())).thenThrow(new PlatformVerificationException(HttpStatus.SERVICE_UNAVAILABLE,
+			"FARM_SERVICE_UNAVAILABLE", "Verification failed"))
+			.thenReturn(new VerifiedWorker(77, "테스트 근로자", "01000000000", NationalityType.FOREIGN));
 		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
-			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true)))
-			.andExpect(status().isServiceUnavailable())
-			.andExpect(jsonPath("$.code").value("FOREIGN_VERIFICATION_NOT_READY"));
+			.contentType(MediaType.APPLICATION_JSON).content(v2Payload(NationalityType.FOREIGN)))
+			.andExpect(status().isServiceUnavailable());
+		assertThat(tx(() -> entities.createQuery("select m.nationalityType from Member m where m.id = :id", NationalityType.class)
+			.setParameter("id", account.id()).getSingleResult())).isNull();
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(v2Payload(NationalityType.FOREIGN)))
+			.andExpect(status().isCreated());
+		mvc.perform(get("/api/auth/me").session(account.session())).andExpect(status().isOk())
+			.andExpect(jsonPath("$.nationalityType").value("FOREIGN"));
+	}
+
+	@Test
+	void foreignLocalFailureRollsBackEncryptedContactAndConsent() throws Exception {
+		Account account = account(NationalityType.FOREIGN);
+		when(farm.verify(any())).thenAnswer(invocation -> {
+			tx(() -> {
+				entities.createQuery("update InsuranceProduct p set status = 'CLOSED'").executeUpdate();
+				return null;
+			});
+			return new VerifiedWorker(77, "테스트 근로자", "01000000000", NationalityType.FOREIGN);
+		});
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(v2Payload(NationalityType.FOREIGN)))
+			.andExpect(status().isConflict());
+		assertNoEnrollmentState(account);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"\"identityNumber\":\"9001015000000\"",
+		"\"nationalityType\":\"FOREIGN\",\"identityNumber\":9001015000000",
+		"\"nationalityType\":\"FOREIGN\",\"identityNumber\":\"9001015000000\",\"residentRegistrationNumber\":null"
+	})
+	void invalidCanonicalIdentityIsRejectedBeforeAnyVerification(String fields) throws Exception {
+		Account account = account(NationalityType.FOREIGN);
+		String body = "{\"productVersionId\":" + versionId + ",\"termsAccepted\":true,\"platformConsentAccepted\":true,"
+			+ "\"identity\":{\"name\":\"TEST WORKER\",\"phone\":\"01000000000\"," + fields + "}}";
+		String response = mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest())
+			.andReturn().getResponse().getContentAsString();
+		assertThat(response).doesNotContain("9001015000000");
 		verifyNoInteractions(farm);
+		assertNoEnrollmentState(account);
+	}
+
+	private void assertNoEnrollmentState(Account account) {
 		tx(() -> {
 			assertThat(count("InsuranceContract")).isZero();
 			assertThat(count("PlatformLink")).isZero();
+			assertThat(entities.createQuery("select m.phone from Member m where m.id = :id", String.class)
+				.setParameter("id", account.id()).getSingleResult()).isNull();
 			assertThat(entities.createQuery("select m.identityNumberCiphertext from Member m where m.id = :id", String.class)
 				.setParameter("id", account.id()).getSingleResult()).isNull();
 			return null;
@@ -312,9 +448,20 @@ class ContractApiTests {
 	}
 
 	private Account account() throws Exception {
+		return account(NationalityType.DOMESTIC);
+	}
+
+	private String v2Payload(NationalityType nationality) {
+		return """
+			{"productVersionId":%d,"termsAccepted":true,"platformConsentAccepted":true,
+			"identity":{"name":"테스트 근로자","phone":"010-0000-0000","nationalityType":"%s","identityNumber":"%s"}}
+			""".formatted(versionId, nationality, nationality == NationalityType.DOMESTIC ? "0000000000000" : "9001015000000");
+	}
+
+	private Account account(NationalityType nationality) throws Exception {
 		String loginId = "enroll-" + UUID.randomUUID();
 		String response = mvc.perform(post("/api/auth/signup").with(csrf()).contentType(MediaType.APPLICATION_JSON)
-			.content("{\"loginId\":\""+loginId+"\",\"name\":\"보험 회원\",\"password\":\"test-password\"}"))
+			.content("{\"loginId\":\""+loginId+"\",\"name\":\"보험 회원\",\"password\":\"test-password\",\"nationalityType\":\""+nationality+"\"}"))
 			.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
 		MockHttpSession session = (MockHttpSession) mvc.perform(post("/api/auth/login").with(csrf())
 			.contentType(MediaType.APPLICATION_FORM_URLENCODED).formField("loginId", loginId)

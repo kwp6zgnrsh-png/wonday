@@ -29,7 +29,8 @@ public class InsuranceSecurityConfig {
 			.httpBasic(AbstractHttpConfigurer::disable)
 			.logout(AbstractHttpConfigurer::disable)
 			.authorizeHttpRequests(auth -> auth
-				.requestMatchers(HttpMethod.POST, "/api/internal/insurance/worker-verifications").hasAuthority("INSURANCE_SERVICE")
+				.requestMatchers(HttpMethod.POST, "/api/internal/insurance/worker-verifications",
+					"/api/internal/insurance/v2/worker-verifications").hasAuthority("INSURANCE_SERVICE")
 				.requestMatchers(HttpMethod.GET, "/api/internal/insurance/workers/*/work-changes",
 					"/api/internal/insurance/workers/*/work-assignments/*").hasAuthority("INSURANCE_SERVICE")
 				.anyRequest().denyAll())
