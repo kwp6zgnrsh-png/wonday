@@ -27,3 +27,8 @@ spring:
 farm:
   insurance:
     service-token: ${FARM_API_SERVICE_TOKEN:}
+  identity:
+    # 검토·이관 후 ENCRYPTED로 명시 전환한다. 다른 기능의 로그인 설정은 바꾸지 않는다.
+    lookup-mode: ${FARM_IDENTITY_LOOKUP_MODE:LEGACY}
+    encryption-key: ${FARM_IDENTITY_ENCRYPTION_KEY:}
+    hmac-key: ${FARM_IDENTITY_HMAC_KEY:}
