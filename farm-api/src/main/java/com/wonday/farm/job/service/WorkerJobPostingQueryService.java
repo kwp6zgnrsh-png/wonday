@@ -108,7 +108,7 @@ public class WorkerJobPostingQueryService {
 				return new WorkerJobPostingResponse.Schedule(schedule.getId(), schedule.getWorkDate(), schedule.getPlannedStartAt(),
 					schedule.getPlannedEndAt(), schedule.getBreakStartAt(), schedule.getBreakEndAt(), schedule.getStatus(),
 					schedule.getTermsVersion(), confirmed, remaining, reason == null, reason);
-			}).toList());
+			}).toList(), posting.getLatitude(), posting.getLongitude());
 	}
 
 	private void requireWorker(long workerId) {
@@ -140,7 +140,8 @@ public class WorkerJobPostingQueryService {
 		}).toList();
 		return new WorkerJobPostingsResponse.Posting(posting.getId(), posting.getTitle(), posting.getWorkLocation(),
 			posting.getCropCode(), codes.cropName(posting.getCropCode()), posting.getWorkTypeCode(), codes.workTypeName(posting.getWorkTypeCode()),
-			posting.getHeadcount(), posting.getDailyWage(), dates.stream().map(WorkSchedule::getWorkDate).toList(), available);
+			posting.getHeadcount(), posting.getDailyWage(), dates.stream().map(WorkSchedule::getWorkDate).toList(), available,
+			posting.getLatitude(), posting.getLongitude());
 	}
 
 	private static long remainingSlots(JobPosting posting, long confirmed) {

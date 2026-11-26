@@ -63,6 +63,7 @@ public class JobPostingQueryService {
 			new MyJobPostingsResponse.Posting(posting.getId(), posting.getTitle(), posting.getDescription(),
 				posting.getCropCode(), posting.getWorkTypeCode(), posting.getWorkLocation(), posting.getTimeZone(),
 				posting.getHeadcount(), posting.getDailyWage(),
-				schedulesByPosting.getOrDefault(posting.getId(), List.of()))).toList());
+				schedulesByPosting.getOrDefault(posting.getId(), List.of()),
+				posting.getLatitude(), posting.getLongitude())).toList());
 	}
 }

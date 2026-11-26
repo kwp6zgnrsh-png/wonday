@@ -677,13 +677,14 @@ class WorkerJobPostingQueryServiceTest {
 		@DisplayName("응답 레코드에 로그인 ID·전화번호·주민번호·고용주·다른 지원자 정보 필드가 없다")
 		void noPersonalInformationFields() {
 			assertThat(componentNames(WorkerJobPostingResponse.class)).containsExactly("jobPostingId", "title", "description",
-				"workLocation", "cropCode", "cropName", "workTypeCode", "workTypeName", "timeZone", "headcount", "dailyWage", "schedules");
+				"workLocation", "cropCode", "cropName", "workTypeCode", "workTypeName", "timeZone", "headcount", "dailyWage", "schedules",
+				"latitude", "longitude");
 			assertThat(componentNames(WorkerJobPostingResponse.Schedule.class)).containsExactly("workScheduleId", "workDate",
 				"plannedStartAt", "plannedEndAt", "breakStartAt", "breakEndAt", "status", "termsVersion", "confirmedCount",
 				"remainingSlots", "canApply", "unavailableReason");
 			assertThat(componentNames(WorkerJobPostingsResponse.Posting.class)).containsExactly("jobPostingId", "title",
 				"workLocation", "cropCode", "cropName", "workTypeCode", "workTypeName", "headcount", "dailyWage",
-				"recruitingWorkDates", "recruitingSchedules");
+				"recruitingWorkDates", "recruitingSchedules", "latitude", "longitude");
 		}
 
 		private List<String> componentNames(Class<?> type) {
@@ -916,7 +917,8 @@ class WorkerJobPostingQueryServiceTest {
 	private JobPosting posting(long id, String zone, int headcount) {
 		var employer = new Member("employer-" + id, "hash", "고용주 " + id, MemberRole.EMPLOYER);
 		ReflectionTestUtils.setField(employer, "id", 1000 + id);
-		var request = new CreateJobPostingRequest("공고 " + id, "설명 " + id, "VC02100100100102", "0058", "작업지 " + id, zone,
+		var request = new CreateJobPostingRequest("공고 " + id, "설명 " + id, "VC02100100100102", "0058", "작업지 " + id,
+			new java.math.BigDecimal("37.123456"), new java.math.BigDecimal("127.123456"), zone,
 			headcount, 120000L, List.of());
 		var posting = new JobPosting(employer, request);
 		ReflectionTestUtils.setField(posting, "id", id);

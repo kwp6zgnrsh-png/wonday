@@ -6,6 +6,7 @@
 - GET 조회는 세션 쿠키를 유지하며 CSRF 토큰은 필요하지 않다.
 - 다른 근로자의 지원·회원 개인정보나 고용주의 로그인·연락처·주민번호를 반환하지 않는다.
 - 코드·날짜별 조건은 공고의 현재 조회 정보다. 개인별 확정 약정 상세 API를 대체하지 않는다.
+- 공고별 `latitude`·`longitude`는 저장된 작업지 좌표를 JSON 숫자로 제공한다. V7 이전 공고의 누락 좌표는 양쪽 모두 `null`이며, 주소로 자동 추정하지 않는다. 등록·정밀도 정책은 [좌표 API 문서](job-location-api.md)를 참고한다.
 - 종료·취소 날짜의 조건을 현재 값으로 덮어쓰는 쓰기 동작은 없다. 후속 공통 조건 수정에서는 합의한 과거 조건 보존을 연결해야 한다.
 
 ## 목록
@@ -32,6 +33,8 @@ GET /api/job-postings?page=0&size=20
       "jobPostingId": 101,
       "title": "배추 수확 근로자 모집",
       "workLocation": "전라남도 해남군 예시농장",
+      "latitude": 37.123457,
+      "longitude": 127.123457,
       "cropCode": "VC02100100100102",
       "cropName": "노지가을배추",
       "workTypeCode": "0058",
@@ -75,6 +78,8 @@ GET /api/job-postings/101
   "title": "배추 수확 근로자 모집",
   "description": "배추 수확 작업입니다.",
   "workLocation": "전라남도 해남군 예시농장",
+  "latitude": 37.123457,
+  "longitude": 127.123457,
   "cropCode": "VC02100100100102",
   "cropName": "노지가을배추",
   "workTypeCode": "0058",

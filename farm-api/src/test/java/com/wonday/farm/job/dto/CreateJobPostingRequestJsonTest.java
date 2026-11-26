@@ -20,7 +20,7 @@ class CreateJobPostingRequestJsonTest {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final String BODY = """
 		{"title":"t","description":"d","cropCode":"C","workTypeCode":"W","workLocation":"L","timeZone":"GMT+9",
-		 "headcount":%s,"dailyWage":%s,
+		 "latitude":37.123456,"longitude":127.123456,"headcount":%s,"dailyWage":%s,
 		 "schedules":[{"workDate":%s,"plannedStartAt":%s,"plannedEndAt":%s,"breakStartAt":%s,"breakEndAt":%s}]}""";
 
 	@Nested

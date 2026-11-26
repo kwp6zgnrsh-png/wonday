@@ -41,6 +41,7 @@ class JobPostingQueryServiceMissingCountsTest {
 		given(members.findById(EMPLOYER_ID)).willReturn(Optional.of(employer));
 
 		JobPosting posting = new JobPosting(employer, new CreateJobPostingRequest("공고", "설명", "C", "W", "작업지",
+			new java.math.BigDecimal("37.123456"), new java.math.BigDecimal("127.123456"),
 			"GMT+9", 3, 120000L, List.of()));
 		ReflectionTestUtils.setField(posting, "id", 1L);
 		WorkSchedule counted = schedule(11L, posting, "2026-12-01");

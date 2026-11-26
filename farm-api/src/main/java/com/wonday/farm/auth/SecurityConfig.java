@@ -29,7 +29,9 @@ public class SecurityConfig {
 				auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
 				// 데모 모드에서는 로그인 전에도 데모 페이지를 열 수 있다.
 				if (environment.matchesProfiles("farm-demo")) {
-					auth.requestMatchers(HttpMethod.GET, "/demo/login", "/demo/jobs", "/demo/worker-jobs").permitAll();
+					auth.requestMatchers(HttpMethod.GET, "/demo/login", "/demo/jobs", "/demo/worker-jobs", "/demo/job-location").permitAll();
+					// 약정 확인은 데모 프로필에서만 세션으로 허용한다. 보험 서버 전용 경로는 그대로 둔다.
+					auth.requestMatchers(HttpMethod.GET, "/demo/api/work-assignments", "/demo/api/work-assignments/*").hasRole("WORKER");
 				}
 				// 로그인 전에 토큰을 발급할 수 있게 하고, 본인 조회는 농업 계정 역할로 제한한다.
 				auth.requestMatchers(HttpMethod.GET, "/", "/api/auth/csrf").permitAll()

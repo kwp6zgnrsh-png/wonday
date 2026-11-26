@@ -1,5 +1,6 @@
 package com.wonday.farm.insurance.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
@@ -9,5 +10,5 @@ public record WorkAssignmentResponse(
 	String agreedCropCode, String agreedWorkTypeCode,
 	OffsetDateTime agreedStartAt, OffsetDateTime agreedEndAt,
 	OffsetDateTime agreedBreakStartAt, OffsetDateTime agreedBreakEndAt,
-	long agreedDailyWage
+	long agreedDailyWage, BigDecimal agreedLatitude, BigDecimal agreedLongitude
 ) {}
