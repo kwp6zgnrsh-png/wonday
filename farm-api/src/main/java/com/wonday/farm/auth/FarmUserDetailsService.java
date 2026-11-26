@@ -19,7 +19,8 @@ public class FarmUserDetailsService implements UserDetailsService {
 		// JPA로 계정을 찾아 인증 정보로 변환하면 Spring Security가 해시를 사용해 입력 비밀번호를 검증한다.
 		return members.findByLoginId(loginId)
 			.flatMap(member -> member.memberRole().map(role -> new FarmPrincipal(
-				member.getId(), member.getLoginId(), member.passwordHash(), member.displayName(), role)))
+				member.getId(), member.getLoginId(), member.passwordHash(), member.displayName(), role,
+				member.nationalityType().orElse(null))))
 			.orElseThrow(() -> new UsernameNotFoundException("Farm account not found"));
 	}
 }

@@ -32,3 +32,5 @@ farm:
     lookup-mode: ${FARM_IDENTITY_LOOKUP_MODE:LEGACY}
     encryption-key: ${FARM_IDENTITY_ENCRYPTION_KEY:}
     hmac-key: ${FARM_IDENTITY_HMAC_KEY:}
+  salary-account:
+    encryption-key: ${FARM_SALARY_ACCOUNT_ENCRYPTION_KEY:}

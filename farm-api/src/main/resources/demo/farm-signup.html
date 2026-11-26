@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>회원가입 확인 · WON데이 farm-demo</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, 'Malgun Gothic', sans-serif; color: #183c2c; background: #edf4ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 2rem 1rem; }
+    main { max-width: 66rem; margin: auto; }
+    h1 { margin: .5rem 0; font-size: 1.85rem; }
+    h2 { margin-top: 0; font-size: 1.25rem; }
+    p { line-height: 1.6; }
+    a { color: #185c3b; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+    .card { padding: 1.35rem; background: white; border: 1px solid #c7d9cc; border-radius: .85rem; margin-bottom: 1rem; }
+    .hint { color: #4d6659; font-size: .9rem; }
+    label { display: block; font-weight: 650; margin: .85rem 0 .3rem; }
+    input, select, button { font: inherit; min-height: 2.7rem; border-radius: .45rem; }
+    input, select { width: 100%; padding: .55rem .7rem; color: inherit; border: 1px solid #839c8d; background: white; }
+    fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+    .check { display: flex; align-items: center; gap: .6rem; margin: 1.2rem 0 .7rem; }
+    .check input { width: 1.15rem; min-height: 1.15rem; }
+    .account { padding: .2rem .85rem 1rem; background: #f3f7f4; border-radius: .5rem; }
+    .identity-inputs { display: grid; grid-template-columns: minmax(6.5rem, 1fr) auto 2.8rem minmax(5.5rem, 1fr); gap: .4rem; align-items: center; }
+    .identity-inputs input { min-width: 0; letter-spacing: .09em; text-align: center; }
+    .identity-inputs span { font-weight: 700; }
+    .check.small { font-size: .85rem; font-weight: 500; }
+    button { padding: .55rem .9rem; margin-top: 1rem; border: 1px solid #276344; background: #edf6ef; color: #194b31; cursor: pointer; font-weight: 650; }
+    button.primary { background: #1b5e3e; color: white; width: 100%; }
+    button:disabled { opacity: .55; cursor: default; }
+    :focus-visible { outline: 3px solid #28754e; outline-offset: 3px; }
+    .notice { padding: .85rem; background: #e8f3ec; border-radius: .5rem; white-space: pre-wrap; }
+    #status { margin: 1rem 0; min-height: 2rem; }
+    #status[data-error=true] { color: #a12c26; background: #fff0ee; }
+    dl { margin: 0; }
+    dl div { display: flex; justify-content: space-between; gap: 1rem; padding: .4rem 0; border-bottom: 1px solid #edf1ee; }
+    dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+    pre { padding: .8rem; background: #f4f7f5; border-radius: .5rem; font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #history { padding: 0; list-style: none; }
+    #history li { border-top: 1px solid #dbe5de; padding-top: .85rem; }
+    #history strong { overflow-wrap: anywhere; }
+    [hidden] { display: none !important; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <a href="/demo/login">← 로그인 데모로 돌아가기</a>
+  <h1>회원가입 · 선택 계좌 확인</h1>
+  <p>① 가입 → ② 별도 로그인 → ③ 국적과 계좌 저장 여부 확인 순서로 진행하세요.</p>
+  <p class="hint">가상 정보로 확인하세요. 실제 서버 DB에 저장되며 재시작해도 유지됩니다. 비밀번호·식별번호·계좌번호는 요청 기록에 표시하지 않습니다.</p>
+  <p id="status" class="notice" role="status" aria-live="polite">현재 로그인 상태를 확인하고 있습니다.</p>
+  <div class="grid">
+    <section class="card">
+      <h2>1. 회원가입</h2>
+      <p class="hint">기존 계정으로 로그인되어 있다면 먼저 오른쪽에서 로그아웃하세요.</p>
+      <form id="signup-form" method="post" action="/api/auth/signup">
+        <fieldset id="signup-fields" disabled>
+          <label for="signup-id">로그인 ID</label>
+          <input id="signup-id" name="loginId" maxlength="100" autocomplete="username" required placeholder="예: worker-signup-01">
+          <label for="signup-password">비밀번호</label>
+          <input id="signup-password" name="password" type="password" maxlength="72" autocomplete="new-password" required>
+          <p class="hint">서버 기준 UTF-8 72바이트까지 허용합니다. 가입 후 로그인할 때 다시 입력하세요.</p>
+          <label for="signup-name">이름</label>
+          <input id="signup-name" name="name" maxlength="100" autocomplete="name" required placeholder="예: TEST WORKER">
+          <label for="signup-phone">전화번호</label>
+          <input id="signup-phone" name="phone" type="tel" maxlength="100" autocomplete="tel" required placeholder="010-1234-5678">
+          <label for="signup-role">가입할 역할</label>
+          <select id="signup-role" name="role"><option value="WORKER">근로자 (WORKER)</option><option value="EMPLOYER">고용주 (EMPLOYER)</option></select>
+          <label for="signup-nationality">내·외국인</label>
+          <select id="signup-nationality" name="nationalityType"><option value="DOMESTIC">내국인 (DOMESTIC)</option><option value="FOREIGN">외국인 (FOREIGN)</option></select>
+          <label for="identity-front" id="identity-label">주민등록번호 · 가상 13자리</label>
+          <div class="identity-inputs" role="group" aria-labelledby="identity-label" aria-describedby="identity-hint">
+            <input id="identity-front" name="identityFront" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="off" required placeholder="앞 6자리" aria-label="식별번호 앞 6자리">
+            <span aria-hidden="true">-</span>
+            <input id="identity-first" name="identityFirst" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" autocomplete="off" required placeholder="1" aria-label="식별번호 뒤 첫 1자리">
+            <input id="identity-secret" name="identitySecret" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="off" required placeholder="나머지 6자리" aria-label="식별번호 뒤 나머지 6자리, 가려서 입력">
+          </div>
+          <p id="identity-hint" class="hint">앞 6자리와 뒤 첫 1자리만 보이고 나머지 6자리는 가립니다. 앞 칸에 13자리 전체를 붙여넣을 수도 있습니다. 가상 번호로 확인하세요.</p>
+          <label class="check"><input type="checkbox" id="include-account"> 급여 계좌도 함께 등록</label>
+          <fieldset id="account-fields" class="account" disabled hidden>
+            <label for="bank-code">은행 선택</label>
+            <select id="bank-code" name="bankCode" required aria-describedby="bank-format-hint">
+              <option value="">은행을 선택하세요</option>
+              <option value="020">우리은행 (020)</option>
+              <option value="004">KB국민은행 (004)</option>
+              <option value="088">신한은행 (088)</option>
+              <option value="081">하나은행 (081)</option>
+              <option value="011">NH농협은행 (011)</option>
+              <option value="012">지역 농·축협 (012)</option>
+              <option value="003">IBK기업은행 (003)</option>
+              <option value="002">KDB산업은행 (002)</option>
+              <option value="007">Sh수협은행 (007)</option>
+              <option value="023">SC제일은행 (023)</option>
+              <option value="027">한국씨티은행 (027)</option>
+              <option value="031">iM뱅크 · 구 대구은행 (031)</option>
+              <option value="032">BNK부산은행 (032)</option>
+              <option value="034">광주은행 (034)</option>
+              <option value="035">제주은행 (035)</option>
+              <option value="037">전북은행 (037)</option>
+              <option value="039">BNK경남은행 (039)</option>
+              <option value="045">새마을금고 (045)</option>
+              <option value="048">신협 (048)</option>
+              <option value="050">저축은행 (050)</option>
+              <option value="071">우체국 (071)</option>
+              <option value="089">케이뱅크 (089)</option>
+              <option value="090">카카오뱅크 (090)</option>
+              <option value="092">토스뱅크 (092)</option>
+              <option value="custom">기타 금융기관 · 코드 직접 입력</option>
+            </select>
+            <div id="custom-bank" hidden>
+              <label for="custom-bank-code">금융기관 코드 · 숫자 3자리</label>
+              <input id="custom-bank-code" name="customBankCode" type="text" inputmode="numeric" maxlength="3" pattern="[0-9]{3}" autocomplete="off" required disabled>
+            </div>
+            <p id="bank-format-hint" class="hint">은행을 선택하면 코드와 확인된 대표 계좌 형식을 안내합니다.</p>
+            <label for="account-number">계좌번호 · 입력한 숫자 전체 표시</label>
+            <input id="account-number" name="accountNumber" type="text" inputmode="numeric" maxlength="100" autocomplete="off" required disabled placeholder="은행을 먼저 선택하세요" aria-describedby="account-format-status">
+            <label class="check small"><input type="checkbox" id="auto-format-account" checked> 확인된 대표 형식에만 하이픈 자동 표시</label>
+            <p id="account-format-status" class="hint" aria-live="polite">하이픈 제거 후 숫자 1~30자리입니다. 입력 중에는 번호 전체가 보이며 서버 응답으로는 반환하지 않습니다.</p>
+            <label for="account-holder">예금주명</label>
+            <input id="account-holder" name="accountHolderName" maxlength="100" autocomplete="off" required>
+          </fieldset>
+          <button class="primary" type="submit">회원가입 요청</button>
+        </fieldset>
+      </form>
+      <section id="created" hidden>
+        <h3>가입 성공 응답</h3>
+        <p id="created-note" class="hint"></p>
+        <pre id="created-json"></pre>
+      </section>
+    </section>
+    <div>
+      <section class="card">
+        <h2>2. 가입 후 로그인</h2>
+        <p class="hint">가입만으로 로그인되지 않습니다. 가입한 ID와 비밀번호로 기존 로그인 API를 호출합니다.</p>
+        <form id="login-form" method="post" action="/api/auth/login">
+          <fieldset id="login-fields" disabled>
+            <label for="login-id">로그인 ID</label>
+            <input id="login-id" name="loginId" maxlength="100" autocomplete="username" required>
+            <label for="login-password">비밀번호 다시 입력</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+            <button class="primary" type="submit">가입한 계정으로 로그인</button>
+          </fieldset>
+        </form>
+      </section>
+      <section class="card">
+        <h2>3. 현재 세션 · 저장된 계좌</h2>
+        <p id="session-note" class="hint">아직 확인하지 않았습니다.</p>
+        <dl id="member" hidden>
+          <div><dt>서버 회원 ID</dt><dd id="member-id"></dd></div>
+          <div><dt>이름</dt><dd id="member-name"></dd></div>
+          <div><dt>역할</dt><dd id="member-role"></dd></div>
+          <div><dt>nationalityType</dt><dd id="member-nationality"></dd></div>
+        </dl>
+        <p id="account-preview" class="notice">계좌 저장 여부는 로그인 후 확인할 수 있습니다.</p>
+        <p class="hint">데모 전용 조회가 현재 로그인한 본인의 실제 저장 행을 읽습니다. 계좌번호·암호문·키는 반환하지 않습니다.</p>
+        <button id="refresh-session" type="button">세션 · 계좌 다시 조회</button>
+        <button id="logout" type="button" disabled>로그아웃</button>
+      </section>
+    </div>
+  </div>
+  <section class="card">
+    <h2>요청 결과</h2>
+    <p class="hint">최근 12개 응답입니다. CSRF 토큰과 요청 본문은 기록하지 않습니다. 새로고침하면 이 기록은 비워집니다.</p>
+    <ol id="history" aria-live="polite"></ol>
+  </section>
+</main>
+<script>
+  const byId = id => document.getElementById(id);
+  const signupForm = byId('signup-form');
+  const loginForm = byId('login-form');
+  const accountToggle = byId('include-account');
+  const bankSelect = byId('bank-code');
+  const accountInput = byId('account-number');
+  // 안내·표시용 대표 형식이다. 은행의 모든 상품·구계좌에 대한 검증 규칙이 아니다.
+  // 출처와 확인 범위는 docs/signup-api.md에 기록한다. 미확인 은행은 임의 형식을 만들지 않는다.
+  const representativeFormats = {
+    '020': [{ groups: [4, 3, 6], label: '대표 13자리' }],
+    '004': [{ groups: [6, 2, 6], label: '대표 표시 예시 14자리' }, { groups: [3, 2, 4, 3], label: '구계좌 표시 예시 12자리' }],
+    '088': [{ groups: [3, 3, 6], label: '대표 12자리' }, { groups: [3, 2, 6], label: '구계좌 예시 11자리' }]
+  };
+  let busy = false;
+  let sessionKnown = false;
+  let currentMember = null;
+  let createdMemberId = null;
+
+  function showStatus(message, error = false) {
+    byId('status').textContent = message;
+    byId('status').dataset.error = String(error);
+  }
+
+  function updateControls() {
+    const formsDisabled = busy || !sessionKnown || currentMember !== null;
+    byId('signup-fields').disabled = formsDisabled;
+    byId('login-fields').disabled = formsDisabled;
+    byId('account-fields').hidden = !accountToggle.checked;
+    byId('account-fields').disabled = formsDisabled || !accountToggle.checked;
+    byId('custom-bank').hidden = bankSelect.value !== 'custom';
+    byId('custom-bank-code').disabled = formsDisabled || !accountToggle.checked || bankSelect.value !== 'custom';
+    const accountDisabled = formsDisabled || !accountToggle.checked || !bankReady();
+    accountInput.disabled = accountDisabled;
+    byId('auto-format-account').disabled = accountDisabled;
+    byId('refresh-session').disabled = busy;
+    byId('logout').disabled = busy || currentMember === null;
+  }
+
+  // 응답만 기록한다. 입력값·CSRF 토큰·요청 본문은 기록하지 않는다.
+  function record(method, path, status, data) {
+    const item = document.createElement('li');
+    const title = document.createElement('strong');
+    title.textContent = `${method} ${path} → ${status}`;
+    const body = document.createElement('pre');
+    body.textContent = data == null ? '응답 본문 없음' : JSON.stringify(data, null, 2);
+    item.append(title, body);
+    byId('history').prepend(item);
+    while (byId('history').children.length > 12) byId('history').lastElementChild.remove();
+  }
+
+  async function request(path, options = {}, hideBody = false) {
+    const method = options.method || 'GET';
+    let response;
+    try {
+      response = await fetch(path, { ...options, credentials: 'same-origin', cache: 'no-store' });
+    } catch {
+      record(method, path, '연결 오류', { message: '응답을 받지 못했습니다. 저장 성공 여부를 단정할 수 없습니다.' });
+      throw new Error('서버 응답을 받지 못했습니다. 연결을 확인한 뒤 상태를 다시 조회하세요.');
+    }
+    const text = await response.text();
+    let data = null;
+    if (text) {
+      try { data = JSON.parse(text); }
+      catch { data = { message: 'JSON이 아닌 응답입니다. 상태코드와 서버 연결을 확인하세요.' }; }
+    }
+    record(method, path, response.status, hideBody ? { message: 'CSRF 자동 발급 응답 · 토큰은 표시하지 않음' } : data);
+    return { status: response.status, ok: response.ok, data };
+  }
+
+  function failure(result) {
+    const message = result.data && result.data.message;
+    const code = result.data && (result.data.code || result.data.error);
+    let note = `${result.status}${code ? ` ${code}` : ''}: ${message || '요청이 거절되었습니다.'}`;
+    if (result.status === 403) note += ' 다른 탭에서 로그인 상태가 바뀌었다면 세션을 다시 조회하세요.';
+    return note;
+  }
+
+  // POST마다 현재 농업 세션의 토큰을 새로 받는다. 토큰·비밀번호를 URL로 보내지 않는다.
+  async function post(path, body, contentType) {
+    const csrf = await request('/api/auth/csrf', {}, true);
+    if (!csrf.ok || !csrf.data || !csrf.data.headerName || !csrf.data.token) {
+      throw new Error(`CSRF 자동 발급 실패 (${csrf.status}).`);
+    }
+    const headers = { [csrf.data.headerName]: csrf.data.token };
+    if (contentType) headers['Content-Type'] = contentType;
+    return request(path, { method: 'POST', headers, body });
+  }
+
+  function displayMember(account) {
+    currentMember = account;
+    sessionKnown = true;
+    byId('member').hidden = account === null;
+    byId('account-preview').textContent = account === null
+      ? '계좌 저장 여부는 로그인 후 확인할 수 있습니다.' : '로그인한 회원의 계좌 저장 여부를 확인하고 있습니다.';
+    if (account === null) {
+      byId('session-note').textContent = '현재 /me 응답은 401입니다. 회원가입하거나 기존 계정으로 로그인할 수 있습니다.';
+      return;
+    }
+    byId('member-id').textContent = account.id;
+    byId('member-name').textContent = account.name;
+    byId('member-role').textContent = account.role;
+    const names = { DOMESTIC: '내국인', FOREIGN: '외국인' };
+    byId('member-nationality').textContent = !Object.hasOwn(account, 'nationalityType')
+      ? '응답에 없음 · 최신 서버인지 확인하세요.'
+      : account.nationalityType == null ? 'null · 기존 미이관 계정'
+      : `${account.nationalityType} (${names[account.nationalityType] || '알 수 없는 값'})`;
+    byId('session-note').textContent = createdMemberId !== null && account.id !== createdMemberId
+      ? '현재 세션은 방금 가입한 회원과 다릅니다. 아래 계좌도 현재 로그인 회원의 것입니다.'
+      : '실제 /me 응답입니다. 다른 계정을 가입하려면 먼저 로그아웃하세요.';
+  }
+
+  async function refreshSession() {
+    sessionKnown = false;
+    currentMember = null;
+    byId('member').hidden = true;
+    byId('account-preview').textContent = '세션을 확인하고 있습니다.';
+    updateControls();
+    const me = await request('/api/auth/me');
+    if (me.status === 401) { displayMember(null); return null; }
+    if (!me.ok) {
+      byId('session-note').textContent = '세션 확인에 실패했습니다. 다시 조회하세요.';
+      throw new Error(failure(me));
+    }
+    displayMember(me.data);
+    try {
+      const account = await request('/demo/api/signup/salary-account');
+      if (!account.ok) throw new Error(failure(account));
+      if (account.data.memberId !== me.data.id) {
+        sessionKnown = false;
+        currentMember = null;
+        byId('member').hidden = true;
+        byId('session-note').textContent = '조회 도중 세션의 회원이 바뀌었습니다. 다시 조회하세요.';
+        throw new Error('/me와 계좌 응답의 회원 ID가 다릅니다. 다른 탭의 로그인 상태를 확인하고 다시 조회하세요.');
+      }
+      byId('account-preview').textContent = account.data.registered
+        ? `DB 등록 확인 · 회원 ID ${account.data.memberId}\n은행: ${bankLabel(account.data.bankCode)}\n예금주명: ${account.data.accountHolderName}`
+        : `DB 미등록 확인 · 회원 ID ${account.data.memberId}\n계좌 없이 가입한 경우 정상입니다.`;
+    } catch (error) {
+      // /me 성공과 계좌 확인 실패를 구분한다. 실패를 미등록으로 표시하지 않는다.
+      byId('account-preview').textContent = `${sessionKnown ? '로그인은 확인됐지만 계좌 조회는 실패했습니다.' : '현재 세션을 다시 확인해야 합니다.'}\n${error.message}`;
+    }
+    return me.data;
+  }
+
+  async function perform(action) {
+    if (busy) return;
+    busy = true;
+    updateControls();
+    try { await action(); }
+    catch (error) { showStatus(error.message, true); }
+    finally { busy = false; updateControls(); }
+  }
+
+  function bankLabel(code) {
+    const option = Array.from(bankSelect.options).find(item => item.value === code);
+    return option ? option.textContent : `기타 금융기관 (${code})`;
+  }
+
+  function formatExample(format) {
+    return format.groups.map(length => '0'.repeat(length)).join('-');
+  }
+
+  function bankCode() {
+    return bankSelect.value === 'custom' ? byId('custom-bank-code').value : bankSelect.value;
+  }
+
+  function bankReady() {
+    return /^[0-9]{3}$/.test(bankCode());
+  }
+
+  // 표시용 하이픈만 붙인다. 마지막 묶음 길이를 넘는 숫자도 자르지 않는다.
+  function groupAccountDigits(digits, groups) {
+    const boundaries = [];
+    let end = 0;
+    for (const length of groups.slice(0, -1)) {
+      end += length;
+      if (end < digits.length) boundaries.push(end);
+    }
+    const parts = [];
+    let start = 0;
+    for (const boundary of boundaries) {
+      parts.push(digits.slice(start, boundary));
+      start = boundary;
+    }
+    parts.push(digits.slice(start));
+    return parts.join('-');
+  }
+
+  function caretAfterDigits(formatted, count) {
+    if (count === 0) return 0;
+    let seen = 0;
+    for (let index = 0; index < formatted.length; index++) {
+      if (/[0-9]/.test(formatted[index]) && ++seen === count) return index + 1;
+    }
+    return formatted.length;
+  }
+
+  function updateAccountFormat(applyFormatting = false, finalize = false) {
+    const formats = representativeFormats[bankCode()] || [];
+    const selectedName = bankSelect.selectedOptions[0].textContent;
+    accountInput.setCustomValidity('');
+    if (!bankReady()) {
+      accountInput.placeholder = '은행을 먼저 선택하세요';
+      byId('bank-format-hint').textContent = bankSelect.value === 'custom'
+        ? '기타 금융기관의 숫자 3자리 코드를 입력하면 계좌번호 칸이 열립니다.'
+        : '은행을 먼저 선택하면 계좌번호를 입력할 수 있습니다.';
+      byId('account-format-status').textContent = '은행 선택 전에는 계좌번호 입력이 잠겨 있습니다.';
+      return;
+    }
+    byId('bank-format-hint').textContent = formats.length > 0
+      ? `${selectedName}: ${formats.map(format => `${format.label} ${formatExample(format)}`).join(' / ')}. 상품·구계좌별 다른 형식도 허용합니다.`
+      : `${selectedName}: 대표 형식이 확인되지 않아 하이픈 위치를 추정하지 않습니다. 통장 표기대로 입력하세요.`;
+    accountInput.placeholder = formats.length > 0 ? formatExample(formats[0]) : '통장에 적힌 계좌번호';
+    const raw = accountInput.value;
+    const digits = raw.replaceAll('-', '');
+    // 잘못된 문자와 30자리 초과는 그대로 남겨 수정하도록 한다. 임의 삭제·절단하지 않는다.
+    if (raw && (!/^[0-9-]+$/.test(raw) || !/^[0-9]{1,30}$/.test(digits))) {
+      const message = '숫자와 하이픈만 입력하세요. 하이픈을 뺀 숫자는 1~30자리여야 합니다.';
+      accountInput.setCustomValidity(message);
+      byId('account-format-status').textContent = `${message} 현재 숫자 ${digits.length}자리입니다.`;
+      return;
+    }
+    const match = formats.find(format => format.groups.reduce((sum, length) => sum + length, 0) === digits.length);
+    // 입력 도중에는 대표 형식을 쓰고, 입력이 끝나면 길이가 맞는 구계좌 예시도 선택한다.
+    const chosen = (finalize && match) || formats[0];
+    if (applyFormatting && byId('auto-format-account').checked && chosen) {
+      const focused = document.activeElement === accountInput;
+      const beforeCaret = raw.slice(0, accountInput.selectionStart ?? raw.length).replaceAll('-', '').length;
+      const formatted = groupAccountDigits(digits, chosen.groups);
+      if (formatted !== raw) {
+        accountInput.value = formatted;
+        if (focused) {
+          const position = caretAfterDigits(formatted, beforeCaret);
+          accountInput.setSelectionRange(position, position);
+        }
+      }
+    }
+    byId('account-format-status').textContent = digits.length === 0
+      ? '숫자를 입력하면 확인된 대표 형식에 따라 하이픈을 자동 표시합니다. 숫자 1~30자리 정책은 유지합니다.'
+      : `숫자 ${digits.length}자리 · ${match ? '대표 표시 예시와 길이가 같습니다.' : '다른 길이도 기존 1~30자리 규칙으로 처리합니다.'} 실제 계좌·예금주 확인은 하지 않습니다.`;
+  }
+
+  bankSelect.addEventListener('change', () => { updateControls(); updateAccountFormat(true, true); });
+  byId('custom-bank-code').addEventListener('input', () => { updateControls(); updateAccountFormat(true, true); });
+  accountInput.addEventListener('input', event => { if (!event.isComposing) updateAccountFormat(true); });
+  accountInput.addEventListener('compositionend', () => updateAccountFormat(true));
+  accountInput.addEventListener('blur', () => updateAccountFormat(true, true));
+  byId('auto-format-account').addEventListener('change', () => updateAccountFormat(true, true));
+  accountInput.addEventListener('beforeinput', event => {
+    if (!byId('auto-format-account').checked || !representativeFormats[bankCode()] || event.isComposing) return;
+    const position = accountInput.selectionStart;
+    if (position == null || position !== accountInput.selectionEnd) return;
+    // 하이픈 바로 뒤에서 Backspace를 누르면 이웃 숫자도 함께 선택해 삭제가 막히지 않게 한다.
+    if (event.inputType === 'deleteContentBackward' && position >= 2 && accountInput.value[position - 1] === '-') {
+      accountInput.setSelectionRange(position - 2, position);
+    } else if (event.inputType === 'deleteContentForward' && accountInput.value[position] === '-') {
+      accountInput.setSelectionRange(position, position + 2);
+    }
+  });
+
+  const identityFront = byId('identity-front');
+  const identityFirst = byId('identity-first');
+  const identitySecret = byId('identity-secret');
+  function clearIdentity() {
+    identityFront.value = '';
+    identityFirst.value = '';
+    identitySecret.value = '';
+  }
+  identityFront.addEventListener('input', () => { if (/^[0-9]{6}$/.test(identityFront.value)) identityFirst.focus(); });
+  identityFirst.addEventListener('input', () => { if (/^[0-9]$/.test(identityFirst.value)) identitySecret.focus(); });
+  // 전체 13자리는 어느 칸에 붙여넣어도 분리한다. 원문이나 마스킹된 별표를 응답 기록에 넣지 않는다.
+  for (const field of [identityFront, identityFirst, identitySecret]) {
+    field.addEventListener('paste', event => {
+      const raw = event.clipboardData.getData('text');
+      const normalized = raw.replace(/[\s-]/gu, '');
+      if (/^[0-9]{13}$/.test(normalized)) {
+        event.preventDefault();
+        identityFront.value = normalized.slice(0, 6);
+        identityFirst.value = normalized.slice(6, 7);
+        identitySecret.value = normalized.slice(7);
+        identitySecret.focus();
+      } else if (raw.length > field.maxLength) {
+        event.preventDefault();
+        showStatus('식별번호를 잘라 넣지 않았습니다. 전체 13자리 또는 해당 칸의 자리수를 확인하세요.', true);
+      }
+    });
+  }
+
+  accountToggle.addEventListener('change', () => {
+    if (!accountToggle.checked) accountInput.value = '';
+    updateControls();
+    updateAccountFormat();
+  });
+  byId('signup-nationality').addEventListener('change', () => {
+    byId('identity-label').textContent = byId('signup-nationality').value === 'FOREIGN'
+      ? '외국인등록번호 · 가상 13자리' : '주민등록번호 · 가상 13자리';
+  });
+
+  signupForm.addEventListener('submit', event => {
+    event.preventDefault();
+    // disabled fieldset의 FormData가 비지 않도록 busy 전환 전에 입력을 읽는다.
+    const form = new FormData(signupForm);
+    const withAccount = accountToggle.checked;
+    const body = {
+      loginId: form.get('loginId'), password: form.get('password'), name: form.get('name'), phone: form.get('phone'),
+      role: form.get('role'), nationalityType: form.get('nationalityType'),
+      identityNumber: `${form.get('identityFront')}${form.get('identityFirst')}${form.get('identitySecret')}`,
+      salaryAccount: withAccount ? { bankCode: bankCode(), accountNumber: form.get('accountNumber'), accountHolderName: form.get('accountHolderName') } : null
+    };
+    perform(async () => {
+      showStatus('회원가입 요청 중입니다.');
+      let result;
+      try { result = await post('/api/auth/signup', JSON.stringify(body), 'application/json'); }
+      finally { byId('signup-password').value = ''; }
+      if (result.status !== 201) {
+        const hint = result.status === 503 ? '\n서버의 식별정보 키를 확인하고, 계좌 포함 시 계좌 암호화 키도 확인하세요.' : '';
+        showStatus(failure(result) + hint, true);
+        return;
+      }
+      createdMemberId = result.data.id;
+      byId('created').hidden = false;
+      byId('created-json').textContent = JSON.stringify(result.data, null, 2);
+      byId('created-note').textContent = withAccount
+        ? '계좌 포함 가입 요청이 201로 성공했습니다. 로그인 후 실제 계좌 저장 여부를 조회하세요.'
+        : '계좌를 생략한 가입이 201로 성공했습니다. 로그인 후 계좌 미등록 응답을 확인하세요.';
+      byId('login-id').value = result.data.loginId;
+      byId('login-password').value = '';
+      clearIdentity();
+      byId('account-number').value = '';
+      try {
+        const member = await refreshSession();
+        showStatus(member === null
+          ? '회원가입 201 성공 → /me 401 확인. 자동 로그인되지 않았습니다. 2번에서 비밀번호를 다시 입력해 로그인하세요.'
+          : '회원가입은 201로 성공했습니다. 현재 세션은 별도로 확인된 상태이며 가입 응답으로 로그인한 것이 아닙니다.');
+      } catch (error) {
+        showStatus(`회원가입은 201로 성공했습니다. 후속 세션 조회만 실패했습니다.\n${error.message}`, true);
+      }
+    });
+  });
+
+  loginForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const body = new URLSearchParams(new FormData(loginForm));
+    perform(async () => {
+      showStatus('로그인 요청 중입니다.');
+      let result;
+      try { result = await post('/api/auth/login', body); }
+      finally { byId('login-password').value = ''; }
+      if (result.status !== 204) { showStatus(failure(result), true); return; }
+      try {
+        const account = await refreshSession();
+        if (!account) throw new Error('로그인 응답 후 세션이 확인되지 않습니다. 쿠키·호스트를 확인하세요.');
+        showStatus('로그인 204 → /me 200. 오른쪽에서 nationalityType과 실제 계좌 등록 여부를 확인하세요.');
+      } catch (error) { showStatus(`로그인은 204로 응답했습니다. 후속 조회를 확인하세요.\n${error.message}`, true); }
+    });
+  });
+
+  byId('logout').addEventListener('click', () => perform(async () => {
+    const result = await post('/api/auth/logout');
+    if (result.status !== 204) { showStatus(failure(result), true); return; }
+    displayMember(null);
+    showStatus('로그아웃 204. 다른 역할·국적으로 가입하거나 로그인할 수 있습니다.');
+  }));
+  byId('refresh-session').addEventListener('click', () => perform(async () => {
+    const account = await refreshSession();
+    showStatus(account ? '/me 200. 계좌 조회 결과도 확인하세요.' : '/me 401. 현재 로그인하지 않은 상태입니다.');
+  }));
+  updateAccountFormat();
+  perform(async () => {
+    const account = await refreshSession();
+    showStatus(account ? '이미 로그인 중입니다. 새로 가입하려면 먼저 로그아웃하세요.' : '준비됐습니다. 1번에서 가상 정보로 회원가입하세요.');
+  });
+</script>
+</body>
+</html>
