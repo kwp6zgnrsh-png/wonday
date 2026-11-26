@@ -1996,8 +1996,8 @@ id: "AS-DEMO-5",
               >
                 ×
               </button>
-              <h2 onClick={modal === "지원 완료" ? () => setModal("") : undefined}>{modal === "취소 확인" && cancellationTarget ? cancellationTarget.status === "지원 중" ? "지원을 취소할까요?" : "근무를 취소할까요?" : modal === "보험 앱으로 이동할까요?" ? "WONDAY 보험" : modal}</h2>
-              {modal === "보험 앱으로 이동할까요?" ? <FarmApplicationBanner handoff onInsurance={launchInsurance} onDismiss={() => setModal("")} /> : modal === "지원 완료" ? (
+              <h2 onClick={modal === "지원 완료" ? () => setModal("") : undefined}>{modal === "취소 확인" && cancellationTarget ? cancellationTarget.status === "지원 중" ? "지원을 취소할까요?" : "근무를 취소할까요?" : modal === "보험 앱으로 이동할까요?" ? (app === "global" ? "WONday Insurance" : "WONDAY 보험") : modal}</h2>
+              {modal === "보험 앱으로 이동할까요?" ? <FarmApplicationBanner handoff english={app === "global"} onInsurance={launchInsurance} onDismiss={() => setModal("")} /> : modal === "지원 완료" ? (
                 <FarmApplicationBanner onInsurance={() => { setModal(""); setApp("insurance"); nav("상품"); }} onDismiss={() => {
                   setModal("");
                   setApp("farm");

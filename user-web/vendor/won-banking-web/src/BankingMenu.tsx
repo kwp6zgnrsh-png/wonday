@@ -2,7 +2,7 @@ import wooriSymbol from '../../../src/assets/woori-financial-symbol.ico'
 import { useRef, useState } from 'react'
 import './BankingMenu.css'
 
-const groups = [
+export const groups = [
   ['편의서비스','check',['우리 WON데이 보험','우리WON모바일','우리WON지갑','모바일 신분증','투더문 공연예매','모바일 차용증','WON하는 부동산','세금돌려받기','전월세 AI지킴이','상가오피스 AI지킴이','부동산매매 AI진단기','부동산 AI가이드','WON 아르떼 갤러리','우리WON페이','우리제로페이','실손24']],
   ['이체/출금','transfer',['즉시/예약이체','다건이체','자동이체 등록/관리','이체내역조회','이체관리','더치페이','ATM/영업점 출금','착오송금반환']],
   ['계좌조회/관리','account',['전체계좌조회','해지계좌조회','계좌통합관리서비스','대출관리','퇴직연금관리','청약관리','휴면예금/보험금 찾기','연금 수급계좌 변경','오픈뱅킹관리','마이데이터관리']],
@@ -28,7 +28,7 @@ export default function BankingMenu({name,onClose,onLogout,onSelect}:{name:strin
   const [notice,setNotice]=useState('')
   const scroller=useRef<HTMLDivElement>(null), sections=useRef<Record<string,HTMLElement|null>>({}), pills=useRef<Record<string,HTMLButtonElement|null>>({})
   const jump=(title:string)=>{setQuery('');setExpanded(false);setActive(title);requestAnimationFrame(()=>{const section=sections.current[title],container=scroller.current;if(section&&container)container.scrollTo({top:section.offsetTop-container.offsetTop,behavior:'smooth'});pills.current[title]?.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'})})}
-  const select=(title:string)=>{setRecent(items=>[title,...items.filter(item=>item!==title)].slice(0,4));if(title === '우리 WON데이 보험')onSelect(title);else setNotice(title)}
+  const select=(title:string)=>{setRecent(items=>[title,...items.filter(item=>item!==title)].slice(0,4));if(title === '우리 WON데이 보험'||title==='이체내역조회')onSelect(title);else setNotice(title)}
   const filtered=groups.map(([title,icon,items])=>({title,icon,items:items.filter(item=>!query.trim()||`${title} ${item}`.toLowerCase().includes(query.trim().toLowerCase()))})).filter(group=>group.items.length)
   return <div className="bank-menu-page">
     <div className="bank-menu-fixed"><header className="bank-menu-header"><button className="bank-menu-back" aria-label="홈으로 돌아가기" onClick={onClose}><svg viewBox="0 0 24 24"><path d="m15 4-8 8 8 8"/></svg></button><strong>{name||'김우리'}님</strong><button className="bank-menu-logout" onClick={onLogout}>로그아웃</button><button className="bank-menu-settings" aria-label="설정" onClick={()=>setNotice('설정')}>⚙</button></header>

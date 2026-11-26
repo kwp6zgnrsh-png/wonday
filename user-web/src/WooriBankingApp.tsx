@@ -19,6 +19,6 @@ export default function WooriBankingApp({ global, onClose, onInsurance }: {
       <button type="button" onClick={onClose}>‹ 앱 선택 화면</button>
       <span>{global ? "우리WON글로벌 · 이용 등록 체험" : "우리WON뱅킹 · 이용 등록 체험"}</span>
     </div>
-    <iframe ref={frame} title="우리WON뱅킹 최초 이용 등록" src="/won-banking-onboarding/index.html" />
+    <iframe ref={frame} title="우리WON뱅킹 최초 이용 등록" src={global ? "/won-banking-onboarding/index.html?mode=global" : "/won-banking-onboarding/index.html"} />
   </div>;
 }

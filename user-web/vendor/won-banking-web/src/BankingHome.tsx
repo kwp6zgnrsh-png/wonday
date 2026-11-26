@@ -1,3 +1,4 @@
+import TransferHistory from './TransferHistory'
 import wooriSymbol from '../../../src/assets/woori-financial-symbol.ico'
 import BankingMenu from './BankingMenu'
 import { useRef, useState } from 'react'
@@ -12,7 +13,9 @@ export default function BankingHome({name,account,onLogout}:{name:string;account
   const scroll=useRef<HTMLDivElement>(null)
   const [menuOpen,setMenuOpen]=useState(false)
   const open=(title:string)=>{if(title==='전체메뉴')setMenuOpen(true);else setPanel(title)}
-  if(menuOpen)return <BankingMenu name={name} onClose={()=>setMenuOpen(false)} onLogout={onLogout} onSelect={title=>{if(title==='우리 WON데이 보험')window.parent.postMessage({type:'wonday:open-insurance'},window.location.origin);}} />
+  const [historyOpen,setHistoryOpen]=useState(false)
+  if(historyOpen)return <TransferHistory onClose={()=>setHistoryOpen(false)}/>
+  if(menuOpen)return <BankingMenu name={name} onClose={()=>setMenuOpen(false)} onLogout={onLogout} onSelect={title=>{if(title==='이체내역조회'){setHistoryOpen(true);return}if(title==='우리 WON데이 보험')window.parent.postMessage({type:'wonday:open-insurance'},window.location.origin);}} />
   return <div className={`won-reference-home ${easy?'easy':''}`}>
     <header className="bank-home-header"><div className="bank-mode"><button className={!easy?'active':''} onClick={()=>setEasy(false)}>일반홈</button><button className={easy?'active':''} onClick={()=>setEasy(true)}>쉬운</button></div><div className="bank-header-actions">{[['wallet','지갑'],['ai','AI 상담'],['bell','알림'],['menu','전체메뉴']].map(([kind,label])=><button key={kind} className={kind === 'menu' ? 'bank-menu-invite' : undefined} aria-label={label} onClick={()=>open(label)}><Symbol kind={kind}/>{kind==='bell'&&<i/>}</button>)}</div></header>
     <div className="bank-home-scroll" ref={scroll}>
@@ -22,7 +25,7 @@ export default function BankingHome({name,account,onLogout}:{name:string;account
         <div className="bank-scene-controls"><button onClick={()=>open('휴계좌 설정')}>⚙ 휴계좌설정</button><button onClick={()=>setHidden(!hidden)}>잔액숨김 <span className={`bank-switch ${hidden?'on':''}`}/></button></div>
         {guide&&<div className="bank-account-guide"><button className="bank-dismiss" aria-label="계좌 안내 닫기" onClick={()=>setGuide(false)}>×</button><p>홈 화면에 다른 계좌를 추가하거나<br/>계좌 순서를 변경할 수 있어요</p><button onClick={()=>open('홈 계좌 설정')}>홈 계좌 설정 ›</button><div className="mini-accounts" aria-hidden="true"><span>● ━━━━━</span><span>● ━━━━━</span><span>● ━━━━━</span></div></div>}
         <section className="bank-balance-card"><div className="bank-account-top"><span className="bank-account-logo"><img src={wooriSymbol} alt="우리은행"/></span><div><h2>WON 통장</h2><p>우리 {account?`••••-${account.slice(-4)}`:'1002-•••-••0370'} <button className="bank-account-copy" aria-label="계좌번호 확인" onClick={()=>open('계좌 정보')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button></p></div><button aria-label="계좌 메뉴" onClick={()=>open('계좌 관리')}>⋮</button></div><div className="bank-money"><strong>{hidden?'금액 숨김':'1,899원'}</strong><button onClick={()=>open('이체')}>이체</button></div><small className="bank-demo">체험용 계좌 · 예시 잔액</small><button className="bank-salary" onClick={()=>open('첫 급여 혜택')}>↪　첫 급여받으면 NpayP 100% 드림</button></section>
-        <button className="bank-all-accounts" onClick={()=>open('전체계좌보기')}>전체계좌보기</button>
+        <button className="bank-transfer-history-shortcut" onClick={()=>setHistoryOpen(true)}>이체 내역 확인 <span aria-hidden="true">›</span></button><button className="bank-all-accounts" onClick={()=>open('전체계좌보기')}>전체계좌보기</button>
       </section>
       <section className="bank-lower"><button className="bank-event" onClick={()=>open('이벤트')}><strong>올해의 마지막 카운트다운<br/>함께할 준비됐나요?</strong><span>투더문에서 예매하기</span><b>COUNTDOWN<br/>FANTASY<br/><small>2026 ✦ 2027</small></b></button>
       <h2>추천서비스</h2><div className="bank-recommend-carousel">{[[['▣','우리WON모바일','우리은행이 만든 알뜰한 통신'],['↗','환전주머니','여행 환전을 손쉽게 준비하기'],['▰','우리WON지갑','국민비서 등 유용한 생활 서비스']],[['♡','우리 365','매일 더 가까운 금융'],['%','혜택 모아보기','나에게 맞는 혜택을 한눈에'],['▣','ATM 찾기','가까운 영업점과 ATM']]].map((items,i)=><div className="bank-recommend" key={i}>{items.map(([icon,title,desc])=><button key={title} onClick={()=>open(title)}><span>{icon}</span><div><strong>{title}</strong><p>{desc}</p></div></button>)}</div>)}</div>

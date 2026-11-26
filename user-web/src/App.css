@@ -1733,3 +1733,12 @@ dd {
   -webkit-backdrop-filter: blur(24px) saturate(115%);
   box-shadow: inset 0 1.5px 2px rgba(255, 255, 255, .55), inset 0 -2px 5px rgba(44, 64, 66, .12), 0 5px 15px rgba(26, 44, 48, .09);
 }
+/* Layered frame shadows give the device depth against the page. */
+.phone { box-shadow: 0 2px 4px rgba(12, 23, 25, .14), 8px 14px 22px rgba(17, 29, 31, .20), 18px 36px 48px rgba(25, 40, 39, .22), 28px 58px 90px rgba(38, 54, 47, .14), 0 0 0 1px rgba(0, 0, 0, .9); }
+@media (max-width: 560px) { .phone { box-shadow: 0 8px 18px rgba(17, 29, 31, .14), 0 22px 42px rgba(25, 40, 39, .16), 0 0 0 1px rgba(0, 0, 0, .9); } }
+/* A narrow graphite edge exposes the right side without tilting the screen. */
+.phone { box-shadow: 1px 0 0 #424747, 2px 1px 0 #707675, 3px 1px 0 #3d4242, 4px 2px 0 #292e2e, 5px 3px 0 #151a1a, 6px 4px 0 #090c0c, 7px 5px 0 #030505, 9px 9px 8px rgba(12, 20, 21, .20), 16px 24px 30px rgba(17, 29, 31, .24), 25px 46px 65px rgba(25, 40, 39, .20), 35px 65px 100px rgba(38, 54, 47, .13), 0 0 0 1px #060909; }
+@media (max-width: 560px) { .phone { box-shadow: 1px 0 0 #656c6b, 2px 1px 0 #414747, 3px 2px 0 #242929, 4px 3px 0 #0d1111, 5px 4px 0 #040606, 8px 12px 16px rgba(17, 29, 31, .20), 15px 28px 40px rgba(25, 40, 39, .18), 0 0 0 1px #060909; } }
+/* Silver side rail: a bright highlight followed by brushed-metal midtones. */
+.phone { box-shadow: 1px 0 0 #f6f8fa, 2px 1px 0 #cdd3d9, 3px 1px 0 #f1f4f6, 4px 2px 0 #aab3bd, 5px 2px 0 #dce2e7, 6px 3px 0 #b9c2cc, 7px 4px 0 #8995a1, 8px 5px 0 #cbd2d9, 9px 6px 0 #626f7b, 10px 7px 0 #343e48, 12px 11px 8px rgba(12, 20, 21, .22), 19px 27px 32px rgba(17, 29, 31, .23), 28px 48px 68px rgba(25, 40, 39, .20), 38px 68px 100px rgba(38, 54, 47, .13), 0 0 0 1px #252c32; }
+@media (max-width: 560px) { .phone { box-shadow: 1px 0 0 #f7fafc, 2px 1px 0 #c3cbd4, 3px 1px 0 #e8edf1, 4px 2px 0 #a2aeba, 5px 3px 0 #d4dce3, 6px 4px 0 #7e8b98, 7px 5px 0 #444f5a, 10px 14px 17px rgba(17, 29, 31, .20), 17px 30px 42px rgba(25, 40, 39, .18), 0 0 0 1px #252c32; } }
