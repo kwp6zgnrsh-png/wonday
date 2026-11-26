@@ -3,10 +3,12 @@ package com.wonday.farm.demo;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// farm-demo로 실행할 때만 회원가입·로그인과 공고·일정 확인용 페이지를 제공한다.
+// farm-demo로 실행할 때만 회원가입·로그인·공고·일정·급여 계좌 확인용 페이지를 제공한다.
 @Profile("farm-demo")
 @RestController
 class AuthDemoPage {
@@ -18,6 +20,12 @@ class AuthDemoPage {
 	@GetMapping(value = "/demo/signup", produces = "text/html;charset=UTF-8")
 	Resource signupPage() {
 		return new ClassPathResource("demo/farm-signup.html");
+	}
+
+	@GetMapping(value = "/demo/salary-account", produces = "text/html;charset=UTF-8")
+	ResponseEntity<Resource> salaryAccountPage() {
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+			.body(new ClassPathResource("demo/farm-salary-account.html"));
 	}
 
 	@GetMapping(value = "/demo/jobs", produces = "text/html;charset=UTF-8")

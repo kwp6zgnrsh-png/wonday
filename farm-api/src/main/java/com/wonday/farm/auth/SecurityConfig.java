@@ -29,7 +29,7 @@ public class SecurityConfig {
 				auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
 				// 데모 모드에서는 로그인 전에도 데모 페이지를 열 수 있다.
 				if (environment.matchesProfiles("farm-demo")) {
-					auth.requestMatchers(HttpMethod.GET, "/demo/login", "/demo/signup", "/demo/jobs", "/demo/worker-jobs", "/demo/job-location").permitAll();
+					auth.requestMatchers(HttpMethod.GET, "/demo/login", "/demo/signup", "/demo/jobs", "/demo/worker-jobs", "/demo/job-location", "/demo/salary-account").permitAll();
 					// 가입 계좌의 실제 저장 여부만 본인 세션으로 확인한다. 기본 프로필에는 열리지 않는다.
 					auth.requestMatchers(HttpMethod.GET, "/demo/api/signup/salary-account").hasAnyRole("EMPLOYER", "WORKER");
 					// 약정 확인은 데모 프로필에서만 세션으로 허용한다. 보험 서버 전용 경로는 그대로 둔다.
@@ -41,6 +41,10 @@ public class SecurityConfig {
 					// 가입 전에도 요청할 수 있지만 기존 CSRF 검사는 그대로 적용한다.
 					.requestMatchers(HttpMethod.POST, "/api/auth/signup").permitAll()
 					.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("EMPLOYER", "WORKER")
+					// 급여 계좌는 근로자 본인만 관리한다. 쓰기 요청의 기존 CSRF 검사는 유지한다.
+					.requestMatchers(HttpMethod.GET, "/api/me/salary-account").hasRole("WORKER")
+					.requestMatchers(HttpMethod.PUT, "/api/me/salary-account").hasRole("WORKER")
+					.requestMatchers(HttpMethod.DELETE, "/api/me/salary-account").hasRole("WORKER")
 					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
 					.requestMatchers(HttpMethod.GET, "/api/job-postings/mine").hasRole("EMPLOYER")
 					// /mine의 고용주 규칙을 먼저 적용하고 근로자의 목록·상세 조회를 구분한다.
@@ -53,7 +57,12 @@ public class SecurityConfig {
 			.exceptionHandling(exceptions -> exceptions
 				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
 				.accessDeniedHandler((request, response, exception) -> {
-					if (request.getServletPath().equals("/api/job-postings")
+					if (request.getServletPath().equals("/api/me/salary-account") && !(exception instanceof CsrfException)) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setHeader("Cache-Control", "no-store");
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"WORKER_ROLE_REQUIRED\",\"message\":\"근로자 본인만 급여 계좌를 관리할 수 있습니다.\"}");
+					} else if (request.getServletPath().equals("/api/job-postings")
 							&& request.getMethod().equals("POST") && !(exception instanceof CsrfException)) {
 						response.setStatus(HttpStatus.FORBIDDEN.value());
 						response.setContentType("application/json;charset=UTF-8");

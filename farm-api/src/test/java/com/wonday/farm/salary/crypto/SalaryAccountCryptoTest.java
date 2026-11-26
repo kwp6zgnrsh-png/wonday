@@ -148,12 +148,15 @@ class SalaryAccountCryptoTest {
 		}
 
 		@Test
-		@DisplayName("정적 확인: 계좌번호 원문 필드는 매핑하지 않고 암호문 컬럼만 있다. 암호문 getter도 없다")
+		// 2026-11-26 급여 계좌 관리 검증에서 갱신: 조회 마스킹을 위해 문서화된 내부용 ciphertextForDecryption()이 추가됐다.
+		// 이 하나만 허용하고, 그 밖의 암호문·번호 접근 메서드와 원문 번호 필드는 계속 금지한다.
+		@DisplayName("정적 확인: 계좌번호 원문 필드는 매핑하지 않고 암호문 컬럼만 있다. 암호문 접근은 마스킹용 ciphertextForDecryption() 하나뿐")
 		void noPlainNumber() {
 			assertThat(Arrays.stream(MemberSalaryAccount.class.getDeclaredFields()).map(Field::getName))
 				.containsExactlyInAnyOrder("memberId", "bankCode", "accountNumberCiphertext", "accountHolderName", "createdAt", "updatedAt");
-			assertThat(Arrays.stream(MemberSalaryAccount.class.getDeclaredMethods()).map(m -> m.getName()))
-				.noneMatch(name -> name.toLowerCase().contains("cipher") || name.toLowerCase().contains("number"));
+			assertThat(Arrays.stream(MemberSalaryAccount.class.getDeclaredMethods()).map(m -> m.getName())
+				.filter(name -> name.toLowerCase().contains("cipher") || name.toLowerCase().contains("number")))
+				.containsExactly("ciphertextForDecryption");
 		}
 
 		@Test

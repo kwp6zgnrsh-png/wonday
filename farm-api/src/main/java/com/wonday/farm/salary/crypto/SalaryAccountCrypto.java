@@ -55,6 +55,41 @@ public class SalaryAccountCrypto {
 		}
 	}
 
+
+	// 복호화한 번호는 이 메서드 안에서만 사용하고, 반환 전에 반드시 마스킹한다.
+	public String maskedAccountNumber(long memberId, String bankCode, String ciphertext) {
+		requireConfigured();
+		if (memberId <= 0 || bankCode == null || !bankCode.matches("[0-9]{3}")
+				|| ciphertext == null || !ciphertext.startsWith("v1:") || ciphertext.length() > 256) {
+			throw new SalaryAccountCryptoUnavailableException();
+		}
+		byte[] plaintext = null;
+		byte[] masked = null;
+		try {
+			byte[] packed = Base64.getUrlDecoder().decode(ciphertext.substring(3));
+			// nonce 12바이트 + 인증 태그 16바이트 + 계좌번호 1~30바이트만 허용한다.
+			if (packed.length < 29 || packed.length > 58) throw new SalaryAccountCryptoUnavailableException();
+			Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+			cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, Arrays.copyOfRange(packed, 0, 12)));
+			cipher.updateAAD(("farm/member/salary-account/v1:" + memberId + ":" + bankCode).getBytes(StandardCharsets.US_ASCII));
+			plaintext = cipher.doFinal(packed, 12, packed.length - 12);
+			if (plaintext.length < 1 || plaintext.length > 30) throw new SalaryAccountCryptoUnavailableException();
+			for (byte digit : plaintext) {
+				if (digit < '0' || digit > '9') throw new SalaryAccountCryptoUnavailableException();
+			}
+			masked = plaintext.clone();
+			int hiddenLength = masked.length <= 4 ? masked.length : masked.length - 4;
+			Arrays.fill(masked, 0, hiddenLength, (byte) '*');
+			return new String(masked, StandardCharsets.US_ASCII);
+		} catch (GeneralSecurityException | IllegalArgumentException exception) {
+			// 키 불일치·암호문 변조·잘못된 형식도 원문 정보 없이 동일한 오류로 처리한다.
+			throw new SalaryAccountCryptoUnavailableException();
+		} finally {
+			if (plaintext != null) Arrays.fill(plaintext, (byte) 0);
+			if (masked != null) Arrays.fill(masked, (byte) 0);
+		}
+	}
+
 	private static byte[] decodeKey(String encoded) {
 		byte[] decoded = null;
 		try {

@@ -28,11 +28,7 @@ public class MemberSalaryAccount {
 	protected MemberSalaryAccount() {}
 
 	public MemberSalaryAccount(long memberId, String bankCode, String ciphertext, String holder, LocalDateTime nowUtc) {
-		if (memberId <= 0 || bankCode == null || !bankCode.matches("[0-9]{3}") || ciphertext == null
-				|| !ciphertext.startsWith("v1:") || ciphertext.length() <= 3 || ciphertext.length() > 256
-				|| holder == null || holder.isBlank() || holder.length() > 100 || nowUtc == null) {
-			throw new IllegalArgumentException("급여 계좌 저장값을 확인해 주세요.");
-		}
+		validate(memberId, bankCode, ciphertext, holder, nowUtc);
 		this.memberId = memberId;
 		this.bankCode = bankCode;
 		this.accountNumberCiphertext = ciphertext;
@@ -40,6 +36,26 @@ public class MemberSalaryAccount {
 		this.createdAt = nowUtc;
 		this.updatedAt = nowUtc;
 	}
+
+	private static void validate(long memberId, String bankCode, String ciphertext, String holder, LocalDateTime nowUtc) {
+		if (memberId <= 0 || bankCode == null || !bankCode.matches("[0-9]{3}") || ciphertext == null
+				|| !ciphertext.startsWith("v1:") || ciphertext.length() <= 3 || ciphertext.length() > 256
+				|| holder == null || holder.isBlank() || holder.length() > 100 || nowUtc == null) {
+			throw new IllegalArgumentException("급여 계좌 저장값을 확인해 주세요.");
+		}
+	}
+
+	// 조회 API로 엔티티를 반환하지 않는다. 암호문은 서버 내부 마스킹 처리에서만 사용한다.
+	public String ciphertextForDecryption() { return accountNumberCiphertext; }
+
+	public void replace(String bankCode, String ciphertext, String holder, LocalDateTime nowUtc) {
+		validate(memberId, bankCode, ciphertext, holder, nowUtc);
+		this.bankCode = bankCode;
+		this.accountNumberCiphertext = ciphertext;
+		this.accountHolderName = holder;
+		this.updatedAt = nowUtc;
+	}
+
 
 	public Long getMemberId() { return memberId; }
 	public String bankCode() { return bankCode; }

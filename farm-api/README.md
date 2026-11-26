@@ -227,3 +227,11 @@ $env:SERVER_ADDRESS = '127.0.0.1'
 신규 V9는 회원당 한 개의 급여 계좌 저장 테이블만 추가한다. 계좌번호는 하이픈을 제거한 숫자 1~30자리를 별도 키로 암호화하며 응답으로 반환하지 않는다. 계좌 입력 시 `FARM_SALARY_ACCOUNT_ENCRYPTION_KEY`가 필요하고, 모든 가입에는 기존 식별정보 암호화/HMAC 키가 필요하다. 계좌를 생략하면 계좌 키는 필요 없다. 실제 키는 저장소에 넣지 않는다.
 
 요청·응답·설정과 검증 범위는 [회원가입 API 문서](docs/signup-api.md)를 참고한다. farm-demo의 `/demo/signup`에서 선택 계좌를 포함하거나 생략한 가입, 별도 로그인, /me의 국적과 실제 계좌 등록 여부를 확인할 수 있다. CSRF는 자동 처리하고 요청 상태·오류를 표시한다. 데모 전용 계좌 조회는 본인 세션으로만 허용하고 번호·암호문은 반환하지 않는다. 계좌 관리 API·보험 V2·보험 계좌 조회·근무 완료·user-web 연결은 후속 범위다.
+
+
+## 근로자 본인 급여 계좌 관리
+
+GET·PUT·DELETE /api/me/salary-account를 추가했다. 근로자 세션·CSRF를 사용하고 조회 마스킹과 버전 충돌 409를 처리한다. signup 기반 salary-account 브랜치이며 신규 V10으로 해제 후에도 유지되는 회원 계좌 버전을 추가한다. 요청·응답과 미검증 범위는 [계좌 관리 API](docs/salary-account-api.md)를 참고한다.
+
+
+farm-demo의 /demo/salary-account에서 실제 급여 계좌 조회·등록·교체·해제와 마스킹·409를 확인할 수 있다. 근로자 로그인 후 CSRF·조회 버전을 자동 처리하고, 충돌 후에는 최신 조회를 요구한다. 두 창 확인 절차는 docs/salary-account-api.md의 farm-demo 절 참고.

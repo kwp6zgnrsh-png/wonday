@@ -46,6 +46,11 @@ public class Member {
 	@Column(name = "identity_hmac", length = 64, unique = true)
 	private String identityHmac;
 
+
+	// 계좌 행을 삭제해도 이 버전은 유지한다. 모든 계좌 변경은 회원 행 잠금 후 버전을 검사한다.
+	@Column(name = "salary_account_version", nullable = false)
+	private long salaryAccountVersion;
+
 	protected Member() {
 	}
 
@@ -82,6 +87,13 @@ public class Member {
 
 	public Optional<IdentityType> identityType() {
 		return Arrays.stream(IdentityType.values()).filter(value -> value.name().equals(identityType)).findFirst();
+	}
+
+
+	public long salaryAccountVersion() { return salaryAccountVersion; }
+
+	public void advanceSalaryAccountVersion() {
+		salaryAccountVersion = Math.addExact(salaryAccountVersion, 1);
 	}
 
 	public Long getId() {
