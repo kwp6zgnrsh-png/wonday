@@ -4,7 +4,7 @@
 
 ## 역할과 호출 순서
 
-1. 보험 서버가 이름·전화번호·가상 주민번호로 농업 근로자를 확인한다.
+1. 보험 서버가 V1(기존 내국인) 또는 V2(내·외국인) 경로로 농업 근로자의 등록 정보를 확인한다.
 2. 응답의 `workerId`를 보험 회원과 연결한다. 농업 회원 ID를 그대로 사용한다.
 3. 보험 서버가 연결된 근로자의 변경 목록을 커서로 주기 조회한다.
 4. 변경의 `assignmentId`로 확정 당시 약정 상세를 조회한다.
@@ -15,11 +15,14 @@
 
 | 메서드 | 경로 | 역할 |
 | --- | --- | --- |
-| POST | `/api/internal/insurance/worker-verifications` | 근로자 본인 확인 |
+| POST | `/api/internal/insurance/worker-verifications` | 기존 내국인 확인(V1 유지) |
+| POST | `/api/internal/insurance/v2/worker-verifications` | 내·외국인 등록 정보 확인(V2) |
 | GET | `/api/internal/insurance/workers/{workerId}/work-changes` | 개인별 취소·조기 종료의 불변 버전 목록 |
 | GET | `/api/internal/insurance/workers/{workerId}/work-assignments/{assignmentId}` | 본인 확정 근무의 약정 상세 |
 
-세 경로는 `Authorization: Bearer {token}`으로 호출한다. 농업 앱의 로그인·쿠키·CSRF 토큰을 사용하지 않는다. 기존 농업 앱 API는 기존 세션·CSRF 보호를 유지한다. 내부 API 응답에는 `Cache-Control: no-store`를 붙인다.
+내부 경로는 `Authorization: Bearer {token}`으로 호출한다. 농업 앱의 로그인·쿠키·CSRF 토큰을 사용하지 않는다. 기존 농업 앱 API는 기존 세션·CSRF 보호를 유지한다. 내부 API 응답에는 `Cache-Control: no-store`를 붙인다.
+
+V2의 요청·응답·암호화 저장 조회·보험 서버 전환 설정과 미검증 범위는 [보험 V2 문서](worker-verification-v2-api.md)를 참고한다. V1의 요청·응답과 LEGACY/ENCRYPTED 설정은 변경하지 않는다.
 
 ## 설정과 동의 확인 책임
 
