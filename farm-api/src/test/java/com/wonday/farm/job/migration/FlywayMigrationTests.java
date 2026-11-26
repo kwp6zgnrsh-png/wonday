@@ -54,7 +54,7 @@ class FlywayMigrationTests {
 		MigrateResult result = flyway(schema, null).migrate();
 
 		assertThat(result.success).isTrue();
-		assertThat(result.migrationsExecuted).isEqualTo(3);
+		assertThat(result.migrationsExecuted).isEqualTo(4);
 		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7");
 		try (Connection connection = MySqlTestDatabase.rootConnection(schema); Statement sql = connection.createStatement()) {
 			try (ResultSet rs = sql.executeQuery("SELECT title, time_zone, default_headcount FROM job_posting")) {
