@@ -1,3 +1,12 @@
+import WooriBankingApp from "./WooriBankingApp";
+import wonBankingIcon from "./assets/won-banking-icon.png";
+import wonGlobalIcon from "./assets/won-global-icon.png";
+import FarmApplicantAlerts from "./FarmApplicantAlerts";
+import FarmApplicantSchedule from "./FarmApplicantSchedulePanel";
+import FarmWorkManagement from "./FarmWorkManagement";
+import FarmWorkdayPicker from "./FarmWorkdayPicker";
+import { employerJobs, pendingEmployerApplications } from "./farmEmployerJobs";
+import type { FarmSalaryAccount } from "./farmSalaryAccount";
 import FarmSignup from "./FarmSignup";
 import { hashFarmPassword } from "./farmRegistration";
 import type { FarmMember } from "./farmRegistration";
@@ -271,6 +280,7 @@ function App() {
   const [role, setRole] = useSaved("onday-role", "근로자");
   const [farmMembers, setFarmMembers] = useSaved<FarmMember[]>("wonday-farm-members-v1", []);
   const [farmMemberId, setFarmMemberId] = useSaved("wonday-farm-member-id", "");
+  const [demoSalaryAccounts, setDemoSalaryAccounts] = useSaved<Record<string, FarmSalaryAccount | undefined>>("wonday-demo-salary-accounts", {});
   const farmMember = farmMembers.find((member) => member.id === farmMemberId);
   const [farmLogin, setFarmLogin] = useSaved("onday-farm-login", false);
   const [insLogin, setInsLogin] = useSaved("onday-ins-login", false);
@@ -369,6 +379,7 @@ id: "AS-DEMO-5",
   const [sampleContracts, setSampleContracts] = useSaved("wonday-premium-samples", samplePolicies);
   const usingSamples = policies.length === 0;
   const displayedPolicies = usingSamples ? sampleContracts : policies;
+  const [managementFarmId, setManagementFarmId] = useState("");
   const [detail, setDetail] = useState<Job | null>(null);
   const [work, setWork] = useState<Work | null>(null);
   const [cancellationTarget, setCancellationTarget] = useState<Work | null>(null);
@@ -404,6 +415,11 @@ id: "AS-DEMO-5",
   const insuranceLaunchTimer = useRef<number | undefined>(undefined);
   const toastTimer = useRef<number | undefined>(undefined);
   const farmDatesRef = useRef<HTMLElement>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
+  const [tabScrollRequest, setTabScrollRequest] = useState(0);
+  useEffect(() => {
+    if (tabScrollRequest) screenRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [tabScrollRequest]);
   const farmScreenHistory = useRef<FarmScreenState[]>([]);
   useEffect(() => () => {
     window.clearTimeout(toastTimer.current);
@@ -433,7 +449,7 @@ id: "AS-DEMO-5",
   }
   function nav(t: string, rememberFarmScreen = true) {
     if (rememberFarmScreen && app === "farm" && farmLogin && !platformVisit &&
-      ["홈", "일자리", "내 공고", "공고 등록", "내 근무", "마이페이지"].includes(t) &&
+      ["홈", "일자리", "내 공고", "공고 등록", "이력서 알림", "내 근무", "마이페이지"].includes(t) &&
       (t !== tab || detail || work)) {
       farmScreenHistory.current.push({ tab, detailId: detail?.id ?? null, workId: work?.id ?? null, selected,
         mode: farmBrowseMode, filters: farmFilters, searchFilters: farmSearchFilters, profilePage: farmProfilePage, statusFilter: filter });
@@ -557,7 +573,10 @@ id: "AS-DEMO-5",
         : guideTitle === "보험 가입 완료" ? "가입을 마쳤어요. MY에서 계약 내용을 확인할 수 있어요."
         : guideTitle === "보험 로그인" ? "로그인하면 계약 조회, 보험료 납입, 청구를 이용할 수 있어요."
         : insuranceScreenDescriptions[tab === "홈" ? tab : guideTitle] ?? "현재 화면에서 보험 서비스 정보를 확인하세요.";
-  const listedJobs = isEmployer ? jobs : jobs.filter((job) => isGyeonggiWorkplace(job.place));
+  const employerId = farmMember?.id ?? "farmer.demo";
+  const ownedJobs = employerJobs(jobs, employerId);
+  const pendingApplications = pendingEmployerApplications(jobs, works, employerId);
+  const listedJobs = isEmployer ? ownedJobs : jobs.filter((job) => isGyeonggiWorkplace(job.place));
   const farmJobListTab = isEmployer ? "내 공고" : "일자리";
   const canApply = app === "farm" && farmLogin && !platformVisit && !isEmployer && !!detail && !work;
 
@@ -610,6 +629,13 @@ id: "AS-DEMO-5",
     setSelected([]);
   }
 
+  function confirmedWorkActions(entry: Work) {
+    if (!isEmployer || entry.status !== "근무 확정") return null;
+    return <div className="farm-confirmed-actions">
+      <button type="button" onClick={() => { setWork(entry); setModal("근무 완료"); }}>근무 완료</button>
+      <button type="button" onClick={() => { setWork(entry); setModal("근무 취소"); }}>근무 취소</button>
+    </div>;
+  }
   function countConfirmed(job: Job, date: string) {
     return works.filter((entry) => entry.job.id === job.id && entry.date === date &&
       entry.status === "근무 확정").length;
@@ -628,7 +654,7 @@ id: "AS-DEMO-5",
   }
 
   const openFarmJobs = listedJobs.filter((job) => countOpenDays(job) > 0);
-  const previewFarmJobs = isEmployer ? listedJobs : openFarmJobs;
+
   const appliedJobCount = new Set(myApplications.map((entry) => entry.job.id)).size;
   const favoriteFarmJobs = listedJobs.filter((job) => farmFavorites.includes(job.id));
   const matchedFarmJobs = hasFarmFilters(farmPreferences) ? searchFarmJobs(openFarmJobs, farmPreferences) : [];
@@ -724,7 +750,7 @@ id: "AS-DEMO-5",
   const tabs =
     app === "farm"
       ? role === "고용주"
-        ? ["내 공고", "공고 등록", "홈", "알림", "MY"]
+        ? ["내 공고", "공고 등록", "홈", "이력서 알림", "MY"]
         : ["일자리", "WONDAY", "홈", "내 근무", "MY"]
       : ["상품", "보험금 청구", "홈", "보험료 납입", "MY"];
   const insuranceTabIcons = ["products", "claim", "home", "payment", "profile"] as const;
@@ -874,8 +900,8 @@ id: "AS-DEMO-5",
         <div className="studio-copy">
           {(app !== "home" || modal) ? <div className="studio-screen-guide" role="status" aria-atomic="true">
             <span className="overline">{app === "farm" ? agriworkName : app === "insurance" ? "WONDAY 보험" : "온데이"}</span>
-            <h1>{guideTitle}</h1>
-            <p>{guideDescription}</p>
+            <h1>{app === "banking" ? "우리WON뱅킹" : app === "global" ? "우리WON글로벌" : guideTitle}</h1>
+            <p>{app === "banking" ? "공식 앱의 계좌 카드와 금융 메뉴 구성을 참고한 체험 화면이에요. 계좌 조회와 이체 입력 흐름을 둘러보세요." : app === "global" ? "공식 앱의 언어 선택과 해외송금 중심 구성을 참고했어요. 주요 메뉴는 한국어·영어·베트남어로 전환할 수 있어요." : guideDescription}</p>
           </div> : <>
           <span className="overline">일하는 오늘을, 더 든든하게</span>
           <h1>
@@ -910,7 +936,7 @@ id: "AS-DEMO-5",
           <span>© 2026 ONDAY</span>
         </footer>
       </aside>
-      <main className={"phone " + (app === "home" ? "launcher" : isEnrolling ? "enrolling" : "") + (largeText ? app === "insurance" ? " insurance-large-text" : app === "farm" ? " farm-large-text" : "" : "")}>
+      <main className={"phone " + (app === "home" ? "launcher" : app === "banking" || app === "global" ? "won-phone" : isEnrolling ? "enrolling" : "") + (largeText ? app === "insurance" ? " insurance-large-text" : app === "farm" ? " farm-large-text" : "" : "")}>
         <div className="status-bar" role="group" aria-label="기기 상태 미리보기">
           <b className="status-time">9:41</b>
           <span className="island" aria-hidden="true" />
@@ -932,7 +958,7 @@ id: "AS-DEMO-5",
             </svg>
           </span>
         </div>
-        {app === "home" ? (
+        {app === "banking" || app === "global" ? <WooriBankingApp key={app} global={app === "global"} onClose={() => open("home")} onInsurance={() => open("insurance")} /> : app === "home" ? (
           <>
             <div className="home-top">
               <p>11월 23일 월요일</p>
@@ -962,7 +988,8 @@ id: "AS-DEMO-5",
                 <b>WONDAY 보험</b>
                 <small className="insurer-wordmark">우리손해보험</small>
               </button>
-            </div>
+              <button onClick={() => open("banking")}><span className="app-icon bank-app-icon"><img src={wonBankingIcon} alt="" /></span><b>우리WON뱅킹</b><small>나의 일상 금융</small></button>
+              <button onClick={() => open("global")}><span className="app-icon bank-app-icon"><img src={wonGlobalIcon} alt="" /></span><b>우리WON글로벌</b><small>세계와 이어지는 금융</small></button>            </div>
             <div className="home-note">
               <span>✳</span>
               <p>
@@ -986,6 +1013,8 @@ id: "AS-DEMO-5",
               >
                 <img className="woori-symbol" src={wooriSymbol} alt="" />
               </button>
+              <button className="bank-dock" aria-label="우리WON뱅킹 앱 열기" onClick={() => open("banking")}><img src={wonBankingIcon} alt="" /></button>
+              <button className="bank-dock" aria-label="우리WON글로벌 앱 열기" onClick={() => open("global")}><img src={wonGlobalIcon} alt="" /></button>
               <button
                 aria-label="이용 안내"
                 onClick={() => setModal("이용 안내")}
@@ -1017,7 +1046,7 @@ id: "AS-DEMO-5",
             <header className="app-header">
               <button className="app-brand" onClick={() => nav("홈")}>
                 {app === "farm" ? <img className="farm-wordmark" src={agriworkLogo} width={196} height={24} alt={agriworkName} /> :
-                  <><Mark purple /><span className="insurer-wordmark">우리손해보험</span></>}
+                  <><Mark purple /><span className="insurer-wordmark">WON데이보험</span></>}
               </button>
               <div className={app === "insurance" ? "insurance-header-actions" : "farm-header-actions"}>
                 {textSizeToggle}
@@ -1036,11 +1065,12 @@ id: "AS-DEMO-5",
                   <InsuranceIcon name="launcher" />
                 </button>}
               </div>
-              {app === "farm" && (farmLogin || platformVisit || tab === "회원가입") && (tab !== "홈" || !!detail || !!work || platformVisit) && <button type="button" className="farm-header-back" aria-label="뒤로 가기" onClick={goFarmBack}><FarmIcon name="back" /><span>뒤로</span></button>}
+              {app === "farm" && (farmLogin || platformVisit || tab === "회원가입") && (tab !== "홈" || !!detail || !!work || platformVisit) && <button type="button" className="farm-header-back" aria-label="뒤로 가기" onClick={goFarmBack}><FarmIcon name="chevronLeft" /><span>뒤로</span></button>}
               {app === "farm" && farmLogin && !platformVisit && tab === "마이페이지" && !detail && !work && <h2 className="farm-header-page-title" id="farm-profile-title">마이페이지</h2>}
             </header>
             )}
             <div
+              ref={screenRef}
               className={isEnrolling ? "screen enrollment-screen" : app === "farm" ? "screen farm-screen" : "screen"}
               key={app === "insurance" ? tab + step + showConnection + claimView : [tab, detail?.id, work?.id].join(":")}
             >
@@ -1074,7 +1104,13 @@ id: "AS-DEMO-5",
                     }} /> : loginForm()
                 ) : (
                   <>
-                    {work ? (
+                    {isEmployer && work && ["근무 확정", "근무 완료"].includes(work.status) ? (
+                      <article className="farm-confirmed-detail">
+                        <h2>{work.worker}</h2><p>{work.job.title}</p>
+                        <FarmJobOverview job={work.job} openDays={countOpenDays(work.job)} conditionsOnly />
+                        {work.status === "근무 확정" ? confirmedWorkActions(work) : <p role="status">근무 완료로 처리했어요.</p>}
+                      </article>
+                    ) : work ? (
                       <>
                         {work.reason && (
                           <Card tone="farm-work-change-reason">
@@ -1159,12 +1195,12 @@ id: "AS-DEMO-5",
                       </>
                     ) : detail ? (
                       <article className="farm-job-detail">
-                        <FarmJobOverview job={detail} openDays={countOpenDays(detail)}
+                        <FarmJobOverview job={detail} openDays={countOpenDays(detail)} collapsible={isEmployer}
                           favorite={farmFavorites.includes(detail.id)} onFavoriteChange={!isEmployer ? () => toggleFarmFavorite(detail) : undefined} />
                         <section className="farm-detail-dates" aria-labelledby="farm-dates" ref={farmDatesRef}>
                         <h3 id="farm-dates">
                           {role === "고용주"
-                            ? "날짜별 지원자 관리"
+                            ? "지원자 관리"
                             : "일할 수 있는 날짜를 골라주세요"}
                         </h3>
                         {isEmployer && detailDates.length === 0 && <p className="farm-empty">현재 모집 중인 근무일이 없어요.</p>}
@@ -1194,7 +1230,13 @@ id: "AS-DEMO-5",
                               </details>
                             )}
                           </>
-                        ) : detailDates.map(({ date: d, filled, closed: dayClosed }) => {
+                        ) : <FarmApplicantSchedule key={detail.id} dates={detailDates.map((item) => item.date)} applications={works.filter((entry) => entry.job.id === detail.id)}
+                          renderApplication={(entry) => <div className="farm-schedule-application"><span><strong>{entry.worker}</strong>
+                            <span className="badge farm-applicant-status" data-status={entry.status}>{entry.status}</span></span>{confirmedWorkActions(entry)}</div>}
+                          renderDate={(d) => {
+                          const info = detailDates.find((item) => item.date === d);
+                          if (!info) return null;
+                          const { filled, closed: dayClosed } = info;
                           return (
                             <div className="date-row" key={d}>
                                   <b>{day(d)}</b>
@@ -1209,41 +1251,8 @@ id: "AS-DEMO-5",
                                     )
                                     .map((w) => (
                                       <div className="applicant" key={w.id}>
-                                        <span>
-                                          {w.worker} <Badge>{w.status}</Badge>
-                                        </span>
-                                        {w.status === "지원 중" ? (
-                                          <button
-                                            onClick={() => {
-                                              if (
-                                                filled >= detail.count ||
-                                                closed.includes(detail.id + d)
-                                              )
-                                                return notify(
-                                                  "모집이 마감되었어요.",
-                                                );
-                                              const next = works.map((x) =>
-                                                x.id === w.id
-                                                  ? {
-                                                      ...x,
-                                                      status: "근무 확정",
-                                                      job: { ...detail },
-                                                    }
-                                                  : x,
-                                              );
-                                              setWorks(next);
-                                              notify(
-                                                "확정 당시 조건을 보관했어요.",
-                                              );
-                                            }}
-                                          >
-                                            확정
-                                          </button>
-                                        ) : (
-                                          <button onClick={() => setWork(w)}>
-                                            상세
-                                          </button>
-                                        )}
+                                        <span><strong>{w.worker}</strong><span className="badge farm-applicant-status" data-status={w.status}>{w.status}</span></span>
+                                        {confirmedWorkActions(w)}
                                       </div>
                                     ))}
                                   <div className="inline-actions">
@@ -1334,7 +1343,7 @@ id: "AS-DEMO-5",
                                   </div>
                             </div>
                           );
-                        })}
+                        }} />}
                         </section>
                         <FarmWorkplaceMap address={detail.place} registeredPin={detail.workplacePin} />
                         <WorkplaceWeather address={detail.place} />
@@ -1343,23 +1352,24 @@ id: "AS-DEMO-5",
                       <>
                         {tab === "홈" && (
                           <FarmHome displayName={farmMember?.name} employer={isEmployer} favoriteIds={farmFavorites} onToggleFavorite={isEmployer ? undefined : toggleFarmFavorite}
-                            jobs={openFarmJobs}
+                            jobs={isEmployer ? listedJobs : openFarmJobs}
                             preferences={farmPreferences} availableDates={availableFarmDates}
                             onSettings={() => openFarmProfile("맞춤 설정")} onOpen={openFarmJob}
-                            preview={previewFarmJobs.length ? previewFarmJobs.slice(0, 2).map(farmJobCard) : null}
-                            applicationCount={appliedJobCount} favoriteCount={favoriteFarmJobs.length}
-                            onBrowse={openFarmList} onManage={() => isEmployer ? nav("내 공고") : openFarmProfile()}
-                            onInsurance={() => open("insurance")} onCreate={() => nav("공고 등록")}
-                            onProfile={() => openFarmProfile()} onBookmarks={() => openFarmProfile("찜한 일자리")} />
+
+                            applicationCount={isEmployer ? listedJobs.length : appliedJobCount} favoriteCount={isEmployer ? listedJobs.filter((job) => countOpenDays(job) > 0).length : favoriteFarmJobs.length}
+                            onManage={() => isEmployer ? nav("내 공고") : openFarmProfile()}
+                            onCreate={() => nav("공고 등록")}
+                            onBookmarks={() => openFarmProfile("찜한 일자리")} />
                         )}
                         {["일자리", "내 공고"].includes(tab) && (
-                          <FarmJobList employer={isEmployer} jobs={listedJobs} favoriteIds={farmFavorites} onToggleFavorite={isEmployer ? undefined : toggleFarmFavorite}
+                          <FarmJobList regionContent={isEmployer ? <FarmWorkManagement onOpenWorker={setWork} jobs={ownedJobs} works={works} selectedFarmId={managementFarmId} onChooseFarm={setManagementFarmId} onOpen={openFarmJob} openDays={countOpenDays} onCreate={() => nav("공고 등록")} /> : undefined} employer={isEmployer} jobs={listedJobs} favoriteIds={farmFavorites} onToggleFavorite={isEmployer ? undefined : toggleFarmFavorite}
                             mode={farmBrowseMode} onModeChange={openFarmList} filters={farmFilters}
                             onFilterChange={setFarmFilters} preferences={farmPreferences}
                             searchFilters={farmSearchFilters} onSearchFilterChange={setFarmSearchFilters}
                             onSettings={() => openFarmProfile("맞춤 설정")} onOpen={openFarmJob}
                             openDays={countOpenDays} availableDates={availableFarmDates} />
                         )}
+                        {isEmployer && tab === "이력서 알림" && <FarmApplicantAlerts onOpenWorker={setWork} jobs={ownedJobs} works={works} onOpen={openFarmJob} />}
                         {tab === "공고 등록" && (
                           <>
                             <h2>농작업 공고 등록</h2>
@@ -1380,6 +1390,7 @@ id: "AS-DEMO-5",
                                 const workplacePin = parseWorkplacePin(rawPin);
                                 if (rawPin && !workplacePin)
                                   return notify("경기도 내 작업장 좌표를 위도, 경도 순서로 입력해 주세요.");
+                                if (!String(f.get("dates") ?? "").trim()) return notify("달력에서 근무일을 한 개 이상 선택해 주세요.");
                                 const dates = String(f.get("dates"))
                                   .split(",")
                                   .map((s) => s.trim());
@@ -1402,6 +1413,7 @@ id: "AS-DEMO-5",
                                     "근무와 휴게 구간의 시각을 확인해 주세요.",
                                   );
                                 const j: Job = {
+                                  employerId,
                                   id: Math.max(0, ...jobs.map((job) => job.id)) + 1,
                                   title: String(f.get("title")),
                                   crop,
@@ -1504,14 +1516,7 @@ id: "AS-DEMO-5",
                                   />
                                 </label>
                               </div>
-                              <label>
-                                근무일 (쉼표로 구분)
-                                <input
-                                  name="dates"
-                                  required
-                                  defaultValue="2026-11-24, 2026-11-25"
-                                />
-                              </label>
+                              <FarmWorkdayPicker />
                               <p className="fine">
                                 등록 후 일정 변경에서 날짜별 시간을 조정할 수
                                 있어요.
@@ -1578,10 +1583,16 @@ id: "AS-DEMO-5",
                         )}
                         {tab === "마이페이지" && (
                           <FarmProfile displayName={farmMember?.name} employer={isEmployer}
+                            salaryAccount={farmMember ? farmMember.salaryAccount : demoSalaryAccounts[role]}
+                            onSaveSalaryAccount={(value) => {
+                              if (farmMember) setFarmMembers(farmMembers.map((member) => member.id === farmMember.id ? { ...member, salaryAccount: value } : member));
+                              else setDemoSalaryAccounts({ ...demoSalaryAccounts, [role]: value });
+                              notify(value ? "급여 수령 계좌를 저장했어요." : "급여 수령 계좌를 삭제했어요.");
+                            }}
                             metrics={isEmployer ? [
-                              ["등록 공고", jobs.length],
-                              ["모집 중", jobs.filter((job) => countOpenDays(job) > 0).length],
-                              ["지원 대기", works.filter((entry) => entry.status === "지원 중").length],
+                              ["등록 공고", ownedJobs.length],
+                              ["모집 중", ownedJobs.filter((job) => countOpenDays(job) > 0).length],
+                              ["지원 대기", pendingApplications.length],
                             ] : [
                               ["지원한 일자리", appliedJobCount],
                               ["찜한 일자리", favoriteFarmJobs.length],
@@ -1594,7 +1605,8 @@ id: "AS-DEMO-5",
                               if (page) setFarmProfilePage(page);
                             }}
                             onManage={() => nav("내 공고")} onCreate={() => nav("공고 등록")}
-                            onInsurance={() => open("insurance")}
+                            onResumeManagement={() => nav("이력서 알림")}
+                            onInsurance={() => setModal("보험 앱으로 이동할까요?")}
                             onLogout={() => { setFarmLogin(false); nav("홈"); }}>
                             {!isEmployer && <FarmProfileJobs page={farmProfilePage} onPageChange={setFarmProfilePage}
                               applied={myApplications.length ? myApplications.map(farmWorkCard) : null}
@@ -1718,8 +1730,8 @@ id: "AS-DEMO-5",
                       </div>
                       <TodayWeather region={weatherRegion} onRegionChange={setWeatherRegion} />
                       <section className="insurance-hero" aria-labelledby="parametric-banner-title">
-                        <h2 id="parametric-banner-title"><span className="wonday-wordmark">WONDAY</span> 파라메트릭 보험</h2>
-                        <p className="insurance-banner-copy">일하는 하루를 위한 기상 보험</p>
+                        <h2 id="parametric-banner-title"><span className="wonday-wordmark">WON데이</span> 파라메트릭 보험</h2>
+                        <p className="insurance-banner-copy">날씨에 흔들리는 농촌의 하루에, 든든한 안심을</p>
                         <button onClick={() => nav("상품")}>
                           보험 상품 보기 <span aria-hidden="true">↗</span>
                         </button>
@@ -1971,14 +1983,11 @@ id: "AS-DEMO-5",
                   key={t}
                   className={[isTabActive(t) ? "active" : "", app === "farm" && t === "홈" ? "farm-home-nav-button" : ""].filter(Boolean).join(" ")}
                   aria-current={isTabActive(t) ? "page" : undefined}
-                  onClick={(event) => {
-                    if (app === "farm" && t === "홈" && tab === "홈" && !detail && !work && !platformVisit) {
-                      event.currentTarget.closest(".phone")?.querySelector<HTMLElement>(".farm-screen")?.scrollTo({
-                        top: 0,
-                        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
-                      });
-                    }
-                    else if (app === "farm" && t === "WONDAY") setModal("보험 앱으로 이동할까요?");
+                  onClick={() => {
+                    setTabScrollRequest((previous) => previous + 1);
+                    if (isTabActive(t) && !detail && !work && !platformVisit && !isEnrolling) return;
+                    if (app === "farm" && t === "WONDAY") setModal("보험 앱으로 이동할까요?");
+
                     else if (app === "farm" && t === "MY") openFarmProfile();
                     else if (app === "farm" && t === "알림") setModal("알림");
                     else nav(t);
@@ -2001,7 +2010,7 @@ id: "AS-DEMO-5",
         )}
         {insuranceLaunching && <div className="insurance-launch-splash" role="status" aria-live="polite">
           <img src={wooriSymbol} width={64} height={64} alt="우리금융그룹 로고" />
-          <strong className="insurer-wordmark">우리손해보험</strong>
+          <strong className="insurer-wordmark">우리WON뱅킹</strong>
         </div>}
         <div className="home-indicator" />
         {toast && (
@@ -2026,14 +2035,8 @@ id: "AS-DEMO-5",
               >
                 ×
               </button>
-              <h2 onClick={modal === "지원 완료" ? () => setModal("") : undefined}>{modal === "취소 확인" && cancellationTarget ? cancellationTarget.status === "지원 중" ? "지원을 취소할까요?" : "근무를 취소할까요?" : modal}</h2>
-              {modal === "보험 앱으로 이동할까요?" ? <div className="insurance-launch-confirm">
-                <p>우리손해보험에서 보험과 보상 정보를 확인할 수 있어요.</p>
-                <div>
-                  <button type="button" className="secondary" autoFocus onClick={() => setModal("")}>취소</button>
-                  <button type="button" className="primary" onClick={launchInsurance}>이동하기</button>
-                </div>
-              </div> : modal === "지원 완료" ? (
+              <h2 onClick={modal === "지원 완료" ? () => setModal("") : undefined}>{modal === "취소 확인" && cancellationTarget ? cancellationTarget.status === "지원 중" ? "지원을 취소할까요?" : "근무를 취소할까요?" : modal === "보험 앱으로 이동할까요?" ? "WONDAY 보험" : modal}</h2>
+              {modal === "보험 앱으로 이동할까요?" ? <FarmApplicationBanner handoff onInsurance={launchInsurance} onDismiss={() => setModal("")} /> : modal === "지원 완료" ? (
                 <FarmApplicationBanner onInsurance={() => { setModal(""); setApp("insurance"); nav("상품"); }} onDismiss={() => {
                   setModal("");
                   setApp("farm");
@@ -2062,6 +2065,21 @@ id: "AS-DEMO-5",
                     <button type="submit" className="farm-cancel-confirm">{cancellationTarget.status === "지원 중" ? "지원 취소 확정" : "근무 취소 확정"}</button>
                   </div>
                 </form>
+              ) : modal === "근무 완료" && work ? (
+                <div>
+                  <p>{work.worker} · {day(work.date)}</p><p>{work.job.title}</p>
+                  <p>이 근로자의 근무를 완료 처리할까요?</p>
+                  <p className="fine">근무 상태만 변경되며 실제 급여 이체는 진행되지 않아요.</p>
+                  <div className="farm-salary-actions">
+                    <button type="button" className="secondary" onClick={() => setModal("")}>돌아가기</button>
+                    <button type="button" className="primary" onClick={() => {
+                      const current = works.find((entry) => entry.id === work.id);
+                      if (!isEmployer || current?.status !== "근무 확정" || !ownedJobs.some((job) => job.id === current.job.id)) return;
+                      const next = { ...current, status: "근무 완료" };
+                      setWorks(works.map((entry) => entry.id === next.id ? next : entry)); setWork(next); setModal(""); notify("근무 완료로 처리했어요.");
+                    }}>근무 완료 처리</button>
+                  </div>
+                </div>
               ) : ["근무 취소", "조기 종료"].includes(modal) && work ? (
                 <form
                   onSubmit={(e) => {

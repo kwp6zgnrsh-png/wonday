@@ -1,3 +1,5 @@
+import type { FarmSalaryAccount } from "./farmSalaryAccount";
+
 export type FarmNationality = "내국인" | "외국인";
 export type FarmMember = {
   id: string;
@@ -6,6 +8,7 @@ export type FarmMember = {
   nationality: FarmNationality;
   passwordHash: string;
   salt: string;
+  salaryAccount?: FarmSalaryAccount;
 };
 
 export function identityNumberError(front: string, back: string, nationality: FarmNationality) {

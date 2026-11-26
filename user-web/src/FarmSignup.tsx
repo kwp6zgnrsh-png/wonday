@@ -1,3 +1,5 @@
+import { SalaryAccountFields } from "./FarmSalaryAccountCard";
+import { readSalaryAccount } from "./farmSalaryAccount";
 import { useState } from "react";
 import { hashFarmPassword, identityNumberError } from "./farmRegistration";
 import type { FarmMember, FarmNationality } from "./farmRegistration";
@@ -8,6 +10,7 @@ export default function FarmSignup({ initialRole, members, onRegister, onCancel 
   onRegister: (member: FarmMember) => void;
   onCancel: () => void;
 }) {
+  const [memberRole, setMemberRole] = useState(initialRole);
   const [nationality, setNationality] = useState<FarmNationality>("내국인");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,12 +31,14 @@ export default function FarmSignup({ initialRole, members, onRegister, onCancel 
       if (members.some((member) => member.id.toLowerCase() === id.toLowerCase()) || ["worker.demo", "farmer.demo"].includes(id.toLowerCase())) return setError("이미 사용 중인 아이디예요.");
       if (password !== data.get("confirmPassword")) return setError("비밀번호가 일치하지 않아요.");
       if (identityError) return setError(identityError);
+      const salary = readSalaryAccount(data, true);
+      if (salary.error) return setError(salary.error);
       setError("");
       setSubmitting(true);
       try {
         const salt = crypto.randomUUID();
         const passwordHash = await hashFarmPassword(password, salt);
-        onRegister({ id, name, role: data.get("memberRole") === "고용주" ? "고용주" : "근로자", nationality, salt, passwordHash });
+        onRegister({ id, name, role: data.get("memberRole") === "고용주" ? "고용주" : "근로자", nationality, salt, passwordHash, ...(salary.account ? { salaryAccount: salary.account } : {}) });
         form.reset();
       } catch {
         setError("가입 정보를 저장하지 못했어요. 다시 시도해 주세요.");
@@ -44,7 +49,7 @@ export default function FarmSignup({ initialRole, members, onRegister, onCancel 
       <fieldset className="farm-signup-choice">
         <legend>이용 유형</legend>
         <div>{["근로자", "고용주"].map((value) => <label key={value}>
-          <input type="radio" name="memberRole" value={value} defaultChecked={value === initialRole} required />{value}
+          <input type="radio" name="memberRole" value={value} checked={value === memberRole} onChange={() => setMemberRole(value)} required />{value}
         </label>)}</div>
       </fieldset>
       <fieldset className="farm-signup-choice">
@@ -67,6 +72,7 @@ export default function FarmSignup({ initialRole, members, onRegister, onCancel 
       <p id="farm-signup-id-help" className="farm-signup-help">영문·숫자·점·밑줄·하이픈 4~20자</p>
       <label>비밀번호<input name="newPassword" type="password" autoComplete="new-password" minLength={8} maxLength={64} placeholder="8자 이상" required /></label>
       <label>비밀번호 확인<input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} maxLength={64} required /></label>
+      <SalaryAccountFields employer={memberRole === "고용주"} />
       <p className="farm-signup-help">체험용 가입이에요. 실제 등록번호를 입력하지 마세요. 입력한 등록번호는 저장하지 않아요.</p>
       {error && <p className="farm-signup-error" role="alert">{error}</p>}
       <button type="submit" className="primary" disabled={submitting}>{submitting ? "가입 처리 중…" : "회원가입 완료"}</button>

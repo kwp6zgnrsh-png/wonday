@@ -3,11 +3,15 @@ import type { FarmJob } from "./FarmDiscovery";
 import { getGyeonggiRegion, gyeonggiRegions } from "./gyeonggiRegions";
 import { gyeonggiMapRegions } from "./gyeonggiMapRegions";
 
-export default function FarmRegionMap({ jobs, selected, onChoose }: {
+export default function FarmRegionMap({ jobs, selected, onChoose, farms, selectedFarm, onChooseFarm }: {
+  farms?: readonly { id: string; label: string; region: string }[];
+  selectedFarm?: string;
+  onChooseFarm?: (id: string) => void;
   jobs: FarmJob[];
   selected: string;
   onChoose: (region: string) => void;
 }) {
+  const [hoveredRegion, setHoveredRegion] = useState("");
   const [view, setView] = useState("지도");
   const [zoom, setZoom] = useState(1);
   const selectId = useId();
@@ -55,12 +59,10 @@ export default function FarmRegionMap({ jobs, selected, onChoose }: {
     const region = getGyeonggiRegion(job.place);
     if (region) counts.set(region, (counts.get(region) ?? 0) + 1);
   }
+  const infoRegion = hoveredRegion || selected;
   const selectionLabel = `${selected || "경기도 전체"} · 모집 공고 ${selected ? counts.get(selected) ?? 0 : jobs.length}건`;
 
   return <div className="farm-region-map">
-    <div className="farm-region-map-heading">
-      <button type="button" aria-pressed={selected === ""} onClick={() => onChoose("")}>경기도 전체</button>
-    </div>
     <div className="farm-region-view-toggle" role="group" aria-label="지역 선택 방식">
       {["근무지역 선택", "지도"].map((value) => <button key={value} type="button" aria-pressed={view === value}
         onClick={() => setView(value)}>{value}</button>)}
@@ -72,7 +74,7 @@ export default function FarmRegionMap({ jobs, selected, onChoose }: {
         {gyeonggiRegions.map((region) => <option key={region} value={region}>{region} ({counts.get(region) ?? 0}건)</option>)}
       </select>
     </label> : <>
-      <div className="farm-region-map-viewport"><div className="farm-region-map-zoom" role="group" aria-label="지도 크기">
+      <div className="farm-region-map-viewport" onPointerLeave={() => setHoveredRegion("")}><div className="farm-region-map-zoom" role="group" aria-label="지도 크기">
         <button type="button" aria-label="지도 축소" disabled={zoom === 1} onClick={() => changeZoom(-0.5)}>−</button>
         <span>{Math.round(zoom * 100)}%</span>
         <button type="button" aria-label="지도 확대" disabled={zoom === 2.5} onClick={() => changeZoom(0.5)}>＋</button>
@@ -106,13 +108,34 @@ export default function FarmRegionMap({ jobs, selected, onChoose }: {
           {gyeonggiMapRegions.map(({ name, path }) => <path key={name} d={path} fillRule="evenodd"
             className={(counts.get(name) ? "has-jobs " : "") + (selected === name ? "is-selected" : "")}
             role="button" tabIndex={0} aria-pressed={selected === name} aria-label={`${name} 모집 공고 ${counts.get(name) ?? 0}건`}
+            onPointerEnter={() => setHoveredRegion(name)} onPointerLeave={() => setHoveredRegion("")}
+            onFocus={() => setHoveredRegion(name)} onBlur={() => setHoveredRegion("")}
             onClick={() => onChoose(name)} onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onChoose(name); }
-            }}><title>{name} · {counts.get(name) ?? 0}건</title></path>)}
-          {gyeonggiMapRegions.map(({ name, label }) => <text key={name} x={label[0]} y={label[1]}
+            }} />)}
+
+          {zoom > 1 && gyeonggiMapRegions.map(({ name, label }) => <text key={name} x={label[0]} y={label[1]}
             className={selected === name ? "is-selected" : ""} aria-hidden="true">{name}</text>)}
+          {farms?.map((farm, index) => {
+            const region = gyeonggiMapRegions.find((item) => item.name === farm.region);
+            if (!region) return null;
+            const siblings = farms.filter((item) => item.region === farm.region);
+            const position = siblings.findIndex((item) => item.id === farm.id);
+            const x = region.label[0] + (position % 3 - (Math.min(siblings.length, 3) - 1) / 2) * 26;
+            const y = region.label[1] - 19 - Math.floor(position / 3) * 30;
+            return <g key={farm.id} className="farm-management-pin" transform={`translate(${x} ${y})`}
+              role="button" tabIndex={0} aria-label={`농장 ${index + 1}: ${farm.label}`} aria-pressed={selectedFarm === farm.id}
+              onPointerEnter={() => setHoveredRegion(farm.region)} onPointerLeave={() => setHoveredRegion("")}
+              onFocus={() => setHoveredRegion(farm.region)} onBlur={() => setHoveredRegion("")}
+              onClick={() => onChooseFarm?.(farm.id)} onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onChooseFarm?.(farm.id); }
+              }}>
+              <circle r="13" /><text textAnchor="middle" dominantBaseline="central" aria-hidden="true">{index + 1}</text>
+            </g>;
+          })}
         </svg>
       </div>
+      {infoRegion && <div className="farm-region-hover-info" role="status" aria-live="polite"><strong>{infoRegion}</strong><span>{farms ? "등록 공고" : "모집 공고"} <b>{counts.get(infoRegion) ?? 0}</b>건</span></div>}
       </div>
       <details className="farm-region-map-source"><summary>지도 정보</summary>
         <p>통계청 2018년 행정경계를 시·군 단위로 합쳐 표시했어요.</p>

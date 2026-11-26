@@ -1,5 +1,7 @@
+import FarmSalaryAccountCard from "./FarmSalaryAccountCard";
+import type { FarmSalaryAccount } from "./farmSalaryAccount";
 import FarmFavoriteButton from "./FarmFavoriteButton";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import FarmCursorList from "./FarmCursorList";
 import type { ReactNode } from "react";
 import FarmIcon from "./FarmIcon";
@@ -14,6 +16,7 @@ import type { FarmBrowseMode, FarmFilters, FarmSearchFilters } from "./farmSearc
 import type { WorkplacePin } from "./farmMapLocation";
 
 export type FarmJob = {
+  employerId?: string;
   id: number;
   title: string;
   crop: string;
@@ -95,88 +98,59 @@ function FarmCropBackground() {
         </div>);
 }
 
-export function FarmHome({ displayName, employer, jobs, preview, preferences, availableDates, onSettings, onOpen, applicationCount, favoriteCount, onBrowse, onManage, onInsurance, onCreate, onProfile, onBookmarks, favoriteIds = [], onToggleFavorite }: {
+export function FarmHome({ displayName, employer, jobs, preferences, availableDates, onSettings, onOpen, applicationCount, favoriteCount, onManage, onCreate, onBookmarks, favoriteIds = [], onToggleFavorite }: {
   employer: boolean;
   displayName?: string;
   jobs: FarmJob[];
   favoriteIds?: readonly number[];
   onToggleFavorite?: (job: FarmJob) => void;
-  preview: ReactNode;
   preferences: FarmFilters;
   availableDates: (job: FarmJob) => string[];
   onSettings: () => void;
   onOpen: (job: FarmJob) => void;
   applicationCount: number;
   favoriteCount: number;
-  onBrowse: (mode?: FarmBrowseMode, filters?: FarmFilters) => void;
   onManage: () => void;
-  onInsurance: () => void;
   onCreate: () => void;
-  onProfile: () => void;
   onBookmarks: () => void;
 }) {
   return (
     <div className="farm-home">
-      <section className={employer ? "farm-home-spotlight" : "farm-home-spotlight farm-worker-spotlight"} aria-labelledby="farm-home-heading">
-        {!employer && <FarmCropBackground />}
+      <section className="farm-home-spotlight farm-worker-spotlight" aria-labelledby="farm-home-heading">
+        <FarmCropBackground />
         <div className="farm-home-heading">
           <h2 id="farm-home-heading">{displayName || (employer ? "이온농장" : "김하루")}님, 반가워요.</h2>
           <span className="farm-location"><FarmIcon name="pin" />경기도</span>
         </div>
-        {employer ? <button type="button" className="farm-home-banner" onClick={onCreate}>
-          <span className="farm-banner-copy">
-            <strong>함께 일할 분을 찾아요</strong>
-            <span>공고 등록<FarmIcon name="arrow" /></span>
-          </span>
-          <span className="farm-banner-crops" aria-hidden="true">
-            <FarmCropIcon crop="배추" />
-            <FarmCropIcon crop="사과" />
-            <FarmCropIcon crop="딸기" />
-          </span>
-        </button> : <>
-          <div className="farm-worker-intro">
-            <div className="farm-worker-intro-copy">
-              <strong>농작업 일자리를 찾아요</strong>
-            </div>
+        <div className="farm-worker-intro">
+          <div className="farm-worker-intro-copy">
+            <strong>{employer ? "함께 일할 분을 찾아요" : "농작업 일자리를 찾아요"}</strong>
           </div>
-          <div className="farm-home-actions" role="group" aria-label="내 일자리 현황">
-            <button type="button" className="farm-home-stat-card" onClick={onManage}>
-              <span>지원 현황</span>
-              <strong>{applicationCount}건</strong>
-              <FarmIcon name="arrow" />
-            </button>
-            <button type="button" className="farm-home-stat-card" onClick={onBookmarks}>
-              <span>찜한 일자리</span>
-              <strong>{favoriteCount}건</strong>
-              <FarmIcon name="arrow" />
-            </button>
-          </div>
-        </>}
+        </div>
+        <div className={employer ? "farm-home-actions farm-home-employer-actions" : "farm-home-actions"} role="group" aria-label={employer ? "공고 등록" : "내 일자리 현황"}>
+          {employer ? <button type="button" className="farm-home-create" onClick={onCreate}><FarmIcon name="plus" />공고 등록</button> : <>
+          <button type="button" className="farm-home-stat-card" onClick={onManage}>
+            <span>지원 현황</span>
+            <strong>{applicationCount}건</strong>
+            <FarmIcon name="arrow" />
+          </button>
+          <button type="button" className="farm-home-stat-card" onClick={onBookmarks}>
+            <span>찜한 일자리</span>
+            <strong>{favoriteCount}건</strong>
+            <FarmIcon name="arrow" />
+          </button></>}
+        </div>
       </section>
-      {employer && <section className="farm-home-services" aria-labelledby="farm-home-services-title">
-        <h3 id="farm-home-services-title">자주 찾는 서비스</h3>
-        <FarmShortcuts items={[
-          ["내 공고", "grid", onManage],
-          ["WONDAY 보험", "shield", onInsurance],
-          ["마이페이지", "profile", onProfile],
-        ]} />
-      </section>}
-      <div className={employer ? "farm-home-content" : "farm-home-content farm-worker-content"}>
-        {employer ? <section className="farm-job-section" aria-labelledby="farm-home-jobs">
-          <div className="farm-section-heading">
-            <h3 id="farm-home-jobs">등록한 공고</h3>
-            <button onClick={() => onBrowse()}>전체 보기 <FarmIcon name="arrow" /></button>
-          </div>
-          {preview || <p className="farm-empty">표시할 공고가 없어요.</p>}
-        </section> : <FarmHomeJobs jobs={jobs} preferences={preferences} availableDates={availableDates}
-          onSettings={onSettings} onOpen={onOpen} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />}
+      <div className="farm-home-content farm-worker-content">
+        <FarmHomeJobs employer={employer} jobs={jobs} preferences={preferences} availableDates={availableDates}
+          onSettings={onSettings} onOpen={onOpen} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />
       </div>
     </div>
   );
 }
-
-export function FarmJobList({ employer, jobs, mode, onModeChange, filters, onFilterChange, searchFilters, onSearchFilterChange, preferences, onSettings, onOpen, openDays, availableDates, favoriteIds = [], onToggleFavorite }: {
+export function FarmJobList({ employer, regionContent, jobs, mode, onModeChange, filters, onFilterChange, searchFilters, onSearchFilterChange, preferences, onSettings, onOpen, openDays, availableDates, favoriteIds = [], onToggleFavorite }: {
   employer: boolean;
+  regionContent?: ReactNode;
   displayName?: string;
   jobs: FarmJob[];
   favoriteIds?: readonly number[];
@@ -193,6 +167,7 @@ export function FarmJobList({ employer, jobs, mode, onModeChange, filters, onFil
   openDays: (job: FarmJob) => number;
   availableDates: (job: FarmJob) => string[];
 }) {
+  const [searchPanel, setSearchPanel] = useState(searchFilters.dates.length || searchFilters.startTime || searchFilters.endTime ? 3 : searchFilters.crop.length || searchFilters.group.length ? 1 : searchFilters.experience.length || searchFilters.type.length ? 2 : 0);
   const openJobs = jobs.filter((job) => openDays(job) > 0);
   const hasPreferences = hasFarmFilters(preferences);
   const results = mode === "맞춤 일자리"
@@ -208,7 +183,7 @@ export function FarmJobList({ employer, jobs, mode, onModeChange, filters, onFil
           <button key={value} type="button" aria-pressed={value === mode} onClick={() => { if (value !== mode) onModeChange(value); }}>{value}</button>
         ))}
       </div>}
-      {mode === "일자리 상세검색" && <FarmSearchEditor applied={searchFilters} jobs={jobs} onApply={onSearchFilterChange} />}
+      {mode === "일자리 상세검색" && <FarmSearchEditor applied={searchFilters} jobs={jobs} onApply={onSearchFilterChange} regionContent={employer ? regionContent : undefined} onPanelChange={setSearchPanel} />}
       {mode === "맞춤 일자리" && (
         <section className="farm-search-note" aria-label="맞춤 조건">
           <p>{hasPreferences ? Object.values(preferences).filter(Boolean).join(" · ") : "관심 조건을 저장하면 맞춤 공고를 볼 수 있어요."}</p>
@@ -220,6 +195,7 @@ export function FarmJobList({ employer, jobs, mode, onModeChange, filters, onFil
           <FarmRegionMap jobs={openJobs} selected={filters.region} onChoose={(region) => onFilterChange({ ...filters, region })} />
         </section>
       )}
+      {!(employer && regionContent && searchPanel === 0 && mode === "일자리 상세검색") && <>
       <div className="farm-list-toolbar">
         <p role="status">공고 <strong>{results.length}건</strong></p>
       </div>
@@ -227,11 +203,12 @@ export function FarmJobList({ employer, jobs, mode, onModeChange, filters, onFil
       <FarmCursorList items={results} queryKey={JSON.stringify([mode, filters, searchFilters, preferences])}
         renderItem={(job) => <FarmJobCard key={job.id} job={job} openDays={openDays(job)} onOpen={() => onOpen(job)} favorite={favoriteIds.includes(job.id)}
           onFavoriteChange={onToggleFavorite ? () => onToggleFavorite(job) : undefined} />} />
+      </>}
     </section>
   );
 }
 
-export function FarmProfile({ displayName, employer, metrics, children, activeMetric, onMetricSelect, onManage, onCreate, onInsurance, onLogout }: {
+export function FarmProfile({ displayName, employer, metrics, children, activeMetric, onMetricSelect, onManage, onCreate, onResumeManagement, onInsurance, onLogout, salaryAccount, onSaveSalaryAccount }: {
   employer: boolean;
   displayName?: string;
   metrics: ReadonlyArray<readonly [string, number]>;
@@ -240,8 +217,11 @@ export function FarmProfile({ displayName, employer, metrics, children, activeMe
   onMetricSelect?: (index: number) => void;
   onManage: () => void;
   onCreate: () => void;
+  onResumeManagement: () => void;
   onInsurance: () => void;
   onLogout: () => void;
+  salaryAccount?: FarmSalaryAccount;
+  onSaveSalaryAccount?: (value: FarmSalaryAccount | undefined) => void;
 }) {
   const jobSection = useRef<HTMLDivElement>(null);
   return (
@@ -275,8 +255,10 @@ export function FarmProfile({ displayName, employer, metrics, children, activeMe
         <FarmShortcuts items={[
           ["내 공고", "grid", onManage],
           ["공고 등록", "plus", onCreate],
+          ["이력서 관리", "clipboard", onResumeManagement],
         ]} />
       </section> : <div ref={jobSection} id="farm-profile-content">{children}</div>}
+      {onSaveSalaryAccount && <FarmSalaryAccountCard employer={employer} value={salaryAccount} onSave={onSaveSalaryAccount} />}
       <section className="farm-profile-section" aria-labelledby="farm-profile-services">
         <h3 id="farm-profile-services">서비스 및 계정</h3>
         <div className="farm-profile-links">
@@ -288,7 +270,9 @@ export function FarmProfile({ displayName, employer, metrics, children, activeMe
   );
 }
 
-export function FarmJobOverview({ job, openDays, favorite, onFavoriteChange }: {
+export function FarmJobOverview({ job, openDays, favorite, onFavoriteChange, collapsible = false, conditionsOnly = false }: {
+  conditionsOnly?: boolean;
+  collapsible?: boolean;
   job: FarmJob;
   openDays: number;
   favorite?: boolean;
@@ -300,9 +284,40 @@ export function FarmJobOverview({ job, openDays, favorite, onFavoriteChange }: {
   const workPeriod = first && last
     ? [first, ...(first === last ? [] : [last])].map((date) => workDay.format(new Date(date + "T12:00:00+09:00"))).join(" ~ ")
     : "등록된 날짜 없음";
+  const conditions = (
+      <section className="farm-detail-conditions" aria-label="근무 조건">
+        <div className="farm-condition-card">
+          {!collapsible && !conditionsOnly && <h3>한눈에 보는 근무 조건</h3>}
+          <div className="farm-condition-period">
+            <span><FarmIcon name="calendar" />작업 기간</span>
+            <strong>{workPeriod}</strong>
+            <small>등록된 근무일 {dates.length}일{!conditionsOnly && " · 아래에서 날짜를 선택해요"}</small>
+          </div>
+          <dl className="farm-condition-grid">
+            {([
+              ["근무시간", `${job.start}–${job.end}`, "clock", "green"],
+              ["무급 휴게", job.rest, "cup", "amber"],
+              ["하루 모집", `${job.count}명`, "users", "blue"],
+              ["필요 경력", job.experience || "공고에 별도 안내 없음", "clipboard", "violet"],
+            ] as const).map(([label, value, icon, color]) => (
+              <div key={label} className="farm-condition-item">
+                <dt><span className={`farm-condition-icon ${color}`}><FarmIcon name={icon} /></span>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        {!conditionsOnly && <div className="farm-task-card">
+          <h3><FarmIcon name="sprout" />이런 일을 해요</h3>
+          <div className="farm-task-tags"><span>{job.crop}</span><span>{job.type}</span></div>
+          <p>{job.description || "자세한 작업 내용은 고용주에게 확인해 주세요."}</p>
+          {job.benefits && <div className="farm-task-benefits"><strong>복리후생·교통</strong><p>{job.benefits}</p></div>}
+        </div>}
+      </section>
+  );
   return (
     <>
-      <div className="farm-detail-hero">
+      {!conditionsOnly && <div className="farm-detail-hero">
         {onFavoriteChange && <div className="farm-detail-topline">
           <button className="farm-favorite-button" aria-pressed={favorite} onClick={onFavoriteChange}>
             <FarmIcon name="bookmark" />찜하기
@@ -323,35 +338,12 @@ export function FarmJobOverview({ job, openDays, favorite, onFavoriteChange }: {
           <span>{openDays > 0 ? `${openDays}개 근무일 모집` : "현재 모집이 마감되었어요"}</span>
         </div>
       </div>
-      <section className="farm-detail-conditions" aria-labelledby="farm-conditions">
-        <div className="farm-condition-card">
-          <h3 id="farm-conditions">한눈에 보는 근무 조건</h3>
-          <div className="farm-condition-period">
-            <span><FarmIcon name="calendar" />작업 기간</span>
-            <strong>{workPeriod}</strong>
-            <small>등록된 근무일 {dates.length}일 · 아래에서 날짜를 선택해요</small>
-          </div>
-          <dl className="farm-condition-grid">
-            {([
-              ["근무시간", `${job.start}–${job.end}`, "clock", "green"],
-              ["무급 휴게", job.rest, "cup", "amber"],
-              ["하루 모집", `${job.count}명`, "users", "blue"],
-              ["필요 경력", job.experience || "공고에 별도 안내 없음", "clipboard", "violet"],
-            ] as const).map(([label, value, icon, color]) => (
-              <div key={label} className="farm-condition-item">
-                <dt><span className={`farm-condition-icon ${color}`}><FarmIcon name={icon} /></span>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-        <div className="farm-task-card">
-          <h3><FarmIcon name="sprout" />이런 일을 해요</h3>
-          <div className="farm-task-tags"><span>{job.crop}</span><span>{job.type}</span></div>
-          <p>{job.description || "자세한 작업 내용은 고용주에게 확인해 주세요."}</p>
-          {job.benefits && <div className="farm-task-benefits"><strong>복리후생·교통</strong><p>{job.benefits}</p></div>}
-        </div>
-      </section>
+      }
+      {collapsible ? <details className="farm-conditions-toggle" key={job.id}>
+        <summary><FarmIcon name="clipboard" /><span>근무 조건 및 작업 내용</span>
+          <svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M1 1.67h10L6 10.33Z" /></svg></summary>
+        {conditions}
+      </details> : conditions}
     </>
   );
 }

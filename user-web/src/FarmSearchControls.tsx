@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useState } from "react";
 import FarmIcon from "./FarmIcon";
 import FarmMultiSelect from "./FarmMultiSelect";
@@ -53,7 +54,9 @@ export function FarmFilterFields({ fields, filters, jobs, onChange }: {
   );
 }
 
-export function FarmSearchEditor({ applied, jobs, onApply }: {
+export function FarmSearchEditor({ applied, jobs, onApply, regionContent, onPanelChange }: {
+  regionContent?: ReactNode;
+  onPanelChange?: (panel: number) => void;
   applied: FarmSearchFilters;
   jobs: FarmJob[];
   onApply: (filters: FarmSearchFilters) => void;
@@ -83,11 +86,12 @@ export function FarmSearchEditor({ applied, jobs, onApply }: {
       onSubmit={(event) => { event.preventDefault(); if (scheduleError) return; const next = normalizeFarmSearchFilters(draft); setDraft(next); onApply(next); }}>
       <div className="farm-segmented farm-search-panel-tabs" role="group" aria-label="검색 조건 분류">
         {filterPanels.map(({ label, icon }, index) => (
-          <button key={label} type="button" aria-pressed={index === panel} onClick={() => setPanel(index)}>
+          <button key={label} type="button" aria-pressed={index === panel} onClick={() => { setPanel(index); onPanelChange?.(index); }}>
             <FarmIcon name={icon} />{label}
           </button>
         ))}
       </div>
+      {panel === 0 && regionContent ? regionContent : <>
       {panel === 3 ? <FarmScheduleFilter filters={normalizedDraft} onChange={updateFilters} /> : <div className="farm-multi-fields">
         {filterPanels[panel].fields.map((field) => <FarmMultiSelect key={field} label={fieldLabels[field]}
           options={options[field]} selected={draft[field]}
@@ -118,6 +122,7 @@ export function FarmSearchEditor({ applied, jobs, onApply }: {
       <div className="farm-filter-actions">
         <button type="button" className="secondary" onClick={() => { setDraft(emptyFarmSearchFilters); onApply(emptyFarmSearchFilters); }}>조건 초기화</button>
       </div>
+      </>}
     </form>
   );
 }

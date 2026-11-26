@@ -13,7 +13,9 @@ const categories = ["전체 일자리", "맞춤 일자리", "지역별 일자리
 const dateLabel = (value: string) => value.slice(5).replace("-", ".");
 const won = new Intl.NumberFormat("ko-KR");
 
-export default function FarmHomeJobs({ jobs, preferences, availableDates, onSettings, onOpen, favoriteIds = [], onToggleFavorite }: {
+export default function FarmHomeJobs({ employer = false, jobs, preferences, availableDates, onSettings, onOpen, favoriteIds = [], onToggleFavorite }: {
+  employer?: boolean;
+
   jobs: FarmJob[];
   favoriteIds?: readonly number[];
   onToggleFavorite?: (job: FarmJob) => void;
@@ -31,8 +33,9 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
     return (dates.find((date) => date >= today) ?? dates[0] ?? today).slice(0, 7);
   });
   const [selectedDate, setSelectedDate] = useState("");
-  const needsPreferences = category === "맞춤 일자리" && !hasFarmFilters(preferences);
-  const filtered = needsPreferences ? [] : searchFarmJobs(jobs, category === "맞춤 일자리"
+  const needsPreferences = !employer && category === "맞춤 일자리" && !hasFarmFilters(preferences);
+  const sourceJobs = employer && category === "맞춤 일자리" ? jobs.filter((job) => availableDates(job).length > 0) : jobs;
+  const filtered = needsPreferences ? [] : searchFarmJobs(sourceJobs, !employer && category === "맞춤 일자리"
     ? preferences : { ...emptyFarmFilters, region: category === "지역별 일자리" ? region : "" });
   const jobDates = new Map(filtered.map((job) => [job.id, [...new Set(availableDates(job))].sort()]));
   const dayCounts = new Map<string, number>();
@@ -44,10 +47,10 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
     jobDates.get(job.id)?.some((date) => selectedDate ? date === selectedDate : date.startsWith(month)));
 
   return (
-    <section className="farm-home-jobs" aria-label="경기도 일자리">
+    <section className="farm-home-jobs" aria-label={employer ? "등록한 공고" : "경기도 일자리"}>
       <div className="farm-home-job-tabs" role="group" aria-label="홈 일자리 분류">
         {categories.map((item) => <button key={item} type="button" aria-pressed={category === item}
-          onClick={() => { setCategory(item); setSelectedDate(""); }}>{item}</button>)}
+          onClick={() => { setCategory(item); setSelectedDate(""); }}>{employer ? item === "전체 일자리" ? "전체 공고" : item === "맞춤 일자리" ? "모집 중" : "지역별 공고" : item}</button>)}
       </div>
       <div className="farm-home-job-controls">
         <div className="farm-home-list-toolbar">
@@ -57,12 +60,13 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
             <FarmIcon name={item === "목록형" ? "clipboard" : "calendar"} />{item}
           </button>)}
         </div>
-        <p className="farm-home-results" role="status">{view === "캘린더형" && (selectedDate ? `${dateLabel(selectedDate)} · ` : `${Number(month.slice(5))}월 · `)}모집 공고 <strong>{results.length}건</strong></p>
+        <p className="farm-home-results" role="status">{view === "캘린더형" && (selectedDate ? `${dateLabel(selectedDate)} · ` : `${Number(month.slice(5))}월 · `)}{employer ? "등록 공고" : "모집 공고"} <strong>{results.length}건</strong></p>
         </div>
+
         {category === "지역별 일자리" && <FarmRegionMap jobs={jobs} selected={region} onChoose={(value) => {
             setRegion(value); setSelectedDate("");
           }} />}
-        {category === "맞춤 일자리" && !needsPreferences && <div className="farm-home-match-note">
+        {!employer && category === "맞춤 일자리" && !needsPreferences && <div className="farm-home-match-note">
           <span>{Object.values(preferences).filter(Boolean).join(" · ")}</span>
           <button type="button" onClick={onSettings}>조건 변경</button>
         </div>}
@@ -108,7 +112,7 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
               <button type="button" className="farm-home-job-row" onClick={() => onOpen(job)}>
               <span className="farm-home-job-place"><FarmIcon name="pin" />{job.place}</span>
               <span className="farm-home-job-title"><strong>{job.title}</strong><FarmIcon name="arrow" /></span>
-              <span className="farm-home-job-badges"><span>모집 중</span>{job.demoPosting && <small>예시 공고</small>}</span>
+              <span className="farm-home-job-badges"><span>{dates.length ? "모집 중" : "모집 마감"}</span>{job.demoPosting && <small>예시 공고</small>}</span>
               <span className="farm-home-job-facts"><span>근무일</span><span>{dates.slice(0, 3).map(dateLabel).join(" · ")}{dates.length > 3 && ` 외 ${dates.length - 3}일`}</span></span>
               <span className="farm-home-job-facts"><span>작업품목</span><span>{job.crop} · {job.type}</span></span>
               <span className="farm-home-job-facts"><span>근무시간</span><span>{job.start}–{job.end} · 하루 {job.count}명</span></span>
@@ -121,7 +125,7 @@ export default function FarmHomeJobs({ jobs, preferences, availableDates, onSett
             </article>;
           }} />
         </div>
-        {!results.length && <p className="farm-empty">{view === "캘린더형" ? "이 달에 모집 중인 근무가 없어요. 다른 달을 확인해 주세요." : "조건에 맞는 모집 공고가 없어요."}</p>}
+        {!results.length && <p className="farm-empty">{view === "캘린더형" ? "이 달에 모집 중인 근무가 없어요. 다른 달을 확인해 주세요." : employer ? "조건에 맞는 등록 공고가 없어요." : "조건에 맞는 모집 공고가 없어요."}</p>}
       </>}
     </section>
   );
