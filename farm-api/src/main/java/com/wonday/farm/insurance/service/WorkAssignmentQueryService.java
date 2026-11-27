@@ -38,6 +38,7 @@ public class WorkAssignmentQueryService {
 			InsuranceTime.local(assignment.getAgreedEndAt(), zone),
 			assignment.getAgreedBreakStartAt() == null ? null : InsuranceTime.local(assignment.getAgreedBreakStartAt(), zone),
 			assignment.getAgreedBreakEndAt() == null ? null : InsuranceTime.local(assignment.getAgreedBreakEndAt(), zone),
-			assignment.getAgreedDailyWage(), assignment.getAgreedLatitude(), assignment.getAgreedLongitude());
+			assignment.getAgreedDailyWage(), assignment.getAgreedLatitude(), assignment.getAgreedLongitude(),
+			assignment.getCompletedAtUtc() == null ? null : InsuranceTime.utc(assignment.getCompletedAtUtc(), zone));
 	}
 }

@@ -26,6 +26,11 @@ public class WorkAssignment {
 	private long applicationId;
 	@Column(name = "confirmed_at_utc")
 	private LocalDateTime confirmedAtUtc;
+	// 완료 처리는 최초 한 번만 기록한다. 종료 시각 경과나 급여 지급 여부로 채우지 않는다.
+	@Column(name = "completed_at_utc")
+	private LocalDateTime completedAtUtc;
+	@Column(name = "completed_by")
+	private Long completedBy;
 	@Column(name = "agreed_work_date")
 	private LocalDate agreedWorkDate;
 	@Column(name = "agreed_time_zone", length = 64)
@@ -51,4 +56,14 @@ public class WorkAssignment {
 	private LocalDateTime agreedBreakEndAt;
 	@Column(name = "agreed_daily_wage", nullable = false)
 	private long agreedDailyWage;
+
+	// 취소·정정용 메서드는 제공하지 않는다. 재요청은 서비스에서 최초 결과를 반환한다.
+	public void complete(LocalDateTime completedAtUtc, long employerId) {
+		if (this.completedAtUtc != null || completedBy != null) {
+			throw new IllegalStateException("Completion already recorded");
+		}
+		if (completedAtUtc == null || employerId <= 0) throw new IllegalArgumentException("Invalid completion");
+		this.completedAtUtc = completedAtUtc;
+		completedBy = employerId;
+	}
 }

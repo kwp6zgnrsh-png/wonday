@@ -253,3 +253,7 @@ GET /api/internal/insurance/workers/{workerId}/salary-account는 기존 서버 �
 
 
 farm-demo의 /demo/insurance-salary-account에서 근로자 본인의 보험 제공용 등록 여부·은행 코드를 확인한다. 기존 계좌 관리 창에서 등록·교체·해제 후 다시 조회해 변화를 볼 수 있다. 서버 토큰을 브라우저에 전달하지 않고 같은 조회 서비스를 사용하며, 실제 Bearer 인증은 별도 검증 대상이다.
+
+## 고용주의 개인별 근무 완료
+
+`POST /api/work-assignments/{assignmentId}/completion`은 고용주 본인 공고의 확정 근무를 약정 종료 시각 이후에 완료한다. 최초 처리 시각을 보존하며 재요청은 같은 결과를 반환하고, 완료 취소·정정은 제공하지 않는다. 보험 상세와 farm-demo 본인 약정 상세에 `completedAt`을 추가했다. V11은 기존 행을 NULL로 보존한다. 요청·응답과 미검증 범위는 [근무 완료 API 문서](docs/work-completion-api.md)를 참고한다.

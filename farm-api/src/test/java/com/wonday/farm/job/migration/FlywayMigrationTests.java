@@ -18,18 +18,18 @@ import org.flywaydb.core.api.output.MigrateResult;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-// 기존 마이그레이션을 수정하지 않고, 격리 MySQL의 새 스키마에 V1~V10를 적용해 결과를 확인한다.
+// 기존 마이그레이션을 수정하지 않고, 격리 MySQL의 새 스키마에 V1~V11를 적용해 결과를 확인한다.
 @Tag("integration")
 class FlywayMigrationTests {
 
 	@Test
-	void emptyDatabaseAppliesV1ThroughV10() throws Exception {
+	void emptyDatabaseAppliesV1ThroughV11() throws Exception {
 		String schema = newSchema("mig_empty");
 		MigrateResult result = flyway(schema, null).migrate();
 
 		assertThat(result.success).isTrue();
-		assertThat(result.migrationsExecuted).isEqualTo(10);
-		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+		assertThat(result.migrationsExecuted).isEqualTo(11);
+		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
 		try (Connection connection = MySqlTestDatabase.rootConnection(schema)) {
 			assertColumn(connection, schema, "job_posting", "time_zone", "varchar(64)", "YES", null);
 			assertColumn(connection, schema, "work_schedule", "terms_version", "int", "NO", "1");
@@ -38,11 +38,13 @@ class FlywayMigrationTests {
 			assertColumn(connection, schema, "work_assignment", "confirmed_at_utc", "datetime(6)", "YES", null);
 			assertIdentityColumns(connection, schema);
 			assertEmptySalaryAccountTable(connection, schema);
+			assertColumn(connection, schema, "work_assignment", "completed_at_utc", "datetime(6)", "YES", null);
+			assertColumn(connection, schema, "work_assignment", "completed_by", "bigint", "YES", null);
 		}
 	}
 
 	@Test
-	void existingV3DataIsPreservedAndUpgradedByV10() throws Exception {
+	void existingV3DataIsPreservedAndUpgradedByV11() throws Exception {
 		String schema = newSchema("mig_upgrade");
 		assertThat(flyway(schema, "3").migrate().success).isTrue();
 		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3");
@@ -64,11 +66,13 @@ class FlywayMigrationTests {
 		MigrateResult result = flyway(schema, null).migrate();
 
 		assertThat(result.success).isTrue();
-		assertThat(result.migrationsExecuted).isEqualTo(7);
-		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+		assertThat(result.migrationsExecuted).isEqualTo(8);
+		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
 		try (Connection connection = MySqlTestDatabase.rootConnection(schema); Statement sql = connection.createStatement()) {
 			assertIdentityColumns(connection, schema);
 			assertEmptySalaryAccountTable(connection, schema);
+			assertColumn(connection, schema, "work_assignment", "completed_at_utc", "datetime(6)", "YES", null);
+			assertColumn(connection, schema, "work_assignment", "completed_by", "bigint", "YES", null);
 			// V8은 기존 번호를 이관하거나 국적을 추측하지 않고 새 네 컬럼을 NULL로 남긴다.
 			try (ResultSet rs = sql.executeQuery("SELECT * FROM member WHERE login_id = 'legacy'")) {
 				assertThat(rs.next()).isTrue();
