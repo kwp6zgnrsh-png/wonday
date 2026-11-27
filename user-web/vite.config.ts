@@ -8,6 +8,14 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
+      '/api/insurance/admin/weather/': {
+        target: 'http://127.0.0.1:8080',
+        rewrite: (path) => path.replace('/api/insurance/admin/weather/', '/api/admin/weather/'),
+      },
+      '/api/insurance/weather/': {
+        target: 'http://127.0.0.1:8080',
+        rewrite: (path) => path.replace('/api/insurance/weather/', '/api/weather/'),
+      },
       '/api/insurance/platform/link': {
         target: 'http://127.0.0.1:8080',
         rewrite: (path) => path.replace('/api/insurance/platform/link', '/api/platform/link'),

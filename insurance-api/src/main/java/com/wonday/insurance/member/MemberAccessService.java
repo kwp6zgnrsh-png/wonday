@@ -14,6 +14,26 @@ public class MemberAccessService {
 	private final MemberRepository members;
 
 	@Transactional(readOnly = true)
+	public void requireAdmin(long memberId) {
+		var profile = members.findEnrollmentProfile(memberId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Member does not exist"));
+		if (profile.getRole() != MemberRole.ADMIN) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin account required");
+	}
+
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void lockAdmin(long memberId) {
+		var member = members.findForEnrollment(memberId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Member does not exist"));
+		if (member.getRole() != MemberRole.ADMIN) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin account required");
+	}
+
+	@Transactional(readOnly = true)
+	public void requireMember(long memberId) {
+		members.findEnrollmentProfile(memberId)
+			.orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Member does not exist"));
+	}
+
+	@Transactional(readOnly = true)
 	public void requireWorker(long memberId) {
 		var profile = members.findEnrollmentProfile(memberId)
 			.orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Member does not exist"));
