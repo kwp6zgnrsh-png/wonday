@@ -62,6 +62,7 @@
     <div class="toolbar">
       <p id="account">로그인 상태를 확인하고 있습니다.</p>
       <a class="button" href="/demo/login">로그인 · 계정 전환</a>
+      <a class="button" href="/demo/job-apply">날짜 선택 지원 · 재요청 · 재지원</a>
     </div>
   </header>
   <p id="notice" class="notice" role="status" aria-live="polite">잠시 기다려 주세요.</p>
@@ -96,6 +97,7 @@
       <article id="detail" hidden>
         <h3 id="detail-title" tabindex="-1"></h3>
         <a id="detail-link" href="/demo/worker-jobs">현재 공고 상세 링크</a>
+        <p><a id="detail-apply-link" class="button" href="/demo/job-apply">이 공고에서 지원할 날짜 선택</a></p>
         <dl id="detail-info"></dl>
         <p id="description" class="description"></p>
         <p id="availability-summary" class="notice"></p>
@@ -304,6 +306,7 @@
       throw new Error('공고 상세 응답 형식을 확인할 수 없습니다.');
     }
     $('detail-title').textContent = `${posting.title} · #${posting.jobPostingId}`;
+    $('detail-apply-link').href = `/demo/job-apply?jobPostingId=${encodeURIComponent(posting.jobPostingId)}`;
     info('작업지', posting.workLocation);
     info('작목', codeLabel(posting.cropName, posting.cropCode));
     info('작업 유형', codeLabel(posting.workTypeName, posting.workTypeCode));

@@ -257,3 +257,7 @@ farm-demo의 /demo/insurance-salary-account에서 근로자 본인의 보험 제
 ## 고용주의 개인별 근무 완료
 
 `POST /api/work-assignments/{assignmentId}/completion`은 고용주 본인 공고의 확정 근무를 약정 종료 시각 이후에 완료한다. 최초 처리 시각을 보존하며 재요청은 같은 결과를 반환하고, 완료 취소·정정은 제공하지 않는다. 보험 상세와 farm-demo 본인 약정 상세에 `completedAt`을 추가했다. V11은 기존 행을 NULL로 보존한다. 요청·응답과 미검증 범위는 [근무 완료 API 문서](docs/work-completion-api.md)를 참고한다.
+## APP-02 여러 날짜 지원
+
+POST /api/job-postings/{jobPostingId}/applications는 근로자 세션·CSRF와 UUID v4 Idempotency-Key를 사용해 1~100개 날짜를 한 트랜잭션으로 접수한다. 신규는 201, 같은 성공 요청 재전송은 최초 결과와 200을 반환한다. 조건 버전 불일치·유효 중복 지원은 전체 409다. V12는 재지원 회차·현재 회차와 성공 요청 보관 구조를 추가하고 기존 이력을 보존한다. 요청·응답·집계 변경·미검증 범위는 [APP-02 API](docs/app-02-job-application-api.md)를 참고한다.
+farm-demo의 /demo/job-apply에서 날짜 선택·지원·같은 요청 재전송·조건 버전 충돌·재지원 회차를 확인할 수 있다. CSRF·UUID v4 키·조건 버전은 자동 처리하고 실제 지원 API와 본인 이력 GET을 호출한다. 버튼으로 새 시연 공고와 미선정 1회차를 준비할 수 있으며 기존 데이터를 초기화하지 않는다. 자세한 순서는 APP-02 문서의 farm-demo 절을 참고한다.

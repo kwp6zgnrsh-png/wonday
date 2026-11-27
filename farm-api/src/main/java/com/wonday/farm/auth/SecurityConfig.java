@@ -31,6 +31,9 @@ public class SecurityConfig {
 				if (environment.matchesProfiles("farm-demo")) {
 					auth.requestMatchers(HttpMethod.GET, "/demo/login", "/demo/signup", "/demo/jobs", "/demo/worker-jobs", "/demo/job-location", "/demo/salary-account", "/demo/worker-verification", "/demo/insurance-salary-account").permitAll();
 					auth.requestMatchers(HttpMethod.GET, "/demo/work-completion").permitAll();
+					auth.requestMatchers(HttpMethod.GET, "/demo/job-apply").permitAll();
+					auth.requestMatchers(HttpMethod.GET, "/demo/api/applications/postings/*/history").hasRole("WORKER");
+					auth.requestMatchers(HttpMethod.POST, "/demo/api/applications/fixtures").hasRole("WORKER");
 					// 완료 확인 목록·상세는 고용주 본인 세션으로만 제공한다.
 					auth.requestMatchers(HttpMethod.GET, "/demo/api/employer/work-assignments",
 						"/demo/api/employer/work-assignments/*").hasRole("EMPLOYER");
@@ -57,6 +60,8 @@ public class SecurityConfig {
 					.requestMatchers(HttpMethod.DELETE, "/api/me/salary-account").hasRole("WORKER")
 					// 근무 완료는 고용주 세션과 기존 CSRF 검사를 함께 사용한다.
 					.requestMatchers(HttpMethod.POST, "/api/work-assignments/*/completion").hasRole("EMPLOYER")
+					// 날짜별 지원은 근로자 세션과 기존 CSRF 검사를 사용한다.
+					.requestMatchers(HttpMethod.POST, "/api/job-postings/*/applications").hasRole("WORKER")
 					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
 					.requestMatchers(HttpMethod.GET, "/api/job-postings/mine").hasRole("EMPLOYER")
 					// /mine의 고용주 규칙을 먼저 적용하고 근로자의 목록·상세 조회를 구분한다.
@@ -74,6 +79,16 @@ public class SecurityConfig {
 						response.setHeader("Cache-Control", "no-store");
 						response.setContentType("application/json;charset=UTF-8");
 						response.getWriter().write("{\"code\":\"WORKER_ROLE_REQUIRED\",\"message\":\"근로자 본인만 급여 계좌를 관리할 수 있습니다.\"}");
+					} else if (((request.getMethod().equals("POST")
+								&& (request.getServletPath().matches("/api/job-postings/[^/]+/applications")
+									|| request.getServletPath().equals("/demo/api/applications/fixtures")))
+							|| (request.getMethod().equals("GET")
+								&& request.getServletPath().matches("/demo/api/applications/postings/[^/]+/history")))
+							&& !(exception instanceof CsrfException)) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setHeader("Cache-Control", "no-store");
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"WORKER_ROLE_REQUIRED\",\"message\":\"근로자 계정만 공고에 지원할 수 있습니다.\"}");
 					} else if (request.getMethod().equals("GET")
 							&& request.getServletPath().matches("/demo/api/employer/work-assignments(/[^/]+)?")
 							&& !(exception instanceof CsrfException)) {
