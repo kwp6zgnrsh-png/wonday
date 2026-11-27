@@ -171,12 +171,27 @@ $identityRandom.Dispose()
 $env:INSURANCE_IDENTITY_ENCRYPTION_KEY = [Convert]::ToBase64String($identityKeyBytes)
 ```
 
-V7은 회원 구분·식별번호 종류·암호문 컬럼을 추가하고, V8 Java 마이그레이션은 기존 시연 주민등록번호를
-AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 앱 인스턴스를 중단하고 DB 백업·키 설정 후 적용한다.
-식별정보가 없는 기존 회원의 구분은 NULL로 유지하고, 기존 내국인 확인 성공 시 확정한다.
-기존 값의 형식이 13자리 숫자로 정규화되지 않으면 이관을 중단하므로 원본을 확인해 명시적으로 정정해야 한다.
-번호를 임의 생성하거나 잘못된 값을 조용히 버리지 않는다. MySQL의 DDL은 자동 커밋되므로 실패 이력을 확인하고
-데이터 정정·필요한 Flyway 복구 후 다시 적용한다. 기존 V1~V6 파일은 수정하지 않는다.
+V7은 회원 구분·식별번호 종류·암호문 컬럼을 추가한다. 기존 평문 번호의 암호화는 농업 서버처럼 별도 Java 명령으로 수행한다.
+`migrateMemberIdentity`의 기본은 미리보기이며, 직접 확인한 내국인 회원 ID와 `-PapplyIdentityMigration=true`를 명시해야 반영한다.
+명령은 전체 웹 앱을 시작하지 않고 전용 JPA 팩토리를 사용한다. 암호문 저장·평문 제거를 같은 트랜잭션에서 처리한다.
+기존 식별정보가 없는 회원은 추측해서 채우지 않으며, 이미 이관된 회원은 기존 키로 검증하고 암호문을 유지한다.
+
+V8은 기존 적용 이력의 버전·JDBC 유형·클래스명·체크섬을 유지하는 호환 마커다. `@Component`나 자동 암호화 기능은 없다.
+서버는 SQL 마이그레이션 완료 후 평문이 남아 있으면 시작을 중단하고 수동 이관을 안내한다. 이 검사는 번호·암호문을 변경하지 않으며
+실패한 V8 이력을 만들지 않는다. V8을 SQL로 교체하거나 이력을 삭제·자동 repair하지 않는다.
+
+실행 환경에 기존 `INSURANCE_IDENTITY_ENCRYPTION_KEY`, `MYSQL_USER`, `MYSQL_PASSWORD`를 전달하고 대상 URL을 명시한다.
+아래 명령은 `.env`를 자동으로 읽지 않는다. 이관 전 기존 앱을 중단하고 DB를 백업한다.
+
+```powershell
+cd insurance-api
+$env:INSURANCE_IDENTITY_MIGRATION_JDBC_URL = "jdbc:mysql://127.0.0.1:3306/insurance_db"
+.\gradlew.bat migrateMemberIdentity -PconfirmedDomesticMemberIds=11,12
+.\gradlew.bat migrateMemberIdentity -PconfirmedDomesticMemberIds=11,12 -PapplyIdentityMigration=true
+```
+
+미리보기·적용 결과에는 건수만 출력한다. 실행 순서·V8 적용 전/후 호환·오류 처리는
+[보험 개인정보 수동 이관 문서](insurance-api/docs/member-identity-migration.md)를 따른다.
 
 새 가입도 평문을 저장하지 않으며 기존 평문 컬럼은 호환 확인을 위해 빈 상태로 남긴다.
 암호화는 매번 새 nonce를 사용하고 회원 ID·식별번호 종류도 인증하므로 암호문 변조·다른 회원으로 복사하면 복호화가 실패한다.
