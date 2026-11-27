@@ -2,7 +2,6 @@ package com.wonday.insurance.weather;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -22,11 +21,4 @@ class WeatherStation {
 	@Column(length = 500) private String address;
 	@Column(nullable = false) private boolean enabled;
 	@Column(name = "metadata_synced_at") private LocalDateTime metadataSyncedAt;
-	WeatherStation(String code) { this.provider = "RDA"; this.stationCode = code; }
-	void refresh(RdaWeatherClient.Station value, LocalDateTime at) {
-		this.name = value.name(); this.address = value.address();
-		this.latitude = value.latitude().setScale(6, RoundingMode.HALF_UP);
-		this.longitude = value.longitude().setScale(6, RoundingMode.HALF_UP);
-		this.enabled = true; this.metadataSyncedAt = at;
-	}
 }
