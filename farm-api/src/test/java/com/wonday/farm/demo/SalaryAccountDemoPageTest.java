@@ -52,7 +52,8 @@ class SalaryAccountDemoPageTest {
 		}
 		int demo = config.indexOf("if (environment.matchesProfiles(\"farm-demo\")) {");
 		String block = config.substring(demo, config.indexOf("}", demo));
-		assertThat(block).containsPattern("HttpMethod\\.GET, [^)]*\"/demo/salary-account\"\\)\\.permitAll\\(\\)");
+		// 다른 데모 경로가 뒤에 추가되어도 같은 GET permitAll 선언에 포함되는지 확인한다.
+		assertThat(block).containsPattern("HttpMethod\\.GET, [^)]*\"/demo/salary-account\"[^)]*\\)\\.permitAll\\(\\)");
 		assertThat(config).doesNotContain("ignoringRequestMatchers", ".csrf(");
 		assertThat(config).contains(".anyRequest().denyAll()");
 	}
