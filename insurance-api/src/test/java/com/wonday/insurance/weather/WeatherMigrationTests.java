@@ -1,7 +1,6 @@
 package com.wonday.insurance.weather;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import com.wonday.insurance.member.IdentityCipher;
 import com.wonday.insurance.member.migration.V8__encrypt_legacy_member_identity;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.UUID;
@@ -16,7 +15,6 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 @SpringBootTest
 class WeatherMigrationTests {
 	@Autowired DataSource dataSource;
-	@Autowired IdentityCipher cipher;
 	@Test void upgradePreservesExistingStationCoordinatesAndDoesNotEnableThemByGuessing() throws Exception {
 		String schema="insurance_weather_migration_"+UUID.randomUUID().toString().replace("-","");
 		HikariDataSource source=dataSource.unwrap(HikariDataSource.class);
@@ -39,6 +37,6 @@ class WeatherMigrationTests {
 	}
 	private Flyway migration(DataSource database,String target) {
 		return Flyway.configure().dataSource(database).locations("classpath:db/migration")
-			.javaMigrations(new V8__encrypt_legacy_member_identity(cipher)).target(target).load();
+			.javaMigrations(new V8__encrypt_legacy_member_identity()).target(target).load();
 	}
 }

@@ -2,7 +2,6 @@ package com.wonday.insurance.reward;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.wonday.insurance.member.IdentityCipher;
 import com.wonday.insurance.member.migration.V8__encrypt_legacy_member_identity;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.UUID;
@@ -18,7 +17,6 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 class SalaryRewardMigrationTests {
 
 	@Autowired DataSource dataSource;
-	@Autowired IdentityCipher cipher;
 
 	@Test
 	void upgradingFromV8PreservesExistingMembersAndLinks() throws Exception {
@@ -52,6 +50,6 @@ class SalaryRewardMigrationTests {
 
 	private Flyway migration(DataSource database, String target) {
 		return Flyway.configure().dataSource(database).locations("classpath:db/migration")
-			.javaMigrations(new V8__encrypt_legacy_member_identity(cipher)).target(target).load();
+			.javaMigrations(new V8__encrypt_legacy_member_identity()).target(target).load();
 	}
 }

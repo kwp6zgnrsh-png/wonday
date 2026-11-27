@@ -43,4 +43,21 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // 별도 프로세스 명령의 기본 미리보기·오류 출력도 실제 실행으로 검증한다. 비밀 설정은 포함하지 않는다.
+    systemProperty 'identityMigrationClasspath', sourceSets.main.runtimeClasspath.asPath
+}
+
+// 농업 서버와 같은 실행 계약: 기본은 미리보기, 명시적으로 선택한 내국인 ID만 이관한다.
+tasks.register('migrateMemberIdentity', JavaExec) {
+    description = 'Previews legacy insurance identity migration; apply is explicitly opt-in.'
+    group = 'application'
+    dependsOn tasks.named('classes')
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.wonday.insurance.member.migration.MemberIdentityMigrationCommand'
+    if (project.hasProperty('confirmedDomesticMemberIds')) {
+        args '--confirmed-domestic-member-ids=' + project.property('confirmedDomesticMemberIds')
+    }
+    if (project.findProperty('applyIdentityMigration') == 'true') {
+        args '--apply'
+    }
 }
