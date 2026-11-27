@@ -127,7 +127,9 @@ class WorkerVerificationDemoPageTest {
 			int end = config.indexOf("}", demo);
 			assertThat(demo).isPositive();
 			String block = config.substring(demo, end);
-			assertThat(block).containsPattern("requestMatchers\\(HttpMethod\\.GET, [^)]*\"/demo/worker-verification\"\\)\\.permitAll\\(\\)");
+			// 2026-11-27 보험용 계좌 검증에서 갱신: 같은 GET permitAll 목록 뒤에 다른 데모 경로가 추가돼도 포함 여부만 확인한다.
+			// (SalaryAccountDemoPageTest의 6ede564 수정과 같은 방식. 경로 문자열·permitAll·farm-demo 분기 조건은 그대로)
+			assertThat(block).containsPattern("requestMatchers\\(HttpMethod\\.GET, [^)]*\"/demo/worker-verification\"[^)]*\\)\\.permitAll\\(\\)");
 			assertThat(block).contains("auth.requestMatchers(HttpMethod.POST, \"/demo/api/insurance/v2/worker-verifications\").hasRole(\"WORKER\");");
 			assertThat(config.indexOf("/demo/api/insurance/v2/worker-verifications")).isEqualTo(config.lastIndexOf("/demo/api/insurance/v2/worker-verifications"));
 			assertThat(config).contains(".anyRequest().denyAll()");

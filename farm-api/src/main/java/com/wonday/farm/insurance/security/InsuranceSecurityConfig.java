@@ -32,7 +32,8 @@ public class InsuranceSecurityConfig {
 				.requestMatchers(HttpMethod.POST, "/api/internal/insurance/worker-verifications",
 					"/api/internal/insurance/v2/worker-verifications").hasAuthority("INSURANCE_SERVICE")
 				.requestMatchers(HttpMethod.GET, "/api/internal/insurance/workers/*/work-changes",
-					"/api/internal/insurance/workers/*/work-assignments/*").hasAuthority("INSURANCE_SERVICE")
+					"/api/internal/insurance/workers/*/work-assignments/*",
+					"/api/internal/insurance/workers/*/salary-account").hasAuthority("INSURANCE_SERVICE")
 				.anyRequest().denyAll())
 			.exceptionHandling(errors -> errors
 				.authenticationEntryPoint((request, response, exception) -> ServiceTokenFilter.writeError(response,

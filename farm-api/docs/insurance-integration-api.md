@@ -17,6 +17,7 @@
 | --- | --- | --- |
 | POST | `/api/internal/insurance/worker-verifications` | 기존 내국인 확인(V1 유지) |
 | POST | `/api/internal/insurance/v2/worker-verifications` | 내·외국인 등록 정보 확인(V2) |
+| GET | `/api/internal/insurance/workers/{workerId}/salary-account` | 급여 계좌 등록 여부·은행 코드 |
 | GET | `/api/internal/insurance/workers/{workerId}/work-changes` | 개인별 취소·조기 종료의 불변 버전 목록 |
 | GET | `/api/internal/insurance/workers/{workerId}/work-assignments/{assignmentId}` | 본인 확정 근무의 약정 상세 |
 
@@ -138,3 +139,6 @@ Authorization: Bearer {token}
 | 검증 | 컴파일과 테스트 결과를 구분해 전달. 이번 새 API의 단위·통합·상호 호출 검증은 아직 미실행 |
 
 검증 후 코드를 커밋·푸시하고 PR 또는 커밋 링크를 전달해야 팀원이 같은 구현을 받을 수 있다. 실제로 접속 가능한 주소·토큰·가상 데이터가 준비된 뒤 양 서버의 상호 호출을 확인한다.
+
+
+보험용 급여 계좌 조회의 요청·응답·설정·미검증 범위는 [급여 계좌 등록 상태 조회](insurance-salary-account-api.md)를 참고한다. 계좌번호·예금주·암호문은 조회하거나 제공하지 않는다.
