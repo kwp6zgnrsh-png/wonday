@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @Profile("farm-demo")
-@RestControllerAdvice(assignableTypes = DemoJobApplicationApi.class)
+@RestControllerAdvice(assignableTypes = {DemoJobApplicationApi.class, DemoMyApplicationFixtureApi.class})
 public class DemoJobApplicationErrorHandler {
 	@ExceptionHandler(ApplicationException.class)
 	ResponseEntity<ErrorResponse> expected(ApplicationException exception) {

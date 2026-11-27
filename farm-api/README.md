@@ -261,3 +261,21 @@ farm-demo의 /demo/insurance-salary-account에서 근로자 본인의 보험 제
 
 POST /api/job-postings/{jobPostingId}/applications는 근로자 세션·CSRF와 UUID v4 Idempotency-Key를 사용해 1~100개 날짜를 한 트랜잭션으로 접수한다. 신규는 201, 같은 성공 요청 재전송은 최초 결과와 200을 반환한다. 조건 버전 불일치·유효 중복 지원은 전체 409다. V12는 재지원 회차·현재 회차와 성공 요청 보관 구조를 추가하고 기존 이력을 보존한다. 요청·응답·집계 변경·미검증 범위는 [APP-02 API](docs/app-02-job-application-api.md)를 참고한다.
 farm-demo의 /demo/job-apply에서 날짜 선택·지원·같은 요청 재전송·조건 버전 충돌·재지원 회차를 확인할 수 있다. CSRF·UUID v4 키·조건 버전은 자동 처리하고 실제 지원 API와 본인 이력 GET을 호출한다. 버튼으로 새 시연 공고와 미선정 1회차를 준비할 수 있으며 기존 데이터를 초기화하지 않는다. 자세한 순서는 APP-02 문서의 farm-demo 절을 참고한다.
+## APP-04 근로자 본인 지원 내역
+
+`GET /api/me/applications`, `GET /api/me/applications/{applicationId}`,
+`GET /api/me/applications/{applicationId}/history`를 추가했다.
+현재 회차 목록·상태 필터·커서와 과거 회차 조회, 지원 당시/최신/확정 약정 조건의 구분을 제공한다.
+모르는 과거 조건은 최신 값으로 채우지 않으며 조회로 동의·취소 상태를 바꾸지 않는다.
+요청·응답과 기존 데이터의 시각·조건 이력 한계는 [APP-04 문서](docs/app-04-my-applications-api.md)를 참고한다.
+새 DB 마이그레이션과 환경변수는 없고, 테스트 실행과 실제 DB 검증은 아직 하지 않았다.
+
+farm-demo의 `/demo/my-applications`에서 근로자 본인 목록·필터·조건 비교·과거 회차를 확인할 수 있다.
+로그인 메뉴와 지원 화면에서 이동하며 조회는 정식 APP-04 GET을 사용한다. 화면의 상태별 시연 데이터 준비 POST는 CSRF를 자동 처리한다.
+
+### farm-demo 시연 데이터 준비 원칙
+
+기능을 추가할 때 앞선 기능을 순서대로 수행하지 않아도 확인할 수 있는 가상 데이터 준비 기능을 함께 제공한다.
+생성은 farm-demo의 명시적인 준비 버튼으로만 수행하고, 준비된 사례·ID·재사용 여부를 화면에 표시한다.
+기존 업무 이력을 초기화하지 않고, 실제 API 조회 결과와 시연 데이터 생성 자체를 검증 결과로 혼동하지 않는다.
+APP-04는 상태별 준비 버튼 한 번으로 현재 회차 9건·과거 회차 1건과 조건 비교·약정 사례를 확인할 수 있다.
