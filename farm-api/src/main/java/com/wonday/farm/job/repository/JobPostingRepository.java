@@ -27,6 +27,11 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
 		@Param("status") com.wonday.farm.job.entity.WorkSchedule.Status status,
 		@Param("earliestStart") java.time.LocalDateTime earliestStart, Pageable pageable);
 
+	// 지원·일정 수정·모집 마감·선정은 같은 공고 → 일정 잠금 순서를 사용한다.
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select posting from JobPosting posting where posting.id = :postingId")
+	Optional<JobPosting> findByIdForUpdate(@Param("postingId") long postingId);
+
 	// 공통 조건 수정·선정도 이후 같은 공고 잠금부터 획득하도록 연결한다.
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select posting from JobPosting posting where posting.id = :postingId and posting.employer.id = :employerId")

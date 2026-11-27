@@ -50,7 +50,7 @@ public class JobPostingQueryService {
 			var counts = countsBySchedule.get(schedule.getId());
 			// 집계 결과가 누락된 일정도 조회할 수 있도록 지원자 수와 확정 인원을 0으로 처리한다.
 			long applicants = counts == null ? 0 : counts.getApplicantCount();
-			// 확정 인원은 확정 근무의 생성 건수다. 취소 후 재모집 여부는 별도 정책이 필요하다.
+			// 시작 전 CANCELLED는 제외하고 미취소·조기 종료 근무를 센다. 재지원자의 과거 취소는 자리를 차지하지 않는다.
 			long confirmed = counts == null ? 0 : counts.getConfirmedCount();
 			var summary = new MyJobPostingsResponse.Schedule(schedule.getId(), schedule.getWorkDate(),
 				schedule.getPlannedStartAt(), schedule.getPlannedEndAt(), schedule.getBreakStartAt(),
