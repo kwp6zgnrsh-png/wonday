@@ -150,7 +150,7 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 `POST /api/auth/signup`(웹: `/api/insurance/auth/signup`)에 `nationalityType`을 추가한다.
 허용값은 `DOMESTIC`, `FOREIGN`이며 가입·본인 조회 응답에도 같은 필드를 반환한다.
 기존 요청의 필드 생략 또는 null은 내국인 가입으로 유지하고, 알 수 없는 코드·숫자 순번은 400으로 거부한다.
-계정 생성 때는 기존처럼 이름·로그인 ID·비밀번호를 받고 식별정보는 보험 상품 가입 단계에서 확인한다.
+계정 생성 때는 기존처럼 이름·로그인 ID·비밀번호를 받고 식별정보는 농업 계정 연동 또는 보험 상품 가입 단계에서 확인한다.
 내·외국인 모두 WORKER 계정을 사용한다. Spring Security의 서버 세션과 `INSURANCESESSION` 쿠키, CSRF·BCrypt 인증은 유지한다.
 본인 조회는 세션의 회원 ID로 DB를 읽으므로 세션에 내·외국인 속성을 추가하지 않는다.
 
@@ -179,8 +179,65 @@ AES-256-GCM으로 암호화한 뒤 평문 컬럼을 NULL로 만든다. 이전 �
 번호·암호문·키는 회원 및 계약 API 응답에 포함하지 않는다.
 
 농업 V2가 준비되면 `FARM_WORKER_VERIFICATION_V2_ENABLED=true`로 내·외국인의 공통 근로자 확인을 활성화한다.
-기본값 false에서는 기존 내국인 API를 유지하고 외국인 상품 가입은 503 `FOREIGN_VERIFICATION_NOT_READY`로 처리한다.
+기본값 false에서는 기존 내국인 API를 유지하고 외국인 농업 연동·상품 가입은 503 `FOREIGN_VERIFICATION_NOT_READY`로 처리한다.
 리워드·은행 앱·송금 기능과 별도로 적용하는 설정이며, 실제 농업 V2 배포·통신 검증 후 활성화한다.
+
+#### 보험 가입 전 농업 계정 연동
+
+| 보험 API | 동작 |
+|---|---|
+| `GET /api/platform/link` | 본인의 연동·동의 상태 조회. 농업 서버 호출 없음 |
+| `POST /api/platform/link` | 연동 동의·본인 확인 후 연결 저장. 신규·재요청 모두 200 |
+
+웹 경로는 `/api/insurance/platform/link`다. 두 API는 `INSURANCESESSION`의 근로자 회원만 사용하며,
+POST에는 기존 CSRF 헤더가 필요하다. 회원·농업 근로자 ID를 요청으로 받지 않으며 응답은 `Cache-Control: no-store`다.
+
+등록 요청 예시:
+
+```json
+{
+  "platformConsentAccepted": true,
+  "consentVersion": "farm-platform-v1",
+  "identity": {
+    "name": "TEST WORKER",
+    "phone": "01000000000",
+    "nationalityType": "DOMESTIC",
+    "identityNumber": "0000000000000"
+  }
+}
+```
+
+외국인은 `nationalityType=FOREIGN`과 외국인등록번호를 사용한다. 예시 번호는 형식 설명용이다.
+화면에서 GET의 requiredConsentVersion에 해당하는 동의를 받고 같은 버전을 POST로 전달한다.
+
+```json
+{
+  "linked": true,
+  "consentRequired": false,
+  "requiredConsentVersion": "farm-platform-v1",
+  "consentVersion": "farm-platform-v1",
+  "consentedAt": "2026-11-27T09:00:00.123456Z"
+}
+```
+
+- 연결이 없거나 철회·미확인 상태이면 GET은 200, linked=false, consentRequired=true이며 consentVersion·consentedAt은 null이다.
+  활성·확인된 기존 연결의 버전이 현재와 다르면 linked=true, consentRequired=true로 재동의 필요를 알린다.
+- 같은 회원·농업 계정·동의 버전의 재요청은 기존 연결과 동의 시각을 유지한다. 원격 본인 확인은 매번 수행한다.
+  다른 버전 재동의는 이전 연결을 철회 처리하고 새 연결을 추가하며 기존 리워드·근무 이력을 보존한다.
+- 본인 확인은 기존 V1/V2 설정을 따른다. 원격 응답 대기 중 DB 쓰기 트랜잭션·잠금을 유지하지 않으며,
+  저장 시 회원 잠금으로 역할·내외국인 구분을 다시 검사하고 연락처·식별번호 암호문·연결/동의를 함께 저장한다.
+- 이 API는 보험 계약을 만들지 않는다. 연동 직후 급여 계좌·리워드 확인이 가능하고 기존 보험 가입도 같은 연결을 재사용한다.
+  기존 platform_link·member 및 활성 회원/근로자 UNIQUE를 사용하므로 새 DB 마이그레이션은 없다.
+- 400: 동의 누락·잘못된 본인 확인 형식. 401/403: 미인증·근로자 권한 없음.
+  409 `CONSENT_VERSION_MISMATCH`: 현재 동의 버전 재확인 필요.
+  409 `NATIONALITY_TYPE_MISMATCH`: 회원 내외국인 구분 불일치.
+  409 `PLATFORM_LINK_CONFLICT`: 다른 계정 연결 충돌(동시 등록의 DB UNIQUE 위반 포함).
+  기존 농업 본인 확인 오류 `INVALID_REQUEST`(400), `WORKER_IDENTITY_NOT_MATCHED`(404),
+  `WORKER_IDENTITY_AMBIGUOUS`(409), `INVALID_PLATFORM_RESPONSE`(502),
+  `FOREIGN_VERIFICATION_NOT_READY`·`FARM_SERVICE_UNAVAILABLE`(503)도 그대로 반환한다.
+  실패하면 연락처·연결을 일부 저장하지 않으며 같은 요청으로 재시도할 수 있다.
+- 외부 근로자 ID·식별번호·암호문은 반환하지 않는다. 동의 시각은 DB UTC(마이크로초), 응답 ISO 8601 Z, 화면 GMT+9다.
+  연동 철회 API와 실제 농업 통신 검증은 후속 작업이다.
 
 #### 본인 급여 계좌 등록 상태 조회
 
