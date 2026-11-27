@@ -8,6 +8,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
+      '/api/insurance/platform/link': {
+        target: 'http://127.0.0.1:8080',
+        rewrite: (path) => path.replace('/api/insurance/platform/link', '/api/platform/link'),
+      },
       '/api/insurance/rewards/': {
         target: 'http://127.0.0.1:8080',
         rewrite: (path) => path.replace('/api/insurance/rewards/', '/api/rewards/'),

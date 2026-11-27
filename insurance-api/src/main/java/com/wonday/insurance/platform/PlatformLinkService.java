@@ -6,7 +6,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -19,11 +18,11 @@ public class PlatformLinkService {
 	public void link(long memberId, long workerId, LocalDateTime now) {
 		PlatformLink existing = links.findByMemberIdAndRevokedAtIsNull(memberId).orElse(null);
 		if (existing != null && existing.getWorkerId() != null && existing.getWorkerId() != workerId) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT, "Member is linked to another farm worker");
+			throw conflict();
 		}
 		PlatformLink owner = links.findByWorkerIdAndRevokedAtIsNull(workerId).orElse(null);
 		if (owner != null && owner.getMemberId() != memberId) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT, "Farm worker is already linked");
+			throw conflict();
 		}
 		if (existing != null && existing.getWorkerId() != null
 			&& properties.consentVersion().equals(existing.getConsentVersion())) {
@@ -35,5 +34,10 @@ public class PlatformLinkService {
 			links.flush();
 		}
 		links.saveAndFlush(new PlatformLink(memberId, workerId, properties.consentVersion(), now));
+	}
+
+	static PlatformVerificationException conflict() {
+		return new PlatformVerificationException(HttpStatus.CONFLICT,
+			"PLATFORM_LINK_CONFLICT", "Farm account is already linked");
 	}
 }

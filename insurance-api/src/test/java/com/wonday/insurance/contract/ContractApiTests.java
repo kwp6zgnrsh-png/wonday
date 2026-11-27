@@ -396,6 +396,27 @@ class ContractApiTests {
 	}
 
 	@Test
+	void enrollmentReusesConnectionRegisteredBeforePurchasingInsurance() throws Exception {
+		Account account = account();
+		String identity = json.writeValueAsString(json.readTree(v2Payload(NationalityType.DOMESTIC)).get("identity"));
+		String linked = mvc.perform(post("/api/platform/link").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content("""
+				{"platformConsentAccepted":true,"consentVersion":"farm-platform-v1","identity":%s}
+				""".formatted(identity)))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.linked").value(true))
+			.andReturn().getResponse().getContentAsString();
+		assertThat(tx(() -> count("InsuranceContract"))).isZero();
+		when(clock.instant()).thenReturn(Instant.parse("2026-02-09T16:00:00Z"));
+		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
+			.contentType(MediaType.APPLICATION_JSON).content(v2Payload(NationalityType.DOMESTIC)))
+			.andExpect(status().isCreated());
+		mvc.perform(get("/api/platform/link").session(account.session())).andExpect(status().isOk())
+			.andExpect(content().json(linked));
+		assertThat(tx(() -> count("PlatformLink"))).isEqualTo(1);
+		assertThat(tx(() -> count("InsuranceContract"))).isEqualTo(1);
+	}
+
+	@Test
 	void existingLinkIsReusedForAnotherProduct() throws Exception {
 		Account account = account();
 		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())

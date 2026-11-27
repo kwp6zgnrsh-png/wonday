@@ -11,6 +11,8 @@ const { createServer } = await import(
 
 // Exercise the real Vite configs with an isolated upstream; no account or DB writes.
 const reward = { id: 7, result: 'ELIGIBLE', reasonCode: 'WOORI_SALARY_ACCOUNT', bankCode: '020' }
+const link = { linked: true, consentRequired: false, requiredConsentVersion: 'farm-platform-v1',
+  consentVersion: 'farm-platform-v1', consentedAt: '2026-11-27T09:00:00.123456Z' }
 const requestKey = 'be7d745b-7632-4272-afc7-dba7f829971e'
 const upstream = createHttpServer((request, response) => {
   if (request.method === 'POST' && request.url === '/api/contracts') {
@@ -29,6 +31,15 @@ const upstream = createHttpServer((request, response) => {
   } else if (request.method === 'GET' && request.url === '/api/claims/99') {
     response.writeHead(200, { 'Content-Type': 'application/json' })
     response.end(JSON.stringify({ claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } }))
+  } else if (request.method === 'POST' && request.url === '/api/platform/link') {
+    request.resume()
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    assert.equal(request.headers['x-csrf-token'], 'proxy-csrf')
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify(link))
+  } else if (request.method === 'GET' && request.url === '/api/platform/link') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify(link))
   } else if (request.method === 'GET' && request.url === '/api/platform/salary-account') {
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     response.end(JSON.stringify({ registered: true, bankCode: '020' }))
@@ -68,6 +79,7 @@ try {
           '/api/insurance/contracts': { target },
           '/api/insurance/claims': { target },
           '/api/insurance/platform/salary-account': { target },
+          '/api/insurance/platform/link': { target },
           '/api/insurance/rewards/': { target },
         },
       },
@@ -101,6 +113,19 @@ try {
       assert.equal(salary.headers.get('cache-control'), 'no-store')
       assert.deepEqual(await salary.json(), { registered: true, bankCode: '020' })
       console.log('PASS ' + web + ': GET own salary account registration JSON')
+      const linked = await fetch(origin + '/api/insurance/platform/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: 'INSURANCESESSION=proxy-test', 'X-CSRF-TOKEN': 'proxy-csrf' },
+        body: '{}',
+      })
+      assert.equal(linked.status, 200)
+      assert.equal(linked.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await linked.json(), link)
+      const linkStatus = await fetch(origin + '/api/insurance/platform/link')
+      assert.equal(linkStatus.status, 200)
+      assert.equal(linkStatus.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await linkStatus.json(), link)
+      console.log('PASS ' + web + ': POST farm link, forwarded session/CSRF, GET connection status JSON')
       const checked = await fetch(origin + '/api/insurance/rewards/salary-account/checks', {
         method: 'POST',
         headers: { 'Idempotency-Key': requestKey, Cookie: 'INSURANCESESSION=proxy-test' },
