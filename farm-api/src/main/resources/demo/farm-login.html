@@ -28,7 +28,7 @@
     dl { margin: 0 0 1.25rem; padding: .75rem 1rem; background: #f0f7f2; border-radius: .5rem; }
     dl div { display: flex; justify-content: space-between; gap: .75rem; padding: .35rem 0; }
     dd { margin: 0; font-weight: 650; }
-    #jobs-link, #worker-jobs-link, #location-link, #verification-link, #signup-link, #salary-account-link { display: block; margin: 0 0 1rem; padding: .8rem; border-radius: .5rem; background: #e8f3ec; color: #18492f; font-weight: 700; text-align: center; }
+    #jobs-link, #worker-jobs-link, #location-link, #verification-link, #signup-link, #salary-account-link, #insurance-salary-link { display: block; margin: 0 0 1rem; padding: .8rem; border-radius: .5rem; background: #e8f3ec; color: #18492f; font-weight: 700; text-align: center; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -59,6 +59,7 @@
       <a href="/demo/job-location" id="location-link">작업지 좌표 등록 · 조회 확인</a>
       <a href="/demo/salary-account" id="salary-account-link" hidden>급여 계좌 조회 · 등록 · 교체 · 해제</a>
       <a href="/demo/worker-verification" id="verification-link">보험 V2 · 근로자 본인 정보 확인</a>
+      <a href="/demo/insurance-salary-account" id="insurance-salary-link" hidden>보험용 계좌 등록 여부 · 은행 코드 확인</a>
       <button type="button" id="logout">로그아웃</button>
     </section>
     <p id="status" role="status">로그인 상태를 확인하는 중입니다.</p>
@@ -107,6 +108,7 @@
       document.querySelector('#jobs-link').hidden = account.role !== 'EMPLOYER';
       document.querySelector('#worker-jobs-link').hidden = account.role !== 'WORKER';
       document.querySelector('#salary-account-link').hidden = account.role !== 'WORKER';
+      document.querySelector('#insurance-salary-link').hidden = account.role !== 'WORKER';
       form.hidden = true;
       member.hidden = false;
       showStatus('');

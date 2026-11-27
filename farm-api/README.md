@@ -245,3 +245,11 @@ farm-demo의 `/demo/worker-verification`에서 근로자 로그인 후 성공·�
 요청·응답·설정과 검증 범위는 [보험 V2 문서](docs/worker-verification-v2-api.md)를 참고한다.
 
 보험 서버용 급여 계좌 조회·근무 완료·user-web 연결은 별도 작업 범위다.
+
+
+## 보험 서버용 급여 계좌 등록 상태 조회
+
+GET /api/internal/insurance/workers/{workerId}/salary-account는 기존 서버 전용 Bearer 토큰으로 근로자의 계좌 등록 여부·은행 코드만 제공한다. 미등록은 200, 없는 회원·고용주는 404다. 번호·예금주·암호문은 조회하지 않으며 계좌 복호화 키가 필요 없다. 자세한 규격과 수동 확인 절차는 [보험용 계좌 조회](docs/insurance-salary-account-api.md)를 참고한다.
+
+
+farm-demo의 /demo/insurance-salary-account에서 근로자 본인의 보험 제공용 등록 여부·은행 코드를 확인한다. 기존 계좌 관리 창에서 등록·교체·해제 후 다시 조회해 변화를 볼 수 있다. 서버 토큰을 브라우저에 전달하지 않고 같은 조회 서비스를 사용하며, 실제 Bearer 인증은 별도 검증 대상이다.
