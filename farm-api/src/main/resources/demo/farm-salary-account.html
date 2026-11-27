@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>급여 계좌 관리 · WON데이 farm-demo</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, 'Malgun Gothic', sans-serif; color: #173328; background: #edf4ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 2rem 1rem; }
+    main { max-width: 47rem; margin: auto; padding: clamp(1.2rem, 4vw, 2rem); background: white; border: 1px solid #cddfd3; border-radius: 1rem; }
+    h1 { font-size: 1.75rem; } h2 { margin-top: 1.6rem; font-size: 1.2rem; }
+    p, li { line-height: 1.6; }
+    a { color: #1b5e3e; } .hint { color: #496456; font-size: .92rem; }
+    .note, .card { padding: 1rem; background: #f0f7f2; border-radius: .6rem; margin: 1rem 0; }
+    label { display: block; margin: 1rem 0 .4rem; font-weight: 650; }
+    input, select, button { font: inherit; min-height: 2.8rem; border: 1px solid #839c8d; border-radius: .5rem; }
+    input, select { width: 100%; padding: .65rem; background: white; color: inherit; }
+    button { padding: .65rem 1rem; background: #edf4ef; color: #173328; cursor: pointer; }
+    button[type=submit] { background: #1b5e3e; color: white; }
+    #remove { color: #9c2923; border-color: #be7975; }
+    button:disabled, input:disabled, select:disabled { opacity: .6; cursor: default; }
+    fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+    dl { margin: 0; } dl div { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: .6rem; padding: .3rem 0; }
+    dd { margin: 0; overflow-wrap: anywhere; font-weight: 650; }
+    .buttons { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.2rem; }
+    .check { display: flex; gap: .5rem; align-items: center; font-size: .92rem; font-weight: 400; }
+    .check input { width: auto; min-height: auto; }
+    #status { font-weight: 700; } #status[data-error=true], #stale-note { color: #a12c26; }
+    pre { padding: 1rem; background: #f4f6f4; border-radius: .5rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+    :focus-visible { outline: 3px solid #28754e; outline-offset: 3px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="/demo/login">로그인 · 계정 전환</a> · <a href="/demo/signup">회원가입 확인</a></p>
+  <h1>급여 계좌 관리</h1>
+  <p class="note">근로자 본인의 가상 계좌로 확인하세요. 실제 급여 계좌 API를 호출합니다.
+    CSRF와 조회한 버전은 자동 전송하며, 계좌 실재 여부나 예금주 일치는 확인하지 않습니다.</p>
+  <p id="member" role="status">로그인 상태를 확인하는 중입니다.</p>
+  <button id="refresh" type="button">최신 계좌 조회</button>
+  <section class="card" aria-labelledby="current-heading">
+    <h2 id="current-heading">조회한 계좌</h2>
+    <dl>
+      <div><dt>등록 상태</dt><dd id="registered">조회 전</dd></div>
+      <div><dt>은행</dt><dd id="current-bank">—</dd></div>
+      <div><dt>계좌번호</dt><dd id="current-number">—</dd></div>
+      <div><dt>예금주</dt><dd id="current-holder">—</dd></div>
+      <div><dt>조회 버전</dt><dd id="version">—</dd></div>
+    </dl>
+    <p id="stale-note" hidden>이 정보는 오래됐을 수 있습니다. 최신 계좌를 조회한 뒤 다시 요청하세요.</p>
+  </section>
+  <h2>새 계좌 등록 · 기존 계좌 교체</h2>
+  <form id="account-form" method="post" autocomplete="off">
+    <fieldset id="fields" disabled>
+      <label for="bank-code">은행 선택</label>
+      <select id="bank-code" required aria-describedby="bank-hint">
+<option value="">은행을 선택하세요</option>
+              <option value="020">우리은행 (020)</option>
+              <option value="004">KB국민은행 (004)</option>
+              <option value="088">신한은행 (088)</option>
+              <option value="081">하나은행 (081)</option>
+              <option value="011">NH농협은행 (011)</option>
+              <option value="012">지역 농·축협 (012)</option>
+              <option value="003">IBK기업은행 (003)</option>
+              <option value="002">KDB산업은행 (002)</option>
+              <option value="007">Sh수협은행 (007)</option>
+              <option value="023">SC제일은행 (023)</option>
+              <option value="027">한국씨티은행 (027)</option>
+              <option value="031">iM뱅크 · 구 대구은행 (031)</option>
+              <option value="032">BNK부산은행 (032)</option>
+              <option value="034">광주은행 (034)</option>
+              <option value="035">제주은행 (035)</option>
+              <option value="037">전북은행 (037)</option>
+              <option value="039">BNK경남은행 (039)</option>
+              <option value="045">새마을금고 (045)</option>
+              <option value="048">신협 (048)</option>
+              <option value="050">저축은행 (050)</option>
+              <option value="071">우체국 (071)</option>
+              <option value="089">케이뱅크 (089)</option>
+              <option value="090">카카오뱅크 (090)</option>
+              <option value="092">토스뱅크 (092)</option>
+              <option value="custom">기타 금융기관 · 코드 직접 입력</option>
+      </select>
+      <div id="custom-bank" hidden>
+        <label for="custom-bank-code">기타 금융기관 코드 · 숫자 3자리</label>
+        <input id="custom-bank-code" inputmode="numeric" maxlength="3" pattern="[0-9]{3}" autocomplete="off" required disabled>
+      </div>
+      <p id="bank-hint" class="hint">은행을 선택하면 계좌번호를 입력할 수 있습니다.</p>
+      <label for="account-number">새 계좌번호 · 입력한 숫자 전체 표시</label>
+      <input id="account-number" type="text" inputmode="numeric" maxlength="100" required autocomplete="off" disabled placeholder="은행을 먼저 선택하세요">
+      <label class="check"><input id="auto-format" type="checkbox" checked> 확인된 대표 형식에만 하이픈 자동 표시</label>
+      <p id="number-hint" class="hint">하이픈 제거 후 숫자 1~30자리입니다. 저장 후 조회에서는 마스킹합니다.</p>
+      <label for="holder">예금주명</label>
+      <input id="holder" maxlength="100" required autocomplete="off">
+      <p class="hint">마스킹된 기존 번호를 입력 칸에 넣지 않습니다. 교체할 새 계좌번호 전체를 입력하세요.</p>
+      <button type="submit">등록 · 교체</button>
+    </fieldset>
+  </form>
+  <div class="buttons"><button id="remove" type="button" disabled>급여 계좌 해제</button></div>
+  <p class="hint">해제하면 현재 급여 계좌가 삭제됩니다. 미등록 상태에서 다시 해제해도 204입니다.</p>
+  <h2>요청 결과</h2>
+  <p id="status" role="status" aria-live="polite">아직 요청하지 않았습니다.</p>
+  <pre id="result" aria-label="응답 JSON">상태 코드와 마스킹된 응답이 여기에 표시됩니다.</pre>
+  <details class="note">
+    <summary>마스킹 · 409 확인 방법</summary>
+    <ul>
+      <li>가상 번호 12345를 저장하면 *2345, 1234를 저장하면 ****로 조회됩니다.</li>
+      <li>같은 계정으로 이 화면을 두 창에서 열고, 양쪽 모두 최신 계좌를 조회하세요.</li>
+      <li>창 A에서 저장한 뒤 창 B에서는 조회하지 않고 저장 또는 해제를 누르세요. 409를 확인할 수 있습니다.</li>
+      <li>창 B에서 최신 계좌를 조회하고 내용을 확인한 뒤 다시 저장할 수 있습니다.</li>
+    </ul>
+    <p>다른 창의 변경은 자동 반영하지 않습니다. 409 이후 자동 저장이나 자동 재시도도 하지 않습니다.</p>
+  </details>
+</main>
+<script>
+'use strict';
+const byId = id => document.getElementById(id);
+const endpoint = '/api/me/salary-account';
+const form = byId('account-form');
+const bank = byId('bank-code');
+const number = byId('account-number');
+const holder = byId('holder');
+const formats = { '020': [[4, 3, 6]], '004': [[6, 2, 6], [3, 2, 4, 3]], '088': [[3, 3, 6], [3, 2, 6]] };
+const errors = {
+  INVALID_REQUEST: '급여 계좌 입력값과 버전을 확인해 주세요.',
+  WORKER_ROLE_REQUIRED: '근로자 본인만 급여 계좌를 관리할 수 있습니다.',
+  SALARY_ACCOUNT_VERSION_CONFLICT: '급여 계좌가 변경되었습니다. 최신 정보를 확인한 뒤 다시 요청해 주세요.',
+  SERVICE_UNAVAILABLE: '현재 급여 계좌를 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+  INTERNAL_SERVER_ERROR: '서버 내부 오류가 발생했습니다.'
+};
+let member = null;
+let snapshot = null;
+let snapshotOwner = null;
+let refreshRequired = true;
+let busy = false;
+let generation = 0;
+let controller = null;
+
+function status(message, error = false) {
+  byId('status').textContent = message;
+  byId('status').dataset.error = String(error);
+}
+function bankCode() { return bank.value === 'custom' ? byId('custom-bank-code').value : bank.value; }
+function ready() { return member?.role === 'WORKER' && snapshot !== null && snapshotOwner === member.id && !refreshRequired; }
+function controls() {
+  const disabled = busy || !ready();
+  byId('refresh').disabled = busy;
+  byId('fields').disabled = disabled;
+  byId('remove').disabled = disabled;
+  byId('custom-bank').hidden = bank.value !== 'custom';
+  byId('custom-bank-code').disabled = disabled || bank.value !== 'custom';
+  number.disabled = disabled || !/^[0-9]{3}$/.test(bankCode());
+  byId('auto-format').disabled = number.disabled;
+  byId('stale-note').hidden = !refreshRequired || snapshot === null;
+}
+function bankLabel(code) {
+  return Array.from(bank.options).find(option => option.value === code)?.textContent || '금융기관 (' + code + ')';
+}
+function draw() {
+  byId('registered').textContent = snapshot === null ? '조회 필요' : snapshot.registered ? '등록됨' : '미등록';
+  byId('current-bank').textContent = snapshot?.registered ? bankLabel(snapshot.bankCode) : '—';
+  byId('current-number').textContent = snapshot?.maskedAccountNumber || '—';
+  byId('current-holder').textContent = snapshot?.accountHolderName || '—';
+  byId('version').textContent = snapshot === null ? '—' : String(snapshot.version);
+  controls();
+}
+function clearForm() {
+  form.reset();
+  byId('custom-bank-code').value = '';
+  number.value = '';
+  number.setCustomValidity('');
+  holder.value = '';
+  formatNumber();
+}
+function resetPrivate() {
+  member = null;
+  snapshot = null;
+  snapshotOwner = null;
+  refreshRequired = true;
+  clearForm();
+  byId('result').textContent = '상태 코드와 마스킹된 응답이 여기에 표시됩니다.';
+  byId('member').textContent = '로그인 상태와 최신 계좌를 다시 확인하세요.';
+  draw();
+}
+function ensure(context) {
+  if (context.generation !== generation) throw new Error('operation cancelled');
+}
+async function api(path, options, context) {
+  const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', ...options, signal: context.signal });
+  ensure(context);
+  let data = null;
+  if (response.status !== 204) {
+    try { data = await response.json(); } catch { /* HTML·빈 본문은 원문을 표시하지 않는다. */ }
+    ensure(context);
+  }
+  return { response, data };
+}
+function errorBody(reply) {
+  const code = typeof reply.data?.code === 'string' && Object.hasOwn(errors, reply.data.code)
+    ? reply.data.code : 'HTTP_' + reply.response.status;
+  const message = errors[code] || (reply.response.status === 401
+    ? '로그인 후 다시 조회해 주세요.' : reply.response.status === 403
+    ? '근로자 권한·로그인 상태·CSRF를 확인하고 다시 조회해 주세요.' : '요청을 처리하지 못했습니다. 서버 상태를 확인해 주세요.');
+  return { code, message };
+}
+function record(method, reply, data) {
+  byId('result').textContent = method + ' · HTTP ' + reply.response.status + '\n'
+    + (reply.response.status === 204 ? '응답 본문 없음' : JSON.stringify(data, null, 2));
+}
+function accountBody(data) {
+  if (!data || typeof data.registered !== 'boolean' || !Number.isSafeInteger(data.version) || data.version < 0) {
+    throw new Error('invalid account response');
+  }
+  if (data.registered) {
+    if (typeof data.bankCode !== 'string' || !/^[0-9]{3}$/.test(data.bankCode)
+      || typeof data.maskedAccountNumber !== 'string' || !/^(?:\*{1,26}[0-9]{4}|\*{1,4})$/.test(data.maskedAccountNumber)
+      || typeof data.accountHolderName !== 'string' || data.accountHolderName.length > 100) throw new Error('invalid account response');
+  } else if (data.bankCode !== null || data.maskedAccountNumber !== null || data.accountHolderName !== null) {
+    throw new Error('invalid empty account response');
+  }
+  return { registered: data.registered, bankCode: data.bankCode, maskedAccountNumber: data.maskedAccountNumber,
+    accountHolderName: data.accountHolderName, version: data.version };
+}
+async function worker(context, expectedId = null) {
+  const reply = await api('/api/auth/me', {}, context);
+  if (!reply.response.ok || reply.data?.role !== 'WORKER' || !Number.isSafeInteger(reply.data?.id)
+    || reply.data.id <= 0 || (expectedId !== null && reply.data.id !== expectedId)) {
+    resetPrivate();
+    byId('member').textContent = '근로자 계정으로 로그인해 주세요. 계정이 바뀌었다면 최신 계좌를 다시 조회해야 합니다.';
+    status('로그인 상태 또는 계정이 변경되었습니다. 다시 확인해 주세요.', true);
+    return null;
+  }
+  return reply.data;
+}
+async function load(context, showResponse = true) {
+  const current = await worker(context);
+  if (!current) return false;
+  if (member !== null && member.id !== current.id) resetPrivate();
+  member = current;
+  byId('member').textContent = current.name + ' · 회원 ID ' + current.id + ' · 근로자 본인';
+  const reply = await api(endpoint, {}, context);
+  if (!await worker(context, current.id)) return false;
+  if (!reply.response.ok) {
+    refreshRequired = true;
+    const error = errorBody(reply);
+    if (showResponse) record('GET', reply, error);
+    status('조회 HTTP ' + reply.response.status + ' · ' + error.message, true);
+    draw();
+    return false;
+  }
+  snapshot = accountBody(reply.data);
+  snapshotOwner = current.id;
+  refreshRequired = false;
+  // 사용자가 입력 중인 새 계좌는 새로 조회한 기존 계좌와 구분해 유지한다.
+  if (!bank.value && snapshot.registered) {
+    if (Array.from(bank.options).some(option => option.value === snapshot.bankCode)) bank.value = snapshot.bankCode;
+    else { bank.value = 'custom'; byId('custom-bank-code').value = snapshot.bankCode; }
+  }
+  if (!holder.value) holder.value = snapshot.accountHolderName || current.name;
+  formatNumber();
+  draw();
+  if (showResponse) {
+    record('GET', reply, snapshot);
+    status('조회 HTTP 200 · 최신 계좌와 버전을 확인했습니다.');
+  }
+  return true;
+}
+async function run(action) {
+  if (busy) return;
+  busy = true;
+  controller = new AbortController();
+  const context = { generation, signal: controller.signal };
+  controls();
+  try { await action(context); }
+  catch {
+    if (context.generation === generation) {
+      refreshRequired = true;
+      status('요청 결과를 확인하지 못했습니다. 자동 재시도하지 않습니다. 최신 계좌를 다시 조회해 주세요.', true);
+      draw();
+    }
+  } finally {
+    if (context.generation === generation) { busy = false; controller = null; controls(); }
+  }
+}
+async function write(method, context, payload = null) {
+  const owner = snapshotOwner;
+  const version = snapshot.version;
+  // CSRF 발급 뒤 계정을 다시 확인한다. 이후 로그인 세션이 바뀌면 이전 토큰은 서버에서 거절된다.
+  const token = await api('/api/auth/csrf', {}, context);
+  if (!token.response.ok || typeof token.data?.headerName !== 'string' || typeof token.data?.token !== 'string') {
+    throw new Error('csrf unavailable');
+  }
+  if (!await worker(context, owner)) return;
+  const headers = { [token.data.headerName]: token.data.token };
+  const options = { method, headers };
+  if (method === 'PUT') { headers['Content-Type'] = 'application/json'; options.body = JSON.stringify(payload); }
+  const reply = await api(method === 'DELETE' ? endpoint + '?version=' + version : endpoint, options, context);
+  if (!await worker(context, owner)) return;
+  if (!reply.response.ok) {
+    const error = errorBody(reply);
+    record(method, reply, error);
+    refreshRequired = reply.response.status !== 400;
+    status(method + ' HTTP ' + reply.response.status + ' · ' + error.message, true);
+    draw();
+    return;
+  }
+  if (method === 'PUT') {
+    if (reply.response.status !== 200) throw new Error('unexpected save status');
+    snapshot = accountBody(reply.data);
+    snapshotOwner = owner;
+    refreshRequired = false;
+    number.value = '';
+    number.setCustomValidity('');
+    formatNumber();
+    record(method, reply, snapshot);
+    draw();
+    status('저장 HTTP 200 · 마스킹된 계좌와 새 버전을 확인하세요.');
+  } else {
+    if (reply.response.status !== 204) throw new Error('unexpected delete status');
+    record(method, reply, null);
+    clearForm();
+    snapshot = null;
+    snapshotOwner = null;
+    refreshRequired = true;
+    draw();
+    status('해제 HTTP 204 · 최신 상태를 조회하는 중입니다.');
+    // DELETE는 본문이 없으므로 후속 GET으로 새 버전을 받는다. 204와 후속 조회 실패는 구분한다.
+    try {
+      const loaded = await load(context, false);
+      ensure(context);
+      status(loaded ? '해제 HTTP 204 · 후속 GET으로 최신 상태를 확인했습니다.'
+        : '해제 HTTP 204 성공 · 후속 조회는 실패했습니다. 로그인 상태와 최신 계좌를 다시 확인하세요.', !loaded);
+    } catch {
+      ensure(context);
+      refreshRequired = true;
+      draw();
+      status('해제 HTTP 204 성공 · 후속 조회 결과를 확인하지 못했습니다. 최신 계좌를 다시 조회하세요.', true);
+    }
+  }
+}
+function groups(digits, sizes) {
+  const parts = [];
+  let start = 0;
+  for (const size of sizes.slice(0, -1)) {
+    if (digits.length <= start + size) break;
+    parts.push(digits.slice(start, start + size));
+    start += size;
+  }
+  parts.push(digits.slice(start));
+  return parts.join('-');
+}
+function formatNumber(apply = false, finalize = false) {
+  const code = bankCode();
+  const choices = formats[code] || [];
+  number.setCustomValidity('');
+  byId('bank-hint').textContent = !/^[0-9]{3}$/.test(code)
+    ? '은행 선택 또는 기타 금융기관의 숫자 3자리 코드 입력 후 계좌번호를 입력할 수 있습니다.'
+    : choices.length ? '확인된 대표 형식만 표시합니다. 상품·구계좌의 다른 길이도 숫자 1~30자리 범위에서 허용합니다.'
+    : '확인된 대표 형식이 없어 하이픈 위치를 추정하지 않습니다. 통장 표기대로 입력하세요.';
+  number.placeholder = !/^[0-9]{3}$/.test(code) ? '은행을 먼저 선택하세요'
+    : choices.length ? choices[0].map(size => '0'.repeat(size)).join('-') : '통장에 적힌 가상 계좌번호';
+  const raw = number.value;
+  const digits = raw.replaceAll('-', '');
+  if (raw && (!/^[0-9-]+$/.test(raw) || !/^[0-9]{1,30}$/.test(digits))) {
+    number.setCustomValidity('하이픈을 뺀 숫자 1~30자리를 입력하세요.');
+    byId('number-hint').textContent = '잘못된 문자나 초과 숫자는 자동으로 지우지 않습니다. 입력값을 확인하세요.';
+    return;
+  }
+  const exact = choices.find(choice => choice.reduce((a, b) => a + b, 0) === digits.length);
+  const chosen = (finalize && exact) || choices[0];
+  if (apply && byId('auto-format').checked && chosen && raw) {
+    const digitPosition = raw.slice(0, number.selectionStart ?? raw.length).replaceAll('-', '').length;
+    number.value = groups(digits, chosen);
+    if (document.activeElement === number) {
+      let seen = 0;
+      let position = digitPosition === 0 ? 0 : number.value.length;
+      for (let i = 0; i < number.value.length; i++) {
+        if (/[0-9]/.test(number.value[i]) && ++seen === digitPosition) { position = i + 1; break; }
+      }
+      number.setSelectionRange(position, position);
+    }
+  }
+  byId('number-hint').textContent = digits.length ? '숫자 ' + digits.length + '자리 · 입력 중에는 전체 표시, 조회에서는 마스킹합니다.'
+    : '하이픈 제거 후 숫자 1~30자리입니다. 12345 → *2345, 1234 → ****로 조회됩니다.';
+}
+bank.addEventListener('change', () => { controls(); formatNumber(true, true); });
+byId('custom-bank-code').addEventListener('input', () => { controls(); formatNumber(true, true); });
+number.addEventListener('input', event => { if (!event.isComposing) formatNumber(true); });
+number.addEventListener('compositionend', () => formatNumber(true));
+number.addEventListener('blur', () => formatNumber(true, true));
+byId('auto-format').addEventListener('change', () => formatNumber(true, true));
+number.addEventListener('beforeinput', event => {
+  if (!byId('auto-format').checked || !formats[bankCode()] || event.isComposing) return;
+  const position = number.selectionStart;
+  if (position == null || position !== number.selectionEnd) return;
+  if (event.inputType === 'deleteContentBackward' && position >= 2 && number.value[position - 1] === '-') {
+    number.setSelectionRange(position - 2, position);
+  } else if (event.inputType === 'deleteContentForward' && number.value[position] === '-') {
+    number.setSelectionRange(position, position + 2);
+  }
+});
+form.addEventListener('submit', event => {
+  event.preventDefault();
+  if (busy || !ready()) return;
+  formatNumber(true, true);
+  if (!form.reportValidity()) return;
+  const payload = { bankCode: bankCode(), accountNumber: number.value, accountHolderName: holder.value, version: snapshot.version };
+  run(async context => { try { await write('PUT', context, payload); } finally { delete payload.accountNumber; } });
+});
+byId('remove').addEventListener('click', () => {
+  if (!busy && ready()) run(context => write('DELETE', context));
+});
+byId('refresh').addEventListener('click', () => run(context => load(context)));
+window.addEventListener('pagehide', () => {
+  generation++;
+  controller?.abort();
+  controller = null;
+  busy = false;
+  resetPrivate();
+  status('화면으로 돌아오면 최신 계좌를 다시 확인해 주세요.');
+});
+window.addEventListener('pageshow', () => run(context => load(context)));
+// 다른 창으로 이동한 것만으로 버전을 갱신하지 않는다. 409 이후에도 사용자가 최신 조회를 선택한다.
+</script>
+</body>
+</html>

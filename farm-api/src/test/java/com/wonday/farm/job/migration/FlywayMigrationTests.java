@@ -18,18 +18,18 @@ import org.flywaydb.core.api.output.MigrateResult;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-// 기존 마이그레이션을 수정하지 않고, 격리 MySQL의 새 스키마에 V1~V9를 적용해 결과를 확인한다.
+// 기존 마이그레이션을 수정하지 않고, 격리 MySQL의 새 스키마에 V1~V10를 적용해 결과를 확인한다.
 @Tag("integration")
 class FlywayMigrationTests {
 
 	@Test
-	void emptyDatabaseAppliesV1ThroughV9() throws Exception {
+	void emptyDatabaseAppliesV1ThroughV10() throws Exception {
 		String schema = newSchema("mig_empty");
 		MigrateResult result = flyway(schema, null).migrate();
 
 		assertThat(result.success).isTrue();
-		assertThat(result.migrationsExecuted).isEqualTo(9);
-		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+		assertThat(result.migrationsExecuted).isEqualTo(10);
+		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
 		try (Connection connection = MySqlTestDatabase.rootConnection(schema)) {
 			assertColumn(connection, schema, "job_posting", "time_zone", "varchar(64)", "YES", null);
 			assertColumn(connection, schema, "work_schedule", "terms_version", "int", "NO", "1");
@@ -42,7 +42,7 @@ class FlywayMigrationTests {
 	}
 
 	@Test
-	void existingV3DataIsPreservedAndUpgradedByV9() throws Exception {
+	void existingV3DataIsPreservedAndUpgradedByV10() throws Exception {
 		String schema = newSchema("mig_upgrade");
 		assertThat(flyway(schema, "3").migrate().success).isTrue();
 		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3");
@@ -64,8 +64,8 @@ class FlywayMigrationTests {
 		MigrateResult result = flyway(schema, null).migrate();
 
 		assertThat(result.success).isTrue();
-		assertThat(result.migrationsExecuted).isEqualTo(6);
-		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+		assertThat(result.migrationsExecuted).isEqualTo(7);
+		assertThat(appliedVersions(schema)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
 		try (Connection connection = MySqlTestDatabase.rootConnection(schema); Statement sql = connection.createStatement()) {
 			assertIdentityColumns(connection, schema);
 			assertEmptySalaryAccountTable(connection, schema);
@@ -82,6 +82,7 @@ class FlywayMigrationTests {
 				assertThat(rs.getString("identity_type")).isNull();
 				assertThat(rs.getString("identity_ciphertext")).isNull();
 				assertThat(rs.getString("identity_hmac")).isNull();
+				assertThat(rs.getLong("salary_account_version")).isZero();
 				assertThat(rs.next()).isFalse();
 			}
 			try (ResultSet rs = sql.executeQuery("SELECT title, time_zone, default_headcount FROM job_posting")) {
@@ -251,6 +252,7 @@ class FlywayMigrationTests {
 	}
 
 	private static void assertEmptySalaryAccountTable(Connection connection, String schema) throws SQLException {
+		assertColumn(connection, schema, "member", "salary_account_version", "bigint", "NO", "0");
 		assertColumn(connection, schema, "member_salary_account", "member_id", "bigint", "NO", null);
 		assertColumn(connection, schema, "member_salary_account", "bank_code", "char(3)", "NO", null);
 		assertColumn(connection, schema, "member_salary_account", "account_number_ciphertext", "varchar(256)", "NO", null);
