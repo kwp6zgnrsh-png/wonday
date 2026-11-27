@@ -454,3 +454,106 @@ test('서버 문자열(공고명·작업지·상태·사유)은 textContent로�
   assert.match(p.els.postings.options[1].textContent, /<img src=x/);
   assert.deepEqual(p.forbidden, []);
 });
+
+
+// APP-02 리뷰 보완 회귀 시나리오. 아래 추가분은 작성 후 아직 실행하지 않았다.
+test('이력 500이어도 정상 상세의 날짜 선택과 새 지원은 유지하고, 이력 없음으로 표시하지 않는다', async () => {
+  const p = applyPage();
+  await p.show();
+  p.once('/demo/api/applications/postings/101/history',
+    { status: 500, body: { code: 'INTERNAL_SERVER_ERROR', message: '서버 내부 오류' } });
+  await p.openPosting(101);
+  assert.equal(p.boxes().length, 3);
+  assert.ok(p.boxes().every(box => !box.disabled));
+  assert.match(p.els['history-note'].textContent, /이력 조회 실패.*HTTP 500/);
+  assert.equal(p.els['history-note'].dataset.error, 'true');
+  assert.match(p.els.notice.textContent, /HTTP 500/);
+  assert.ok(!p.els.history.allText.includes('본인 지원 이력이 없습니다'));
+  await p.check(201);
+  assert.equal(p.els.apply.disabled, false);
+  await p.click('apply');
+  assert.equal(p.posts().length, 1);
+  assert.equal(p.els['post-status'].textContent, '지원 POST HTTP 201');
+  assert.equal(p.els['history-note'].dataset.error, 'false');
+  assert.equal(p.els.notice.dataset.error, 'false');
+});
+
+test('POST 201 후 이력만 500이면 접수 결과·재전송 키·다른 날짜 선택을 유지한다', async () => {
+  const p = applyPage();
+  await p.show();
+  await p.openPosting(101);
+  await p.check(201);
+  p.once('/demo/api/applications/postings/101/history', { status: 500 });
+  await p.click('apply');
+  const firstKey = p.posts()[0].options.headers['Idempotency-Key'];
+  assert.equal(p.els['post-status'].textContent, '지원 POST HTTP 201');
+  assert.match(p.els['post-result'].textContent, /9001/);
+  assert.match(p.els.notice.textContent, /지원 POST 201/);
+  assert.match(p.els.notice.textContent, /HTTP 500/);
+  assert.equal(p.els.retry.disabled, false);
+  assert.equal(p.boxes().length, 3);
+  await p.check(202);
+  assert.equal(p.els.apply.disabled, false);
+  await p.click('retry');
+  assert.equal(p.els['post-status'].textContent, '지원 POST HTTP 200');
+  assert.equal(p.posts()[1].options.headers['Idempotency-Key'], firstKey);
+  assert.equal(p.server.apps.length, 1);
+});
+
+test('이력 통신 실패·잘못된 JSON 구조는 별도 오류로 표시하고 정상 날짜를 유지한다', async () => {
+  for (const reply of [new TypeError('network'),
+    { status: 200, body: { applications: null } },
+    { status: 200, body: { applications: [null] } }]) {
+    const p = applyPage();
+    await p.show();
+    p.once('/demo/api/applications/postings/101/history', reply);
+    await p.openPosting(101);
+    assert.equal(p.boxes().length, 3);
+    assert.equal(p.els['history-note'].dataset.error, 'true');
+    await p.check(201);
+    assert.equal(p.els.apply.disabled, false);
+    assert.equal(p.posts().length, 0);
+  }
+});
+
+test('이력의 401·403은 보조 장애로 넘기지 않고 기존 상세·선택·키를 지운다', async () => {
+  for (const status of [401, 403]) {
+    const p = applyPage();
+    await p.show();
+    await p.openPosting(101);
+    await p.check(201);
+    await p.click('prepare');
+    p.once('/demo/api/applications/postings/101/history', { status });
+    await p.openPosting(101);
+    assert.equal(p.boxes().length, 0);
+    assert.equal(p.els.apply.disabled, true);
+    assert.equal(p.els['prepared-key'].textContent, '없음');
+    assert.equal(p.posts().length, 0);
+  }
+});
+
+test('이력 응답 대기 중 계정이 바뀌면 정상 상세라도 새 계정에 이전 데이터를 표시하지 않는다', async () => {
+  const p = applyPage();
+  await p.show();
+  p.once('/demo/api/applications/postings/101/history', 'hold');
+  await p.openPosting(101);
+  p.once('/api/auth/me', { status: 200, body: { ...WORKER, id: 99 } });
+  p.held[0].resolve();
+  await settle();
+  assert.equal(p.boxes().length, 0);
+  assert.equal(p.els.apply.disabled, true);
+  assert.equal(p.els['prepared-key'].textContent, '없음');
+  assert.equal(p.posts().length, 0);
+});
+
+test('상세 GET 자체가 실패하면 이전 공고와 선택 날짜를 유지하지 않는다', async () => {
+  const p = applyPage();
+  await p.show();
+  await p.openPosting(101);
+  await p.check(201);
+  p.once('/api/job-postings/101', { status: 500 });
+  await p.openPosting(101);
+  assert.equal(p.boxes().length, 0);
+  assert.equal(p.els.apply.disabled, true);
+  assert.match(p.els.notice.textContent, /HTTP 500/);
+});

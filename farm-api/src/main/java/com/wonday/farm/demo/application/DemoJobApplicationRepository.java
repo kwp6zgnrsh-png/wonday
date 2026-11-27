@@ -14,10 +14,11 @@ import org.springframework.data.repository.query.Param;
 // demo 전용이다. 내 지원 이력만 읽고, 준비 기능은 새로 만든 시연 일정에만 과거 미선정 행을 넣는다.
 @Profile("farm-demo")
 public interface DemoJobApplicationRepository extends Repository<JobApplication, Long> {
+	// BOOLEAN을 숫자로 명시 변환해 Connector/J 설정과 관계없이 int projection과 맞춘다.
 	@Query(value = """
 		select app.id as applicationId, app.work_schedule_id as workScheduleId,
 		       app.application_round as applicationRound, app.status as status,
-		       app.is_current as currentFlag, app.applied_terms_version as appliedTermsVersion,
+		       cast(app.is_current as signed) as currentFlag, app.applied_terms_version as appliedTermsVersion,
 		       assignment.id as assignmentId, change_record.change_type as changeType
 		from application app
 		join work_schedule schedule on schedule.id = app.work_schedule_id

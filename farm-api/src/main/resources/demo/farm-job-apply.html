@@ -142,6 +142,8 @@
     posting = null; selected = new Set(); refreshRequired = false; clearPrepared(); $('dates').replaceChildren(); $('history').replaceChildren();
     $('posting-title').textContent = '2. 날짜 선택'; $('posting-info').textContent = '공고를 조회해 주세요.';
     $('selected').textContent = '선택한 날짜 0개 / 최대 100개';
+    $('history-note').textContent = '최근 500건의 본인 이력을 표시합니다. 이 화면은 정식 내 지원 내역 API를 대신하지 않습니다.';
+    $('history-note').dataset.error = 'false';
   }
   function clearAll() {
     clearDetail(); lastAttempt = null; receipts = new Map();
@@ -235,7 +237,7 @@
     page = reply.body.page; hasNext = reply.body.hasNext; $('page').textContent = (page + 1) + '페이지';
     return true;
   }
-  function render(post, history) {
+  function renderDetail(post) {
     clearDetail(); posting = post; $('posting-id').value = String(post.jobPostingId);
     $('posting-title').textContent = '2. ' + post.title + ' · #' + post.jobPostingId;
     $('posting-info').textContent = post.workLocation + ' · ' + post.cropName + ' / ' + post.workTypeName +
@@ -258,6 +260,8 @@
         node('td', schedule.canApply === true ? '지원 가능' : reasons[schedule.unavailableReason] || schedule.unavailableReason || '지원 불가'));
       $('dates').append(row);
     }
+  }
+  function renderHistory(history) {
     $('history').replaceChildren();
     if (history.length === 0) { const row = node('tr'), td = node('td','이 공고의 본인 지원 이력이 없습니다.'); td.colSpan = 7; row.append(td); $('history').append(row); }
     for (const entry of history) {
@@ -268,19 +272,55 @@
       $('history').append(row);
     }
   }
+  function historyFailure(message) {
+    // 보조 이력 조회 실패를 '이력 없음'으로 표시하거나 정상 공고·날짜 선택을 지우지 않는다.
+    $('history').replaceChildren();
+    const row = node('tr'), cell = node('td', '이력을 불러오지 못했습니다. 이력이 없는 상태를 의미하지 않습니다.');
+    cell.colSpan = 7; row.append(cell); $('history').append(row);
+    $('history-note').textContent = '내 지원 이력 조회 실패 · ' + message
+      + ' 날짜 선택과 지원은 가능합니다. 최신 조건 · 내 이력 조회로 다시 확인하세요.';
+    $('history-note').dataset.error = 'true';
+  }
+  function detailNotice(message) {
+    const failed = $('history-note').dataset.error === 'true';
+    notice(failed ? message + '\n' + $('history-note').textContent : message, failed);
+  }
   async function loadDetail(context, account, id) {
     const detail = await call('/api/job-postings/' + id, context);
-    const history = detail.status === 200 ? await call('/demo/api/applications/postings/' + id + '/history', context) : null;
-    await requireWorker(context, account);
-    if (detail.status !== 200 || history?.status !== 200) {
-      clearDetail(); notice(describe(detail.status !== 200 ? detail : history), true); return false;
+    if (detail.status !== 200) {
+      await requireWorker(context, account);
+      clearDetail(); notice(describe(detail), true); return false;
     }
     const post = detail.body;
-    if (post?.jobPostingId !== id || !Array.isArray(post.schedules) || !Array.isArray(history.body?.applications)
-      || post.schedules.some(row => !validId(row.workScheduleId) || !validId(row.termsVersion) || typeof row.canApply !== 'boolean')) {
-      throw new Error('상세 응답 형식을 확인할 수 없습니다.');
+    if (post?.jobPostingId !== id || !Array.isArray(post.schedules)
+      || post.schedules.some(row => !validId(row?.workScheduleId) || !validId(row?.termsVersion) || typeof row.canApply !== 'boolean')) {
+      await requireWorker(context, account);
+      clearDetail(); throw new Error('상세 응답 형식을 확인할 수 없습니다.');
     }
-    render(post, history.body.applications); return true;
+    let history = null, historyError = null;
+    try {
+      history = await call('/demo/api/applications/postings/' + id + '/history', context);
+    } catch (error) {
+      ensure(context); historyError = '연결 상태를 확인할 수 없습니다.';
+    }
+    // 이력 장애를 허용해도 계정 변경·로그아웃·권한 오류는 허용하지 않는다.
+    await requireWorker(context, account);
+    if (history?.status === 401 || history?.status === 403) {
+      owner = null; clearAll(); throw new Error(describe(history));
+    }
+    renderDetail(post);
+    if (historyError !== null) {
+      historyFailure(historyError);
+    } else if (history.status !== 200) {
+      historyFailure(describe(history));
+    } else if (!Array.isArray(history.body?.applications)
+      || history.body.applications.some(row => !validId(row?.applicationId) || !validId(row?.workScheduleId)
+        || !validId(row?.applicationRound) || typeof row.current !== 'boolean' || typeof row.status !== 'string')) {
+      historyFailure('이력 응답 형식을 확인할 수 없습니다.');
+    } else {
+      renderHistory(history.body.applications);
+    }
+    return true;
   }
   function prepareBundle() {
     if (!posting || owner === null || selected.size < 1 || selected.size > 100) throw new Error('지원할 날짜를 1~100개 선택해 주세요.');
@@ -333,8 +373,8 @@
       : previous === undefined ? '서버가 보관한 최초 접수 결과를 받았습니다. 이전 응답이 없어 화면 내 값 비교는 하지 않았습니다.'
       : '최초 지원 ID·회차·버전·접수 시각이 모두 유지됐습니다.';
     const refreshed = await loadDetail(context,account,bundle.postingId);
-    notice(refreshed ? '지원 POST ' + reply.status + ' · 최신 조건과 본인 지원 이력을 다시 조회했습니다.'
-      : '지원 POST ' + reply.status + '는 성공했지만 저장 이력 재조회에 실패했습니다. 다시 조회해 주세요.', !refreshed);
+    if (refreshed) detailNotice('지원 POST ' + reply.status + ' · 최신 조건을 다시 조회했습니다.');
+    else notice('지원 POST ' + reply.status + '는 성공했지만 최신 조건 재조회에 실패했습니다. 다시 조회해 주세요.', true);
   }
 
   $('reload-list').addEventListener('click', () => run(async (context,account) => { if(await loadList(context,account,0)) notice('목록을 조회했습니다.'); }));
@@ -342,10 +382,10 @@
   $('next').addEventListener('click', () => run((context,account) => loadList(context,account,page+1)));
   $('postings').addEventListener('change', () => {
     const id = Number($('postings').value); if(!validId(id)) return;
-    clearDetail(); run(async(context,account) => {if(await loadDetail(context,account,id)) notice('최신 조건과 내 지원 이력을 조회했습니다.');});
+    clearDetail(); run(async(context,account) => {if(await loadDetail(context,account,id)) detailNotice('최신 조건을 조회했습니다.');});
   });
   $('detail-form').addEventListener('submit', event => {event.preventDefault();run(async(context,account) => {
-    if(await loadDetail(context,account,enteredId())) notice('최신 조건을 확인했습니다. 날짜를 다시 선택하면 새 키로 지원합니다.');
+    if(await loadDetail(context,account,enteredId())) detailNotice('최신 조건을 확인했습니다. 날짜를 다시 선택하면 새 키로 지원합니다.');
   });});
   $('prepare').addEventListener('click', () => run(async() => {prepareBundle(); notice('현재 조건과 새 요청 키를 준비했습니다. 아직 전송하지 않았습니다.');}));
   $('apply').addEventListener('click', () => run(async(context,account) => {await send(prepared || prepareBundle(),context,account);}));
@@ -358,7 +398,7 @@
     const reply = await call('/demo/api/applications/fixtures',context,{method:'POST',headers});
     await requireWorker(context,account);
     if(!reply.ok || !validId(reply.body?.jobPostingId)){notice(describe(reply),true);return;}
-    if(await loadDetail(context,account,reply.body.jobPostingId)) notice(reply.body.created
+    if(await loadDetail(context,account,reply.body.jobPostingId)) detailNotice(reply.body.created
       ? '새 시연 공고를 준비했습니다. 첫째·둘째 날짜는 신규 지원용, 셋째는 미선정 후 재지원용입니다.'
       : '기존 시연 공고를 열었습니다. 이전 지원·수정 이력을 유지합니다.');
   }));
@@ -370,7 +410,8 @@
     if(!await loadList(context,account,0)) return;
     const value = new URLSearchParams(window.location.search).get('jobPostingId');
     if(value && /^[1-9][0-9]*$/.test(value) && validId(Number(value))) {
-      if(!await loadDetail(context,account,Number(value))) return;
+      if(await loadDetail(context,account,Number(value))) detailNotice('최신 조건을 조회했습니다.');
+      return;
     }
     notice('공고를 선택하거나 시연용 공고를 준비하세요.');
   }));
