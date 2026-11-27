@@ -10,5 +10,6 @@ public record WorkAssignmentResponse(
 	String agreedCropCode, String agreedWorkTypeCode,
 	OffsetDateTime agreedStartAt, OffsetDateTime agreedEndAt,
 	OffsetDateTime agreedBreakStartAt, OffsetDateTime agreedBreakEndAt,
-	long agreedDailyWage, BigDecimal agreedLatitude, BigDecimal agreedLongitude
+	long agreedDailyWage, BigDecimal agreedLatitude, BigDecimal agreedLongitude,
+	OffsetDateTime completedAt
 ) {}

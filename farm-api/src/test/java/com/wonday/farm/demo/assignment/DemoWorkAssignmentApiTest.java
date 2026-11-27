@@ -306,7 +306,7 @@ class DemoWorkAssignmentApiTest {
 		return new WorkAssignmentResponse(31L, WORKER_ID, OffsetDateTime.parse("2026-11-20T10:02:03.456789+09:00"),
 			LocalDate.parse("2026-11-30"), "GMT+9", "약정 작업지", "AGREED-CROP", "AGREED-WORK",
 			OffsetDateTime.parse("2026-11-30T08:00+09:00"), OffsetDateTime.parse("2026-11-30T17:00+09:00"),
-			null, null, 120000L, latitude, longitude);
+			null, null, 120000L, latitude, longitude, null);
 	}
 
 	private record Row(long assignmentId, LocalDate agreedWorkDate, String agreedWorkLocation,

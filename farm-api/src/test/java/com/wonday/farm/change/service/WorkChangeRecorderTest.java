@@ -79,7 +79,7 @@ class WorkChangeRecorderTest {
 		given(streams.lockWorker(WORKER_ID)).willReturn(Optional.of(stream));
 		given(changes.findForUpdate(ASSIGNMENT_ID)).willReturn(Optional.empty());
 		stored = assignment(ASSIGNMENT_ID);
-		given(assignments.findOwned(WORKER_ID, ASSIGNMENT_ID)).willReturn(Optional.of(stored));
+		given(assignments.findByIdForUpdate(ASSIGNMENT_ID)).willReturn(Optional.of(stored));
 		given(changes.saveAndFlush(any())).willAnswer(invocation -> {
 			WorkChange saved = invocation.getArgument(0);
 			ReflectionTestUtils.setField(saved, "id", CHANGE_ID);
@@ -154,8 +154,8 @@ class WorkChangeRecorderTest {
 			order.verify(assignments).findOwnership(ASSIGNMENT_ID);
 			order.verify(streams).ensureExists(WORKER_ID);
 			order.verify(streams).lockWorker(WORKER_ID);
+			order.verify(assignments).findByIdForUpdate(ASSIGNMENT_ID);
 			order.verify(changes).findForUpdate(ASSIGNMENT_ID);
-			order.verify(assignments).findOwned(WORKER_ID, ASSIGNMENT_ID);
 			order.verify(changes).saveAndFlush(any());
 			order.verify(versions).save(any());
 		}
@@ -182,7 +182,7 @@ class WorkChangeRecorderTest {
 
 		@Test
 		void assignmentVanishingAfterOwnershipCheckIsUnavailable() {
-			given(assignments.findOwned(WORKER_ID, ASSIGNMENT_ID)).willReturn(Optional.empty());
+			given(assignments.findByIdForUpdate(ASSIGNMENT_ID)).willReturn(Optional.empty());
 
 			assertError(() -> recorder.recordValidatedChange(EMPLOYER_ID, ASSIGNMENT_ID, Type.CANCELLED, null,
 				Reason.OTHER, null, null), HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE");
@@ -443,7 +443,7 @@ class WorkChangeRecorderTest {
 				HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE");
 			assertThat(current.getSourceVersion()).isEqualTo(1);
 
-			given(assignments.findOwned(WORKER_ID, ASSIGNMENT_ID)).willReturn(Optional.empty());
+			given(assignments.findByIdForUpdate(ASSIGNMENT_ID)).willReturn(Optional.empty());
 			assertError(() -> recorder.reviseReason(EMPLOYER_ID, ASSIGNMENT_ID, Reason.OTHER, null, null),
 				HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE");
 

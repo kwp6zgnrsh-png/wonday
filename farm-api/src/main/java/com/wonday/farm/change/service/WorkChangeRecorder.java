@@ -16,6 +16,7 @@ import com.wonday.farm.insurance.repository.WorkChangeVersionRepository;
 import com.wonday.farm.insurance.service.InsuranceTime;
 import com.wonday.farm.member.MemberRepository;
 import com.wonday.farm.member.MemberRole;
+import com.wonday.farm.work.entity.WorkAssignment;
 import com.wonday.farm.work.repository.WorkAssignmentRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
@@ -45,7 +46,7 @@ public class WorkChangeRecorder {
 		this.clock = clock;
 	}
 
-	// 실제 작업 시작 판단은 미정이다. 호출자가 먼저 취소/조기 종료 가능 여부를 검증해야 한다.
+	// 시작 기준은 약정 시작 시각이다. 후속 사용자 API가 취소/조기 종료의 시점 검증을 담당한다.
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public long recordValidatedChange(long actorId, long assignmentId, WorkChange.Type type,
 			OffsetDateTime actualEndAt, WorkChange.Reason reason, WorkChange.WeatherReason weatherReason, String detail) {
@@ -58,11 +59,12 @@ public class WorkChangeRecorder {
 		var ownership = requireOwner(actorId, assignmentId);
 		streams.ensureExists(ownership.getWorkerId());
 		var stream = streams.lockWorker(ownership.getWorkerId()).orElseThrow(InsuranceApiException::unavailable);
+		// 발행 순번 잠금을 유지하되, 근무 행 → 변경 행 순서를 완료 API와 맞춘다.
+		var assignment = assignments.findByIdForUpdate(assignmentId).orElseThrow(InsuranceApiException::unavailable);
+		requireNotCompleted(assignment);
 		if (changes.findForUpdate(assignmentId).isPresent()) {
 			throw new InsuranceApiException(HttpStatus.CONFLICT, "WORK_CHANGE_ALREADY_EXISTS", "이미 근무 변경이 기록되어 있습니다.");
 		}
-		var assignment = assignments.findOwned(ownership.getWorkerId(), assignmentId)
-			.orElseThrow(InsuranceApiException::unavailable);
 		InsuranceTime.zone(assignment.getAgreedTimeZone());
 		LocalDateTime now = LocalDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC);
 		LocalDateTime effectiveAt = type == WorkChange.Type.CANCELLED ? now
@@ -80,14 +82,21 @@ public class WorkChangeRecorder {
 		var ownership = requireOwner(actorId, assignmentId);
 		streams.ensureExists(ownership.getWorkerId());
 		var stream = streams.lockWorker(ownership.getWorkerId()).orElseThrow(InsuranceApiException::unavailable);
+		var assignment = assignments.findByIdForUpdate(assignmentId).orElseThrow(InsuranceApiException::unavailable);
+		requireNotCompleted(assignment);
 		var change = changes.findForUpdate(assignmentId).orElseThrow(() ->
 			new InsuranceApiException(HttpStatus.NOT_FOUND, "WORK_CHANGE_NOT_FOUND", "근무 변경 기록을 찾을 수 없습니다."));
-		var assignment = assignments.findOwned(ownership.getWorkerId(), assignmentId)
-			.orElseThrow(InsuranceApiException::unavailable);
 		InsuranceTime.zone(assignment.getAgreedTimeZone());
 		change.revise(reason, weatherReason, detail,
 			LocalDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC));
 		versions.save(new WorkChangeVersion(ownership.getWorkerId(), stream.nextSequence(), change, assignment.getAgreedTimeZone()));
+	}
+
+	private static void requireNotCompleted(WorkAssignment assignment) {
+		if (assignment.getCompletedAtUtc() != null || assignment.getCompletedBy() != null) {
+			throw new InsuranceApiException(HttpStatus.CONFLICT, "WORK_ALREADY_COMPLETED",
+				"완료된 근무에는 취소·조기 종료를 기록하거나 정정할 수 없습니다.");
+		}
 	}
 
 	private WorkAssignmentRepository.Ownership requireOwner(long actorId, long assignmentId) {

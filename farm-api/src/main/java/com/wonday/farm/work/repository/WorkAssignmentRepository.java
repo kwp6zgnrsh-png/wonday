@@ -3,11 +3,18 @@ package com.wonday.farm.work.repository;
 import java.util.Optional;
 
 import com.wonday.farm.work.entity.WorkAssignment;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
 public interface WorkAssignmentRepository extends Repository<WorkAssignment, Long> {
+	// 완료와 취소·조기 종료가 같은 확정 근무 행을 먼저 잠그도록 한다.
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select assignment from WorkAssignment assignment where assignment.id = :assignmentId")
+	Optional<WorkAssignment> findByIdForUpdate(@Param("assignmentId") long assignmentId);
+
 	@Query(value = """
 		select assignment.* from work_assignment assignment
 		join application app on app.id = assignment.application_id

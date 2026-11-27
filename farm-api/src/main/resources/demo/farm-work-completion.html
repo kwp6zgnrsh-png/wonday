@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>고용주 근무 완료 · WON데이 farm-demo</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, 'Malgun Gothic', sans-serif; color: #173328; background: #edf4ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 2rem 1rem; }
+    main { max-width: 52rem; margin: auto; padding: clamp(1.2rem, 4vw, 2rem); background: white; border: 1px solid #cddfd3; border-radius: 1rem; }
+    h1 { font-size: 1.7rem; } h2 { font-size: 1.15rem; }
+    p, li { line-height: 1.65; } a { color: #1b5e3e; }
+    .card { padding: 1rem; margin: 1rem 0; background: #f0f7f2; border-radius: .6rem; }
+    .buttons { display: flex; gap: .7rem; flex-wrap: wrap; margin: 1rem 0; }
+    select, button { font: inherit; min-height: 2.8rem; padding: .65rem; border: 1px solid #839c8d; border-radius: .5rem; }
+    select { width: 100%; background: white; }
+    button { background: #1b5e3e; color: white; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: default; }
+    label { display: block; font-weight: 700; margin-bottom: .5rem; }
+    dl div { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: .5rem; padding: .4rem 0; }
+    dd { margin: 0; overflow-wrap: anywhere; font-weight: 650; }
+    pre { padding: 1rem; background: #f4f6f4; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #status { font-weight: 700; } [data-error=true] { color: #a12c26; }
+    table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #cddfd3; }
+    :focus-visible { outline: 3px solid #28754e; outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 450px) { dl div { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="/demo/login">로그인 · 계정 전환</a> · <a href="/demo/jobs">내 공고</a></p>
+  <h1>고용주의 개인별 근무 완료</h1>
+  <p class="card">본인 공고의 확정 근무를 한 명씩 완료합니다. 확정 당시 약정 종료 시각부터 가능하며,
+    완료 취소·정정은 제공하지 않습니다. 급여 지급과는 별개입니다.</p>
+  <p id="member" role="status">고용주 로그인 상태를 확인합니다.</p>
+  <button id="load" type="button">내 공고의 확정 근무 조회</button>
+  <section class="card">
+    <h2>1. 확정 근무 선택</h2>
+    <p>최근 확정 근무 100건을 표시합니다. 현재 공고명이 같아도 근로자와 약정 ID를 구분하세요.</p>
+    <label for="assignments">근로자 · 근무일 · 공고</label>
+    <select id="assignments" disabled><option value="">목록을 조회해 주세요</option></select>
+    <p id="empty" hidden>저장된 확정 근무가 없습니다. 이 화면은 지원·확정 데이터를 자동 생성하지 않습니다.
+      확인용으로 준비한 실제 로컬 확정 근무가 필요합니다.</p>
+    <div class="buttons"><button id="read" type="button" disabled>선택한 근무 상세 다시 조회</button></div>
+    <dl>
+      <div><dt>약정 ID</dt><dd id="assignment-id">—</dd></div>
+      <div><dt>근로자</dt><dd id="worker-name">—</dd></div>
+      <div><dt>공고</dt><dd id="posting-title">—</dd></div>
+      <div><dt>약정 근무일</dt><dd id="work-date">—</dd></div>
+      <div><dt>약정 종료 시각</dt><dd id="agreed-end">—</dd></div>
+      <div><dt>약정 시간대</dt><dd id="time-zone">—</dd></div>
+      <div><dt>취소·조기 종료</dt><dd id="change-type">—</dd></div>
+      <div><dt>완료 일시</dt><dd id="completed-at">상세 조회 전</dd></div>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>2. 실제 완료 API 호출</h2>
+    <p>버튼을 누르면 새 CSRF 토큰을 받아 완료 요청을 전송하고, 저장된 상세를 다시 조회합니다.
+      종료 전·취소·조기 종료 상태는 실제 서버가 409로 거절합니다.</p>
+    <button id="complete" type="button" disabled>선택한 근무 완료 처리</button>
+    <p id="comparison">상세를 조회한 후 완료할 수 있습니다.</p>
+    <p id="post-status">완료 요청 전</p>
+    <pre id="post-result" aria-label="완료 POST 응답">완료 응답을 여기에 표시합니다.</pre>
+  </section>
+  <h2>상태코드 · 오류 메시지</h2>
+  <p id="status" role="status" aria-live="polite">확인 중입니다.</p>
+  <details><summary>마지막 조회 응답 JSON</summary><pre id="read-result">조회 전</pre></details>
+  <table><caption>최근 요청 · CSRF와 로그인 정보는 기록하지 않습니다.</caption>
+    <thead><tr><th>요청</th><th>HTTP</th><th>코드</th></tr></thead><tbody id="history"></tbody></table>
+  <details class="card"><summary>확인 방법</summary>
+    <ol>
+      <li>고용주로 로그인한 뒤 목록을 조회하고 확정 근무를 선택하세요.</li>
+      <li>완료 처리 전에는 완료 일시가 비어 있습니다. 약정 종료 시각이 지난 근무를 완료하면 POST 200과 저장 시각을 확인할 수 있습니다.</li>
+      <li>자동으로 실행한 상세 GET 200의 완료 일시가 POST 응답과 같으면 저장값 일치 안내가 나옵니다.</li>
+      <li>완료된 근무를 다시 요청하면 200이며 최초 완료 일시가 유지됩니다.</li>
+      <li>종료 전 또는 취소·조기 종료된 다른 근무를 선택하면 409와 오류 코드를 확인할 수 있습니다.</li>
+    </ol>
+    <p>근무 시간이나 상태를 이 화면에서 조작하지 않습니다. 처리 도중 연결이 끊기면 자동 재요청하지 않고 상세를 다시 조회해 저장 여부를 확인하세요.
+      근로자는 기존 좌표 demo의 본인 약정 상세에서도 같은 완료 시각을 조회할 수 있습니다.</p>
+  </details>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const base = '/demo/api/employer/work-assignments';
+  let owner = null;
+  let current = null;
+  let busy = false;
+  let generation = 0;
+  let controller = null;
+
+  function status(message, error = false) {
+    $('status').textContent = message;
+    $('status').dataset.error = String(error);
+  }
+  function selectedId() {
+    const value = $('assignments').value;
+    return /^[1-9][0-9]*$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+  }
+  function controls() {
+    $('load').disabled = busy;
+    $('assignments').disabled = busy || owner === null || $('assignments').options.length < 2;
+    $('read').disabled = busy || owner === null || selectedId() === null;
+    $('complete').disabled = busy || current === null || current.assignmentId !== selectedId();
+    $('complete').textContent = current?.completedAt ? '동일 근무 완료 재요청' : '선택한 근무 완료 처리';
+  }
+  function clearDetail() {
+    current = null;
+    for (const id of ['assignment-id', 'worker-name', 'posting-title', 'work-date', 'agreed-end', 'time-zone', 'change-type']) $(id).textContent = '—';
+    $('completed-at').textContent = '상세 조회 필요';
+    $('comparison').textContent = '상세를 조회한 후 완료할 수 있습니다.';
+  }
+  function clearAll() {
+    clearDetail();
+    $('assignments').replaceChildren(new Option('목록을 조회해 주세요', ''));
+    $('post-status').textContent = '완료 요청 전';
+    $('post-result').textContent = '완료 응답을 여기에 표시합니다.';
+    $('read-result').textContent = '조회 전';
+    $('history').replaceChildren();
+    $('empty').hidden = true;
+  }
+  function ensure(context) {
+    if (context.generation !== generation) throw new Error('화면이 전환되었습니다.');
+  }
+  async function request(path, context, options = {}) {
+    const response = await fetch(path, { ...options, credentials: 'same-origin', cache: 'no-store', signal: context.signal });
+    ensure(context);
+    let body = null;
+    try { body = await response.json(); } catch { /* HTML 오류 본문은 표시하지 않는다. */ }
+    ensure(context);
+    return { ok: response.ok, status: response.status, body };
+  }
+  function describe(reply) {
+    const code = typeof reply.body?.code === 'string' ? reply.body.code : '';
+    const fallback = reply.status === 401 ? '다시 로그인해 주세요.' : reply.status === 403
+      ? '고용주 권한 또는 CSRF 토큰을 확인해 주세요.' : '응답을 확인해 주세요.';
+    return 'HTTP ' + reply.status + (code ? ' · ' + code : '') + ' · ' +
+      (typeof reply.body?.message === 'string' ? reply.body.message : fallback);
+  }
+  function record(label, reply) {
+    const tr = document.createElement('tr');
+    for (const text of [label, String(reply.status), reply.body?.code || '—']) {
+      const td = document.createElement('td'); td.textContent = text; tr.append(td);
+    }
+    $('history').prepend(tr);
+    while ($('history').children.length > 10) $('history').lastElementChild.remove();
+  }
+  async function requireEmployer(context, expected) {
+    const reply = await request('/api/auth/me', context);
+    if (!reply.ok || reply.body?.role !== 'EMPLOYER' || !Number.isSafeInteger(reply.body?.id) || reply.body.id <= 0) {
+      owner = null; clearAll();
+      $('member').textContent = '고용주 계정으로 로그인해 주세요.';
+      throw new Error('로그인 확인 HTTP ' + reply.status + ' · 고용주 로그인이 필요합니다.');
+    }
+    const id = reply.body.id;
+    if (expected !== undefined && id !== expected) {
+      owner = null; clearAll();
+      throw new Error('계정이 변경되었습니다. 목록을 다시 조회해 주세요.');
+    }
+    if (owner !== id) clearAll();
+    owner = id;
+    $('member').textContent = reply.body.name + ' · 고용주 · 회원 ID ' + id;
+    return id;
+  }
+  async function run(action) {
+    if (busy) return;
+    busy = true;
+    controller = new AbortController();
+    const context = { generation, signal: controller.signal, postStarted: false };
+    controls();
+    try {
+      const account = await requireEmployer(context);
+      await action(context, account);
+    } catch (error) {
+      if (context.generation === generation) {
+        clearDetail();
+        if (context.postStarted) $('post-status').textContent += ' · 저장값은 상세를 다시 조회해 확인하세요.';
+        status(context.postStarted
+          ? '완료 요청 후 저장값 확인을 마치지 못했습니다. 상세를 다시 조회하세요. 자동으로 재전송하지 않습니다.'
+          : error.message || '연결 상태를 확인하고 다시 조회해 주세요.', true);
+      }
+    } finally {
+      if (context.generation === generation) { busy = false; controller = null; controls(); }
+    }
+  }
+  function validTime(value) { return typeof value === 'string' && !Number.isNaN(Date.parse(value)); }
+  async function readDetail(context, account, id) {
+    clearDetail();
+    const reply = await request(base + '/' + id, context);
+    await requireEmployer(context, account);
+    record('상세 GET · #' + id, reply);
+    $('read-result').textContent = JSON.stringify(reply.body, null, 2);
+    if (reply.status !== 200) { status(describe(reply), true); return null; }
+    const body = reply.body;
+    if (!body || body.assignmentId !== id || !Object.hasOwn(body, 'completedAt')
+      || (body.completedAt !== null && !validTime(body.completedAt)) || !validTime(body.agreedEndAt)) {
+      throw new Error('상세 응답 형식을 확인할 수 없습니다.');
+    }
+    current = body;
+    $('assignment-id').textContent = String(body.assignmentId);
+    $('worker-name').textContent = body.workerName;
+    $('posting-title').textContent = '#' + body.jobPostingId + ' · ' + body.title;
+    $('work-date').textContent = body.agreedWorkDate ?? '미등록';
+    $('agreed-end').textContent = body.agreedEndAt;
+    $('time-zone').textContent = body.agreedTimeZone;
+    $('change-type').textContent = body.changeType === null ? '없음' : body.changeType;
+    $('completed-at').textContent = body.completedAt === null ? '미완료' : body.completedAt;
+    $('comparison').textContent = body.completedAt === null ? 'DB에서 조회한 미완료 상태입니다.' : 'DB에서 조회한 최초 완료 시각입니다.';
+    return body;
+  }
+  async function load() {
+    await run(async (context, account) => {
+      clearAll();
+      const reply = await request(base, context);
+      await requireEmployer(context, account);
+      record('내 확정 근무 목록 GET', reply);
+      $('read-result').textContent = JSON.stringify(reply.body, null, 2);
+      if (reply.status !== 200) { status(describe(reply), true); return; }
+      const rows = reply.body?.assignments;
+      if (!Array.isArray(rows) || rows.some(row => !Number.isSafeInteger(row.assignmentId) || row.assignmentId <= 0)) {
+        throw new Error('목록 응답 형식을 확인할 수 없습니다.');
+      }
+      $('assignments').replaceChildren(new Option(rows.length ? '근무를 선택하세요' : '본인 공고의 확정 근무 없음', ''));
+      for (const row of rows) {
+        $('assignments').append(new Option('#' + row.assignmentId + ' · ' + row.workerName + ' · ' +
+          (row.agreedWorkDate ?? '날짜 미등록') + ' · ' + row.title, String(row.assignmentId)));
+      }
+      $('empty').hidden = rows.length !== 0;
+      status('목록 HTTP 200 · 본인 공고의 확정 근무 ' + rows.length + '건을 조회했습니다.');
+    });
+  }
+  $('load').addEventListener('click', load);
+  function readSelected() {
+    const id = selectedId();
+    clearDetail();
+    $('post-status').textContent = '완료 요청 전';
+    $('post-result').textContent = '완료 응답을 여기에 표시합니다.';
+    if (id === null) { controls(); return; }
+    run(async (context, account) => {
+      const detail = await readDetail(context, account, id);
+      if (detail) status('상세 HTTP 200 · 저장된 약정과 완료 일시를 조회했습니다.');
+    });
+  }
+  $('assignments').addEventListener('change', readSelected);
+  $('read').addEventListener('click', readSelected);
+  $('complete').addEventListener('click', () => {
+    if (busy || current === null) return;
+    const target = current;
+    const expectedOwner = owner;
+    if (!window.confirm('#' + target.assignmentId + ' · ' + target.workerName +
+      (target.completedAt ? '\n완료를 재요청해 최초 시각이 유지되는지 확인할까요?' : '\n이 근무를 완료할까요? 완료 후에는 취소·정정할 수 없습니다.'))) return;
+    run(async (context, account) => {
+      if (account !== expectedOwner || target.assignmentId !== selectedId()) throw new Error('대상을 다시 조회해 주세요.');
+      clearDetail();
+      $('post-status').textContent = 'CSRF 토큰을 준비하는 중입니다.';
+      // 토큰은 요청 헤더에만 사용하고 응답 JSON·최근 요청 표·저장소에는 남기지 않는다.
+      const csrf = await request('/api/auth/csrf', context);
+      if (!csrf.ok || typeof csrf.body?.headerName !== 'string' || typeof csrf.body?.token !== 'string'
+        || !csrf.body.headerName || !csrf.body.token) throw new Error('CSRF 토큰을 가져오지 못했습니다.');
+      await requireEmployer(context, account);
+      context.postStarted = true;
+      const reply = await request('/api/work-assignments/' + target.assignmentId + '/completion', context,
+        { method: 'POST', headers: { [csrf.body.headerName]: csrf.body.token } });
+      await requireEmployer(context, account);
+      record('완료 POST · #' + target.assignmentId, reply);
+      $('post-status').textContent = '완료 POST HTTP ' + reply.status;
+      $('post-result').textContent = JSON.stringify(reply.body, null, 2);
+      if (reply.status !== 200) { status(describe(reply) + ' 상세를 다시 조회한 뒤 진행하세요.', true); return; }
+      if (reply.body?.assignmentId !== target.assignmentId || !validTime(reply.body?.completedAt)) {
+        throw new Error('완료 응답 형식을 확인할 수 없습니다.');
+      }
+      $('post-status').textContent = '완료 POST HTTP 200 · DB 상세 재조회 중';
+      const saved = await readDetail(context, account, target.assignmentId);
+      if (saved === null) {
+        $('post-status').textContent = '완료 POST HTTP 200 · 상세 재조회 실패';
+        return;
+      }
+      if (saved.completedAt !== reply.body.completedAt) {
+        clearDetail(); status('POST는 200이지만 재조회 시각이 응답과 다릅니다. 상세를 다시 확인해 주세요.', true); return;
+      }
+      $('post-status').textContent = '완료 POST HTTP 200 · 상세 GET HTTP 200';
+      if (target.completedAt !== null && target.completedAt !== saved.completedAt) {
+        clearDetail(); status('재요청 후 최초 완료 시각이 달라졌습니다. 응답을 확인해 주세요.', true); return;
+      }
+      const preserved = target.completedAt !== null && target.completedAt === saved.completedAt;
+      $('comparison').textContent = preserved
+        ? '재요청에도 최초 완료 일시가 유지됐고, DB 재조회 값과 같습니다.'
+        : 'POST 응답과 DB에서 다시 조회한 완료 일시가 같습니다.';
+      status('완료 POST 200 → 상세 GET 200 · 완료 시각 저장값을 확인했습니다.');
+    });
+  });
+  window.addEventListener('pagehide', () => {
+    generation++; controller?.abort(); controller = null; busy = false; owner = null;
+    clearAll(); controls(); $('member').textContent = '고용주 로그인 상태를 다시 확인해 주세요.';
+  });
+  window.addEventListener('pageshow', load);
+})();
+</script>
+</body>
+</html>
