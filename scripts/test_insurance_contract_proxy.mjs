@@ -55,6 +55,15 @@ const upstream = createHttpServer((request, response) => {
   } else if (request.method === 'GET' && request.url === '/api/rewards/salary-account/checks?limit=2&beforeId=8') {
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     response.end(JSON.stringify({ items: [reward], hasMore: false, nextBeforeId: null }))
+  } else if (request.method === 'GET' && request.url === '/api/weather/stations') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify([{ stationCode: '477802A001', coordinatesAvailable: false }]))
+  } else if (request.method === 'POST' && request.url === '/api/admin/weather/collections') {
+    request.resume()
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    assert.equal(request.headers['x-csrf-token'], 'proxy-csrf')
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ id: 11, stationCode: '477802A001', state: 'RECEIVED' }))
   } else {
     response.writeHead(404)
     response.end()
@@ -81,6 +90,8 @@ try {
           '/api/insurance/platform/salary-account': { target },
           '/api/insurance/platform/link': { target },
           '/api/insurance/rewards/': { target },
+          '/api/insurance/weather/': { target },
+          '/api/insurance/admin/weather/': { target },
         },
       },
     })
@@ -142,6 +153,19 @@ try {
       assert.equal(history.headers.get('cache-control'), 'no-store')
       assert.deepEqual(await history.json(), { items: [reward], hasMore: false, nextBeforeId: null })
       console.log('PASS ' + web + ': POST reward check, forwarded session/key, GET latest and paginated history JSON')
+      const stations = await fetch(origin + '/api/insurance/weather/stations')
+      assert.equal(stations.status, 200)
+      assert.equal(stations.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await stations.json(), [{ stationCode: '477802A001', coordinatesAvailable: false }])
+      const weather = await fetch(origin + '/api/insurance/admin/weather/collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: 'INSURANCESESSION=proxy-test', 'X-CSRF-TOKEN': 'proxy-csrf' },
+        body: JSON.stringify({ stationCode: '477802A001', date: '2026-11-25' }),
+      })
+      assert.equal(weather.status, 200)
+      assert.equal(weather.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await weather.json(), { id: 11, stationCode: '477802A001', state: 'RECEIVED' })
+      console.log('PASS ' + web + ': weather station lookup and admin collection routing, session and CSRF forwarding')
     } finally {
       await vite.close()
     }

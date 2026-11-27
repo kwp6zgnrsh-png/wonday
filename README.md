@@ -145,6 +145,11 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 
 이번 구현에서 판매 기간의 DB 일시는 UTC로 해석한다. 프런트는 salesStartAt·salesEndAt을 표시할 때 UTC 기준으로 처리한다. 상품 등록·약정 데이터 입력은 별도 관리하며, 테스트의 예시 금액과 기준은 테스트용 값이다.
 
+#### 기상 수집 기반
+
+기상 원본 수집·경기 24개 관측소 기준정보·최근접 조회 API는 [기상 수집 기반 문서](insurance-api/docs/weather-foundation.md)를 참고한다.
+관리자가 날짜를 지정해 원본을 보관하는 단계이며 자동 기상 배치·모델 집계·RabbitMQ 전송은 아직 연결하지 않는다.
+
 #### 보험 회원 내·외국인 구분과 식별정보 저장
 
 `POST /api/auth/signup`(웹: `/api/insurance/auth/signup`)에 `nationalityType`을 추가한다.
