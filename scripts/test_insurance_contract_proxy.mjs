@@ -31,6 +31,18 @@ const upstream = createHttpServer((request, response) => {
   } else if (request.method === 'GET' && request.url === '/api/claims/99') {
     response.writeHead(200, { 'Content-Type': 'application/json' })
     response.end(JSON.stringify({ claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } }))
+  } else if (request.method === 'GET' && request.url === '/api/admin/claims?status=REVIEWING&limit=2') {
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ items: [{ id: 101, status: 'REVIEWING' }], hasMore: false, nextBeforeId: null }))
+  } else if (request.method === 'GET' && request.url === '/api/admin/claims/101') {
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ claim: { id: 101, status: 'REVIEWING' }, work: { assignmentId: 7001 } }))
+  } else if (request.method === 'GET' && request.url === '/api/admin/claims/101/history?limit=2') {
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ items: [{ id: 201, action: 'AUTO_RECEIVED' }], hasMore: false, nextBeforeId: null }))
   } else if (request.method === 'POST' && request.url === '/api/platform/link') {
     request.resume()
     assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
@@ -100,6 +112,7 @@ try {
         proxy: {
           '/api/insurance/contracts': { target },
           '/api/insurance/claims': { target },
+          '/api/insurance/admin/claims': { target },
           '/api/insurance/platform/salary-account': { target },
           '/api/insurance/platform/link': { target },
           '/api/insurance/rewards/': { target },
@@ -132,6 +145,19 @@ try {
       assert.equal(claimDetail.status, 200)
       assert.deepEqual(await claimDetail.json(), { claim: { id: 99, status: 'REVIEWING' }, work: { assignmentId: 7001 } })
       console.log('PASS ' + web + ': GET claim list and detail JSON')
+      const adminHeaders = { Cookie: 'INSURANCESESSION=proxy-test' }
+      const adminClaims = await fetch(origin + '/api/insurance/admin/claims?status=REVIEWING&limit=2', { headers: adminHeaders })
+      assert.equal(adminClaims.status, 200)
+      assert.equal(adminClaims.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await adminClaims.json(), { items: [{ id: 101, status: 'REVIEWING' }], hasMore: false, nextBeforeId: null })
+      const adminDetail = await fetch(origin + '/api/insurance/admin/claims/101', { headers: adminHeaders })
+      assert.equal(adminDetail.status, 200)
+      assert.deepEqual(await adminDetail.json(), { claim: { id: 101, status: 'REVIEWING' }, work: { assignmentId: 7001 } })
+      const adminHistory = await fetch(origin + '/api/insurance/admin/claims/101/history?limit=2', { headers: adminHeaders })
+      assert.equal(adminHistory.status, 200)
+      assert.equal(adminHistory.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await adminHistory.json(), { items: [{ id: 201, action: 'AUTO_RECEIVED' }], hasMore: false, nextBeforeId: null })
+      console.log('PASS ' + web + ': admin claim list/detail/history routing, query and session forwarding')
       const salary = await fetch(origin + '/api/insurance/platform/salary-account')
       assert.equal(salary.status, 200)
       assert.equal(salary.headers.get('cache-control'), 'no-store')
