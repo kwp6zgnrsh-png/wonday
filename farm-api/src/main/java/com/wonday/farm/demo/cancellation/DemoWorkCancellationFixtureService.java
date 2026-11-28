@@ -12,6 +12,7 @@ import com.wonday.farm.change.repository.WorkChangeRepository;
 import com.wonday.farm.demo.selection.DemoWorkSelectionFixtureService;
 import com.wonday.farm.insurance.service.InsuranceTime;
 import com.wonday.farm.application.repository.JobApplicationRepository;
+import com.wonday.farm.job.repository.JobPostingRepository;
 import com.wonday.farm.job.repository.WorkScheduleRepository;
 import com.wonday.farm.member.MemberRepository;
 import com.wonday.farm.member.MemberRole;
@@ -32,6 +33,7 @@ public class DemoWorkCancellationFixtureService {
     private static final List<String> SCENARIOS = List.of("NORMAL", "STALE_VERSION", "PAUSED",
         "STARTED", "CANCELLED", "EARLY_ENDED", "COMPLETED");
     private final MemberRepository members;
+    private final JobPostingRepository postings;
     private final DemoWorkSelectionFixtureService fixtures;
     private final WorkSelectionService selection;
     private final JobApplicationRepository applications;
@@ -39,10 +41,11 @@ public class DemoWorkCancellationFixtureService {
     private final WorkSelectionRepository assignments;
     private final WorkChangeRepository changes;
 
-    public DemoWorkCancellationFixtureService(MemberRepository members, DemoWorkSelectionFixtureService fixtures,
+    public DemoWorkCancellationFixtureService(MemberRepository members, JobPostingRepository postings, DemoWorkSelectionFixtureService fixtures,
             WorkSelectionService selection, JobApplicationRepository applications, WorkScheduleRepository schedules,
             WorkSelectionRepository assignments, WorkChangeRepository changes) {
         this.members = members;
+        this.postings = postings;
         this.fixtures = fixtures;
         this.selection = selection;
         this.applications = applications;
@@ -57,6 +60,10 @@ public class DemoWorkCancellationFixtureService {
             .orElseThrow(() -> new AccessDeniedException("Employer role required"));
         var prepared = fixtures.prepare(employerId);
         if (prepared.preparedJobPostingId() == null) throw WorkCancellationException.unavailable();
+        // 재사용된 공고도 선정 서비스와 같은 소유자 공고 잠금부터 잡는다.
+        // 앞 사례의 약정을 잠근 채 뒤 사례 선정의 공고 잠금을 기다리는 순환 대기를 막는다.
+        postings.findOwnedForUpdate(prepared.preparedJobPostingId(), employerId)
+            .orElseThrow(WorkCancellationException::unavailable);
         var result = new ArrayList<FixtureCase>();
         // 준비 응답의 공고 ID와 사례를 그대로 쓴다. 자정 이후 날짜를 다시 읽어 사례를 누락시키지 않는다.
         for (var item : prepared.cases()) {

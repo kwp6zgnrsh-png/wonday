@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -29,6 +30,7 @@ import com.wonday.farm.demo.selection.DemoWorkSelectionFixtureService;
 import com.wonday.farm.demo.selection.DemoWorkSelectionFixtureService.Case;
 import com.wonday.farm.insurance.testsupport.InsuranceFixtures;
 import com.wonday.farm.job.entity.WorkSchedule;
+import com.wonday.farm.job.repository.JobPostingRepository;
 import com.wonday.farm.job.repository.WorkScheduleRepository;
 import com.wonday.farm.member.MemberRepository;
 import com.wonday.farm.member.MemberRole;
@@ -55,13 +57,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 class DemoWorkCancellationFixtureServiceTest {
 	private static final long EMPLOYER = 10L, WORKER = 123L, P = 4201L;
 	private final MemberRepository members = mock(MemberRepository.class);
+	private final JobPostingRepository postings = mock(JobPostingRepository.class);
 	private final DemoWorkSelectionFixtureService fixtures = mock(DemoWorkSelectionFixtureService.class);
 	private final WorkSelectionService selection = mock(WorkSelectionService.class);
 	private final JobApplicationRepository applications = mock(JobApplicationRepository.class);
 	private final WorkScheduleRepository schedules = mock(WorkScheduleRepository.class);
 	private final WorkSelectionRepository assignments = mock(WorkSelectionRepository.class);
 	private final WorkChangeRepository changes = mock(WorkChangeRepository.class);
-	private final DemoWorkCancellationFixtureService service = new DemoWorkCancellationFixtureService(members, fixtures, selection,
+	private final DemoWorkCancellationFixtureService service = new DemoWorkCancellationFixtureService(members, postings, fixtures, selection,
 		applications, schedules, assignments, changes);
 	private final List<String> all = List.of("NORMAL", "CHANGED", "STALE_VERSION", "PAUSED", "CLOSED", "REMOVED", "STARTED",
 		"CANCELLED", "EARLY_ENDED", "COMPLETED", "CAPACITY_FULL");
@@ -84,6 +87,8 @@ class DemoWorkCancellationFixtureServiceTest {
 	void ready() {
 		given(members.findById(EMPLOYER)).willReturn(Optional.of(SelectionFixtures.member(EMPLOYER, MemberRole.EMPLOYER)));
 		schedule = SelectionFixtures.schedule(SelectionFixtures.posting(1), WorkSchedule.Status.OPEN, 2);
+		ReflectionTestUtils.setField(schedule.getJobPosting(), "id", P);
+		given(postings.findOwnedForUpdate(P, EMPLOYER)).willReturn(Optional.of(schedule.getJobPosting()));
 		given(assignments.findByApplicationForUpdate(anyLong())).willReturn(Optional.empty());
 		given(changes.findForUpdate(anyLong())).willReturn(Optional.empty());
 		// 선정 서비스는 지원 ID → 확정 근무 ID(7000+지원 끝자리)를 반환한다.
@@ -125,7 +130,41 @@ class DemoWorkCancellationFixtureServiceTest {
 			given(members.findById(EMPLOYER)).willReturn(member);
 			assertThatThrownBy(() -> service.prepare(EMPLOYER)).isInstanceOf(AccessDeniedException.class);
 		}
-		verifyNoInteractions(fixtures, selection, applications, schedules, assignments, changes);
+		verifyNoInteractions(fixtures, postings, selection, applications, schedules, assignments, changes);
+	}
+
+	@Test
+	@DisplayName("재사용된 기존 확정·미선정 사례가 섞여도 공고를 먼저 잠근 뒤 약정 조회·선정을 진행한다")
+	void locksPostingBeforeExistingAssignmentAndLaterSelection() {
+		prepared(false, P, List.of(item("NORMAL", P, 0, 7000L), item("STALE_VERSION", P, 2, null)));
+		given(assignments.findByApplicationForUpdate(1000L)).willReturn(Optional.of(assignment(7000L)));
+
+		var result = service.prepare(EMPLOYER);
+
+		assertThat(result.created()).isFalse();
+		assertThat(result.cases()).extracting(DemoWorkCancellationFixtureService.FixtureCase::assignmentId)
+			.containsExactly(7000L, 7002L);
+		var order = inOrder(fixtures, postings, assignments, selection);
+		order.verify(fixtures).prepare(EMPLOYER);
+		order.verify(postings).findOwnedForUpdate(P, EMPLOYER);
+		order.verify(assignments).findByApplicationForUpdate(1000L);
+		order.verify(assignments).findByApplicationForUpdate(1002L);
+		order.verify(selection).select(EMPLOYER, P, 302L, 1002L, new TermsVersionRequest(2));
+		order.verify(assignments).findById(7002L);
+		verify(postings, times(1)).findOwnedForUpdate(P, EMPLOYER);
+		verify(assignments, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("준비한 본인 공고를 잠글 수 없으면 503이며 약정·지원 조회와 선정은 시작하지 않는다")
+	void postingUnavailableStopsBeforeLowerLocks() {
+		prepared(false, P, freshCases());
+		given(postings.findOwnedForUpdate(P, EMPLOYER)).willReturn(Optional.empty());
+
+		unavailable();
+
+		verify(postings).findOwnedForUpdate(P, EMPLOYER);
+		verifyNoInteractions(selection, applications, schedules, assignments, changes);
 	}
 
 	@Test
@@ -163,6 +202,11 @@ class DemoWorkCancellationFixtureServiceTest {
 		var result = service.prepare(EMPLOYER);
 		var captor = ArgumentCaptor.forClass(WorkAssignment.class);
 		verify(assignments).saveAndFlush(captor.capture());
+		var order = inOrder(postings, assignments, applications, schedules);
+		order.verify(postings).findOwnedForUpdate(P, EMPLOYER);
+		order.verify(assignments).findByApplicationForUpdate(1006L);
+		order.verify(applications).findScopedForUpdate(1006L, 306L);
+		order.verify(schedules).findByIdAndJobPosting_Id(306L, P);
 		var saved = captor.getValue();
 		assertThat(saved.getAgreedStartAt()).isEqualTo(LocalDateTime.parse("2026-11-27T09:00"));
 		assertThat(saved.getConfirmedAtUtc()).isEqualTo(LocalDateTime.parse("2026-11-26T00:00"));

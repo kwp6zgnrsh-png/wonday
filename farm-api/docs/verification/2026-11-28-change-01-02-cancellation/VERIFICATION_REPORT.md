@@ -372,3 +372,103 @@ node --test docs/verification/2026-11-28-change-01-02-cancellation/work-cancella
 - 다른 사람의 미커밋 변경
 
 커밋·푸시·브랜치 변경은 하지 않았다.
+
+## 10. 재검증: 취소 시연 준비의 공고 잠금 순서 수정 (2026-11-28)
+
+1~9절의 기록(Java 197개, 기존 59개, 화면 17개)은 그대로 두고, 이 절의 13개와 합산하지 않는다.
+
+### 10.1 작업 위치
+
+| 항목 | 값 |
+|---|---|
+| 저장소 | `C:\Users\HCB\.codex\worktrees\work-early-end\wonday` (폴더 이름은 work-early-end지만 브랜치는 work-cancel) |
+| 브랜치 | `work-cancel` (확인만 했고 전환하지 않음) |
+| HEAD | `6d655f5` (feat(farm): 시작 전 개인별 근무 취소 API 구현) |
+| AGENTS.md | 없음 |
+| 미커밋 변경 | `DemoWorkCancellationFixtureService.java`, `DemoWorkCancellationFixtureServiceTest.java`, `change-01-02-work-cancellation-api.md` (스테이징 없음) |
+| 보존 확인 | 실행 전후로 `git diff`와 `git status --porcelain`의 해시가 같다. |
+
+원래 폴더 `C:\Users\HCB\Desktop\wonday`는 수정하거나 테스트하지 않았다.
+
+### 10.2 실행 명령
+
+```
+cd C:\Users\HCB\.codex\worktrees\work-early-end\wonday\farm-api
+.\gradlew.bat unitTest --tests "com.wonday.farm.demo.cancellation.DemoWorkCancellationFixtureServiceTest" --console=plain
+```
+
+- JDK는 21.0.12.1이고 결과는 `BUILD SUCCESSFUL`이다.
+- `compileJava`와 `compileTestJava`는 UP-TO-DATE였다. 개발자가 수정 후 이미 컴파일한 결과를 재사용했다.
+- 개수는 실행 후 새로 생성된 결과 XML 1개에서 집계했다.
+
+### 10.3 결과
+
+| 실행 | 성공 | 실패 | 건너뜀 |
+|---:|---:|---:|---:|
+| 13 | 13 | 0 | 0 |
+
+- 선택된 테스트는 요청한 13개와 같다.
+  - 1~9절의 이 클래스는 11개였다.
+  - 공고 잠금 관련 테스트 2개(`locksPostingBeforeExistingAssignmentAndLaterSelection`, `postingUnavailableStopsBeforeLowerLocks`)가 새로 추가되었다.
+  - 나머지 11개는 이름이 같고 그대로 실행되었다.
+- 테스트 실패는 없다.
+- 커버리지 태스크는 실행하지 않았으므로 커버리지 기준 실패는 해당 없음이다.
+
+### 10.4 잠금 순서 회귀 검증
+
+**운영 코드 대조**
+- `prepare()`의 처리 순서
+  1. 회원 역할을 확인한다.
+  2. `fixtures.prepare(employerId)`를 호출한다.
+  3. 공고 ID가 null이면 503이다.
+  4. 사례 루프 전에 `postings.findOwnedForUpdate(preparedJobPostingId, employerId)`를 호출하고, 빈 결과면 `WorkCancellationException.unavailable()`(503)이다.
+  5. 사례 루프를 시작한다.
+- 루프 안의 처리는 바뀌지 않았다. 기존 상태 재사용과 취소·조기 종료·완료 기록 보존 동작이 그대로 유지된다.
+
+**검증 결과**
+
+| 중점 항목 | 결과 | 근거 테스트 |
+|---|---|---|
+| 1. 기존 확정 NORMAL과 미선정 STALE_VERSION이 섞인 경우 | 통과 | `locksPostingBeforeExistingAssignmentAndLaterSelection` |
+| 2. 공고 잠금 실패 | 통과 | `postingUnavailableStopsBeforeLowerLocks` |
+| 3. 시작 경과 사례 | 통과 | `startedScenario` |
+| 4. 기존 회귀 | 통과 | 나머지 테스트 |
+
+1. 기존 확정·미선정 혼합 사례
+   - inOrder 확인 순서: 준비 서비스 호출 → 소유자 공고 잠금(`findOwnedForUpdate(4201, 10)`) → NORMAL 약정 조회 → STALE_VERSION 약정 조회 → `selection.select(10, 4201, 302, 1002, v2)` → 확정 근무 조회
+   - 공고 잠금은 1회다.
+   - 두 사례의 assignmentId 7000과 7002가 반환된다.
+   - 약정 `saveAndFlush`는 호출되지 않는다.
+2. 공고 잠금 실패
+   - 빈 결과면 503 `SERVICE_UNAVAILABLE`이다.
+   - 선정, 지원, 일정, 약정, 변경 저장소에 상호작용이 없다(`verifyNoInteractions`).
+3. 시작 경과 사례
+   - 순서: 공고 잠금 → 약정 조회 → 지원 잠금(`findScopedForUpdate(1006, 306)`) → 일정 조회
+   - 기존 과거 약정 생성 조건이 유지된다: 약정 시작 2026-11-27 09:00, 확정 시각은 시작 하루 전(UTC 2026-11-26 00:00), 시간대 GMT+9, 선정 서비스 미호출
+4. 기존 회귀
+   - 권한 거절: 공고 잠금 전에 거절되며, `postings`에도 상호작용이 없다.
+   - 신규 준비, 재사용, 사유 안내, 공고 ID 없음 503, 실패 전파, 다른 공고 제외, 프로필 선언, 회원 쓰기 없음 테스트가 모두 그대로 통과했다.
+   - 생성자 변경에 맞춘 mock 설정은 적절하다.
+     - `JobPostingRepository` mock을 생성자 두 번째 인자로 전달한다.
+     - `@BeforeEach`에서 `findOwnedForUpdate(4201, 10)`이 공고를 반환하도록 했다.
+     - 공고 ID가 null인 경우는 잠금 전에 503으로 끝나므로 이 설정의 영향을 받지 않는다.
+
+### 10.5 관찰 사항 (결함 아님)
+
+| ID | 내용 |
+|---|---|
+| O-6 | 혼합 사례 테스트가 직접 확인하지 않는 두 가지가 있다. 하나는 NORMAL에 `selection.select`가 호출되지 않는 것이고, 다른 하나는 변경 저장소의 저장이 없는 것이다. 운영 코드상 기존 약정이 있으면 선정 분기로 가지 않는다. 기존 `reuseKeepsStates`가 `verifyNoInteractions(selection)`과 변경 저장 없음을 확인한다. 기대값을 바꿀 필요는 없다. |
+| O-7 | 실제 `WorkSelectionService.select`는 같은 트랜잭션 안에서 같은 공고를 다시 `findOwnedForUpdate`로 잠근다. 같은 트랜잭션의 재잠금은 대기가 없을 것으로 보이지만, select가 mock이라 실제로는 확인하지 않았다. |
+| O-8 | WORK-02 준비(`fixtures.prepare`)는 근로자 요청 잠금을 먼저 잡고, 그 뒤 이번 공고 잠금이 이어진다. 다른 기능(지원 등)과의 전체 잠금 순서 그래프는 이번 범위에서 검토하지 않았다. |
+
+### 10.6 미검증 범위
+
+- 이번 검증은 mock 기반의 호출 순서와 동작 검증이다.
+- 다음은 검증하지 않았다: 실제 MySQL에서 두 트랜잭션이 경합할 때의 동작, 교착 해소, 잠금 시간 초과, 롤백, `findOwnedForUpdate`의 실제 SQL 잠금
+- 이 클래스 하나의 통과는 전체 CI 통과나 운영 환경 검증을 뜻하지 않는다.
+
+### 10.7 변경한 파일
+
+- `farm-api/docs/verification/2026-11-28-change-01-02-cancellation/VERIFICATION_REPORT.md`: 이 10절만 추가했다. 이 파일은 HEAD에 커밋된 상태여서, 이번 추가로 미커밋 수정이 된다.
+- 운영 코드, 테스트 코드, 기대값, 문서는 수정하지 않았다.
+- 커밋·푸시·브랜치 변경은 하지 않았다.
