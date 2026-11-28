@@ -478,6 +478,8 @@ V5는 `platform_work_event`에 `intake_processed_at`, `intake_result`, `intake_n
 | 내 보상 목록 | GET /api/insurance/claims | GET /api/claims |
 | 내 보상 상세 | GET /api/insurance/claims/{claimId} | GET /api/claims/{claimId} |
 
+관리자의 전체 접수 목록·상세·처리 이력 조회와 페이지 규격은 [관리자 접수 조회 API](insurance-api/docs/admin-claim-query.md)를 참고한다.
+
 세션으로 로그인한 근로자 본인의 내역을 제공한다. 목록은 최신 ID 순 배열이며 결과가 없으면 빈 배열이다. 상세는 `claim`에 계약·상품명·근무 ID·상태·접수 경로·시각, `intakeSource`에 최초 접수 원본 변경·사유·발생 시각, `work`에 확정 근무 JSON을 반환한다. 다른 회원의 상세는 404, 잘못된 ID는 400, 미로그인은 401, 관리자 계정은 403으로 응답한다. 보상 건의 시각 필드는 UTC이며 근무 JSON은 원본 오프셋과 작업지 시간대를 보관한다.
 
 개발 웹 경로 검증은 기존 `node scripts/test_insurance_contract_proxy.mjs`에 보상 목록·상세 검사를 추가했다.

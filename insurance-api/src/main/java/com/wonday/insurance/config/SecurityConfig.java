@@ -35,6 +35,7 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.POST, "/api/contracts").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/contracts", "/api/contracts/*").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/claims", "/api/claims/*").hasRole("WORKER")
+				.requestMatchers(HttpMethod.GET, "/api/admin/claims", "/api/admin/claims/*", "/api/admin/claims/*/history").hasRole("ADMIN")
 				.requestMatchers(HttpMethod.GET, "/api/platform/salary-account").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/platform/link").hasRole("WORKER")
 				.requestMatchers(HttpMethod.POST, "/api/platform/link").hasRole("WORKER")
