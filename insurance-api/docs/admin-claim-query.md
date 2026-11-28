@@ -34,6 +34,9 @@ GET /api/admin/claims?status=REVIEWING&memberId=3&limit=20
 현재 자동 접수 상태는 `REVIEWING`이다. 필터는 새로운 승인 상태나 전이 규칙을 정의하지 않으며,
 형식이 유효해도 저장된 접수가 없는 상태 코드는 빈 목록을 반환한다.
 
+목록·이력의 숫자 쿼리가 비숫자이거나 int/Long 변환 범위를 초과해도 400 `INVALID_CLAIM_QUERY`와 고정 메시지를 반환한다.
+예: `limit=abc`, `memberId=not-a-number`, `beforeId=9223372036854775808`. 입력값·변환 예외 원문은 응답에 포함하지 않는다.
+
 접수 ID 내림차순이다. `hasMore=true`이면 `nextBeforeId`를 다음 요청의 `beforeId`로 전달한다.
 다음 페이지에서도 같은 상태·회원 필터를 유지한다. 전체 테이블의 건수 집계는 수행하지 않는다.
 

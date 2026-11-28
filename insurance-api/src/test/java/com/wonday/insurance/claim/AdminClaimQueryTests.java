@@ -214,6 +214,36 @@ class AdminClaimQueryTests {
 		mvc.perform(get(ROOT+"/"+b.id()).session(admin.session())).andExpect(status().isOk());
 	}
 
+	@Test void numericListBindingFailuresHaveTheSameFixedQueryErrorWithoutEchoingInput() throws Exception {
+		for(String[] query:new String[][]{
+			{"limit","abc"},{"limit","1.5"},{"limit","2147483648"},{"limit","-2147483649"},
+			{"memberId","not-a-number"},{"memberId","9223372036854775808"},{"memberId","-9223372036854775809"},
+			{"beforeId","private-input"},{"beforeId","9223372036854775808"},{"beforeId","-9223372036854775809"}}) {
+			String body=mvc.perform(get(ROOT).session(admin.session()).param(query[0],query[1])).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_CLAIM_QUERY"))
+				.andExpect(jsonPath("$.message").value("Invalid claim list query"))
+				.andExpect(header().string("Cache-Control","no-store")).andReturn().getResponse().getContentAsString();
+			assertThat(body).doesNotContain(query[1]);
+		}
+		// 다른 컨트롤러의 숫자 변환 오류까지 관리자 접수 오류 코드로 바꾸지 않는다.
+		String other=mvc.perform(get("/api/admin/weather/collection-jobs").session(admin.session()).param("limit","abc"))
+			.andExpect(status().isBadRequest()).andReturn().getResponse().getContentAsString();
+		assertThat(other).doesNotContain("INVALID_CLAIM_QUERY");
+	}
+
+	@Test void numericHistoryBindingFailuresHaveTheSameFixedQueryErrorWithoutEchoingInput() throws Exception {
+		var claim=claim(one,"REVIEWING");
+		for(String[] query:new String[][]{
+			{"limit","not-a-number"},{"limit","1.5"},{"limit","2147483648"},{"limit","-2147483649"},
+			{"beforeId","private-input"},{"beforeId","9223372036854775808"},{"beforeId","-9223372036854775809"}}) {
+			String body=mvc.perform(get(ROOT+"/"+claim.id()+"/history").session(admin.session()).param(query[0],query[1]))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_CLAIM_QUERY"))
+				.andExpect(jsonPath("$.message").value("Invalid claim list query"))
+				.andExpect(header().string("Cache-Control","no-store")).andReturn().getResponse().getContentAsString();
+			assertThat(body).doesNotContain(query[1]);
+		}
+	}
+
 	@Test void emptyListsAndMissingHistoryAreNotReplacedWithInventedRecords() throws Exception {
 		mvc.perform(get(ROOT).session(admin.session())).andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0))
 			.andExpect(jsonPath("$.hasMore").value(false)).andExpect(jsonPath("$.nextBeforeId").isEmpty());
