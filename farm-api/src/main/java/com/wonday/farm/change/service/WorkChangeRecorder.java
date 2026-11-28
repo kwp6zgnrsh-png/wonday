@@ -2,6 +2,7 @@ package com.wonday.farm.change.service;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -10,8 +11,10 @@ import java.util.Objects;
 
 import com.wonday.farm.change.entity.WorkChange;
 import com.wonday.farm.change.exception.WorkCancellationException;
+import com.wonday.farm.change.exception.WorkEarlyEndException;
 import com.wonday.farm.change.repository.WorkChangeRepository;
 import com.wonday.farm.change.validation.CancellationInput;
+import com.wonday.farm.change.validation.EarlyEndInput;
 import com.wonday.farm.insurance.entity.WorkChangeVersion;
 import com.wonday.farm.insurance.exception.InsuranceApiException;
 import com.wonday.farm.insurance.repository.ChangeStreamRepository;
@@ -28,7 +31,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-// 변경 원본과 보험 조회용 불변 버전을 한 트랜잭션으로 기록한다. 사용자 취소는 시작 전 검증을 포함한 전용 메서드를 사용한다.
+// 변경 원본과 보험 조회용 불변 버전을 한 트랜잭션으로 기록한다.
+// 시작 전 취소는 cancelBeforeStart, 조기 종료는 endWork에서 업무 조건을 검증한다.
 @Service
 public class WorkChangeRecorder {
 	private final MemberRepository members;
@@ -130,6 +134,65 @@ public class WorkChangeRecorder {
 		versions.save(new WorkChangeVersion(ownership.getWorkerId(), stream.nextSequence(), change, assignment.getAgreedTimeZone()));
 		return change.getId();
 	}
+
+	// CHANGE-03: 같은 결과 확인과 신규 조기 종료의 시간 검사를 구분한다.
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public RecordedEarlyEnd endWork(long employerId, long assignmentId, OffsetDateTime actualEndAt,
+			WorkChange.Reason reason, WorkChange.WeatherReason weatherReason, String detail) {
+		if (employerId <= 0 || assignmentId <= 0) throw WorkEarlyEndException.invalid();
+		var input = EarlyEndInput.values(actualEndAt, reason, weatherReason, detail);
+		members.findById(employerId).filter(member -> member.memberRole().orElse(null) == MemberRole.EMPLOYER)
+			.orElseThrow(() -> new AccessDeniedException("Employer role required"));
+		var ownership = assignments.findOwnership(assignmentId).orElseThrow(WorkEarlyEndException::notFound);
+		if (ownership.getEmployerId() != employerId) throw WorkEarlyEndException.notFound();
+
+		// 보험 폴링·사유 보완과 같은 스트림 → 확정 근무 → 변경 행 순서를 유지한다.
+		streams.ensureExists(ownership.getWorkerId());
+		var stream = streams.lockWorker(ownership.getWorkerId()).orElseThrow(WorkEarlyEndException::unavailable);
+		var assignment = assignments.findByIdForUpdate(assignmentId).orElseThrow(WorkEarlyEndException::notFound);
+		if (assignment.getCompletedAtUtc() != null || assignment.getCompletedBy() != null) {
+			throw WorkEarlyEndException.conflict("WORK_ALREADY_COMPLETED", "완료된 근무에는 조기 종료를 기록할 수 없습니다.");
+		}
+		var previous = changes.findForUpdate(assignmentId);
+		if (previous.isPresent()) {
+			var change = previous.get();
+			if (change.getChangeType() == WorkChange.Type.CANCELLED) {
+				throw WorkEarlyEndException.conflict("WORK_ALREADY_CANCELLED", "취소된 근무에는 조기 종료를 기록할 수 없습니다.");
+			}
+			if (change.getEffectiveAt() == null) throw WorkEarlyEndException.unavailable();
+			// 오프셋 표기가 달라도 같은 시점이면 동일 요청이다. 설명은 정규화한 내용으로 비교한다.
+			if (!change.getEffectiveAt().toInstant(ZoneOffset.UTC).equals(input.actualEndAt().toInstant())
+					|| change.getReasonCode() != input.reason() || change.getWeatherReasonCode() != input.weather()
+					|| !Objects.equals(EarlyEndInput.normalizeDetail(change.getReasonDetail()), input.detail())) {
+				throw WorkEarlyEndException.conflict("EARLY_END_CONTENT_CONFLICT",
+					"이미 기록된 조기 종료 내용과 다릅니다. 기존 기록은 변경하지 않습니다.");
+			}
+			// 입력 기한을 지난 동일 재요청에도 최초 ID·시각·버전을 유지한다.
+			return new RecordedEarlyEnd(change, assignment.getAgreedTimeZone());
+		}
+
+		var zone = InsuranceTime.zone(assignment.getAgreedTimeZone());
+		var start = InsuranceTime.local(assignment.getAgreedStartAt(), zone).toInstant();
+		var end = InsuranceTime.local(assignment.getAgreedEndAt(), zone).toInstant();
+		if (!end.isAfter(start)) throw WorkEarlyEndException.unavailable();
+		// 잠금과 상태 검사가 끝난 실제 서버 시각이다. 비교 전에 정밀도를 낮추지 않는다.
+		var instant = clock.instant();
+		if (instant.isBefore(start)) {
+			throw WorkEarlyEndException.conflict("WORK_NOT_STARTED", "약정 근무 시작 시각부터 조기 종료를 기록할 수 있습니다.");
+		}
+		if (instant.isAfter(end.plus(Duration.ofHours(24)))) throw WorkEarlyEndException.deadlinePassed();
+		var effective = input.actualEndAt().toInstant();
+		if (effective.isBefore(start) || !effective.isBefore(end) || effective.isAfter(instant)) {
+			throw WorkEarlyEndException.invalidTime();
+		}
+		var now = LocalDateTime.ofInstant(instant.truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC);
+		var change = changes.saveAndFlush(new WorkChange(assignmentId, employerId, WorkChange.Type.EARLY_ENDED,
+			input.reason(), input.weather(), input.detail(), LocalDateTime.ofInstant(effective, ZoneOffset.UTC), now));
+		versions.save(new WorkChangeVersion(ownership.getWorkerId(), stream.nextSequence(), change, assignment.getAgreedTimeZone()));
+		return new RecordedEarlyEnd(change, assignment.getAgreedTimeZone());
+	}
+
+	public record RecordedEarlyEnd(WorkChange change, String timeZone) {}
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void reviseReason(long actorId, long assignmentId, WorkChange.Reason reason,

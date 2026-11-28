@@ -36,8 +36,10 @@ public class SecurityConfig {
 					auth.requestMatchers(HttpMethod.GET, "/demo/work-applicants").permitAll();
                     auth.requestMatchers(HttpMethod.GET, "/demo/work-selection").permitAll();
                     auth.requestMatchers(HttpMethod.GET, "/demo/work-cancellation").permitAll();
+                    auth.requestMatchers(HttpMethod.GET, "/demo/work-early-end").permitAll();
                     auth.requestMatchers(HttpMethod.GET, "/demo/api/work-selection/fixtures").hasAnyRole("EMPLOYER", "WORKER");
                     auth.requestMatchers(HttpMethod.POST, "/demo/api/work-selection/fixtures").hasAnyRole("EMPLOYER", "WORKER");
+                    auth.requestMatchers(HttpMethod.POST, "/demo/api/work-early-end/fixtures").hasRole("EMPLOYER");
 					auth.requestMatchers(HttpMethod.POST, "/demo/api/work-applicants/fixtures").hasRole("EMPLOYER");
                     auth.requestMatchers(HttpMethod.POST, "/demo/api/work-cancellation/fixtures").hasRole("EMPLOYER");
 					auth.requestMatchers(HttpMethod.POST, "/demo/api/my-applications/fixtures").hasRole("WORKER");
@@ -63,6 +65,8 @@ public class SecurityConfig {
 					// 가입 전에도 요청할 수 있지만 기존 CSRF 검사는 그대로 적용한다.
 					.requestMatchers(HttpMethod.POST, "/api/auth/signup").permitAll()
 					.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("EMPLOYER", "WORKER")
+					// 조기 종료는 고용주 세션과 기존 CSRF 보호를 사용한다.
+					.requestMatchers(HttpMethod.POST, "/api/work-assignments/*/early-end").hasRole("EMPLOYER")
 					// 정식 내 지원 조회는 demo 프로필과 무관하게 근로자 본인 세션을 사용한다.
 					.requestMatchers(HttpMethod.GET, "/api/me/applications", "/api/me/applications/*",
 						"/api/me/applications/*/history").hasRole("WORKER")
@@ -169,6 +173,14 @@ public class SecurityConfig {
 						response.setHeader("Cache-Control", "no-store");
 						response.setContentType("application/json;charset=UTF-8");
 						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 근무를 완료할 수 있습니다.\"}");
+					} else if (request.getMethod().equals("POST")
+							&& (request.getServletPath().matches("/api/work-assignments/[^/]+/early-end")
+								|| request.getServletPath().equals("/demo/api/work-early-end/fixtures"))
+							&& !(exception instanceof CsrfException)) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setHeader("Cache-Control", "no-store");
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 본인 공고의 조기 종료를 기록할 수 있습니다.\"}");
 					} else if (request.getServletPath().equals("/api/job-postings")
 							&& request.getMethod().equals("POST") && !(exception instanceof CsrfException)) {
 						response.setStatus(HttpStatus.FORBIDDEN.value());

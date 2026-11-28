@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,12 +37,23 @@ class WorkCancellationDemoPageTest {
 	@Test
 	@DisplayName("로그인 메뉴: 취소 링크 기본 숨김, 고용주일 때만 표시")
 	void loginLink() throws Exception {
-		assertThat(resource("farm-login.html")).contains(
+		String html = resource("farm-login.html");
+		assertThat(html).contains(
 			"<a href=\"/demo/work-cancellation\" id=\"cancellation-link\" hidden>",
-			"document.querySelector('#cancellation-link').hidden = account.role !== 'EMPLOYER';",
-			"#selection-link, #cancellation-link {");
-	}
+			"document.querySelector('#cancellation-link').hidden = account.role !== 'EMPLOYER';");
 
+		// style 안의 display: block 규칙에서 선택자를 분리해 메뉴 순서와 무관하게 확인한다.
+		Matcher style = Pattern.compile("<style\\b[^>]*>(.*?)</style>", Pattern.DOTALL).matcher(html);
+		assertThat(style.find()).as("로그인 화면의 CSS 영역").isTrue();
+		Pattern blockDisplay = Pattern.compile("(?:^|;)\\s*display\\s*:\\s*block\\s*(?:;|$)");
+		Matcher rules = Pattern.compile("([^{}]+)\\{([^{}]*)\\}").matcher(style.group(1));
+		var selectors = rules.results()
+			.filter(rule -> blockDisplay.matcher(rule.group(2)).find())
+			.flatMap(rule -> Arrays.stream(rule.group(1).split(",")))
+			.map(String::strip)
+			.toList();
+		assertThat(selectors).as("메뉴 표시 CSS 규칙의 선택자 집합").contains("#cancellation-link");
+	}
 	@Test
 	@DisplayName("SecurityConfig 선언: 화면 permitAll·준비 EMPLOYER는 farm-demo 블록, 정식 취소 POST EMPLOYER, 403 JSON 분기")
 	void security() throws Exception {
