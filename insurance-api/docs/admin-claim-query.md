@@ -16,7 +16,7 @@
 | 접수 상세 | `GET /api/admin/claims/{claimId}` | `GET /api/insurance/admin/claims/{claimId}` |
 | 처리 이력 | `GET /api/admin/claims/{claimId}/history` | `GET /api/insurance/admin/claims/{claimId}/history` |
 
-GET만 제공한다. 승인·반려 등을 위한 POST·PATCH 경로는 제공하지 않는다.
+목록·상세·이력은 GET만 제공한다. 관측소 최초 선정 POST는 [별도 규격](claim-weather-station.md)을 따른다. 승인·반려 등을 위한 POST·PATCH 경로는 제공하지 않는다.
 
 ## 목록·페이지 조회
 
@@ -64,13 +64,14 @@ GET /api/admin/claims?status=REVIEWING&memberId=3&limit=20
 
 ## 상세 응답
 
-`GET /api/admin/claims/101`은 아래 네 객체를 반환한다.
+`GET /api/admin/claims/101`은 아래 객체를 반환한다.
 
 | 객체 | 필드 |
 |---|---|
 | `claim` | 목록의 접수 요약과 동일 |
 | `contract` | `id`, `productVersionId`, `productCode`, `productName`, `productVersionNo`, `status`, `acceptedAt`, `coverageFrom`, `coverageTo`, `termsText` |
 | `intakeSource` | `eventId`, `changeId`, `sourceVersion`, `changeType`, `reasonCode`, `weatherReasonCode`, `reasonDetail`, `occurredAt`, `sourceUpdatedAt`, `receivedAt` |
+| `weatherStation` | 선정된 관측소·거리·규칙·선정 시각. 미선정은 null. [선정 규격](claim-weather-station.md) 참고 |
 | `work` | `assignmentId`, `workerId`, `confirmedAt`, `agreedWorkDate`, `agreedTimeZone`, `agreedWorkLocation`, `agreedCropCode`, `agreedWorkTypeCode`, `agreedStartAt`, `agreedEndAt`, `agreedBreakStartAt`, `agreedBreakEndAt`, `agreedDailyWage`, `agreedLatitude`, `agreedLongitude` |
 
 - 접수의 최초 `trigger_event_id`와 `claim_case.work_snapshot`을 기준으로 읽는다. 나중에 받은 변경 버전으로 바꾸지 않는다.

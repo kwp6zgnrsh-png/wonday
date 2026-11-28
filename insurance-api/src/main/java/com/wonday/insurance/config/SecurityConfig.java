@@ -28,7 +28,7 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.GET, "/api/auth/me").hasAnyRole("WORKER", "ADMIN")
 				.requestMatchers(HttpMethod.GET, "/api/weather/stations", "/api/weather/stations/nearest").hasAnyRole("WORKER", "ADMIN")
 				.requestMatchers(HttpMethod.GET, "/api/admin/weather/collections", "/api/admin/weather/collections/*").hasRole("ADMIN")
-				.requestMatchers(HttpMethod.POST, "/api/admin/weather/collections", "/api/admin/weather/stations/sync").hasRole("ADMIN")
+				.requestMatchers(HttpMethod.POST, "/api/admin/weather/collections").hasRole("ADMIN")
 				.requestMatchers(HttpMethod.GET, "/api/admin/weather/collection-jobs", "/api/admin/weather/collection-jobs/*",
 					"/api/admin/weather/collection-jobs/*/attempts").hasRole("ADMIN")
 				.requestMatchers(HttpMethod.POST, "/api/admin/weather/collection-jobs/*/retry").hasRole("ADMIN")
@@ -36,6 +36,8 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.GET, "/api/contracts", "/api/contracts/*").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/claims", "/api/claims/*").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/admin/claims", "/api/admin/claims/*", "/api/admin/claims/*/history").hasRole("ADMIN")
+				.requestMatchers(HttpMethod.GET, "/api/admin/claims/*/weather-station").hasRole("ADMIN")
+				.requestMatchers(HttpMethod.POST, "/api/admin/claims/*/weather-station").hasRole("ADMIN")
 				.requestMatchers(HttpMethod.GET, "/api/platform/salary-account").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/platform/link").hasRole("WORKER")
 				.requestMatchers(HttpMethod.POST, "/api/platform/link").hasRole("WORKER")

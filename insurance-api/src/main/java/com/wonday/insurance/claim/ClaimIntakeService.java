@@ -22,6 +22,7 @@ class ClaimIntakeService {
 	private final ContractClaimCatalog contracts;
 	private final ClaimRepository claims;
 	private final ClaimHistoryRepository history;
+	private final ClaimWeatherStationService stationSelections;
 	private final Clock clock;
 
 	@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
@@ -52,6 +53,8 @@ class ClaimIntakeService {
 			ClaimCase claim = claims.saveAndFlush(new ClaimCase(contractId, event.assignmentId(), eventId, work.snapshot(), now));
 			// flush는 커밋이 아니다. 이력 저장이 실패하면 앞서 저장한 접수도 함께 롤백된다.
 			history.saveAndFlush(new ClaimHistory(claim.getId(), now));
+			// 접수·이력·관측소 선정을 함께 확정한다. DB 오류/카탈로그 누락은 롤백되어 기존 접수 재시도 경로를 따른다.
+			stationSelections.selectForIntake(claim);
 			created++;
 		}
 		return finish(eventId, created > 0 ? "RECEIVED" : "ALREADY_RECEIVED");

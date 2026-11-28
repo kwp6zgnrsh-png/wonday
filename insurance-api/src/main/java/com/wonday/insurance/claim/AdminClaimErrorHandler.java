@@ -8,6 +8,10 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice(assignableTypes = AdminClaimApi.class)
 class AdminClaimErrorHandler {
+	@ExceptionHandler(com.wonday.insurance.weather.WeatherException.class)
+	ResponseEntity<Error> weatherFailed(com.wonday.insurance.weather.WeatherException error) {
+		return ResponseEntity.status(error.getStatus()).cacheControl(CacheControl.noStore()).body(new Error(error.getCode(),error.getMessage()));
+	}
 	@ExceptionHandler(AdminClaimQueryException.class)
 	ResponseEntity<Error> failed(AdminClaimQueryException error) {
 		return ResponseEntity.status(error.getStatus()).cacheControl(CacheControl.noStore()).body(new Error(error.getCode(),error.getMessage()));

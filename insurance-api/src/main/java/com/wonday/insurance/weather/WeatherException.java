@@ -4,7 +4,7 @@ import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
 @Getter
-class WeatherException extends RuntimeException {
+public class WeatherException extends RuntimeException {
 	private final HttpStatus status;
 	private final String code;
 	private final Long jobId;
