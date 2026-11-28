@@ -303,11 +303,21 @@ farm-demo의 `/demo/work-selection` 화면은 실제 사용자 API와 자동 CSR
 상태별 시연 데이터 준비와 역할 전환 절차는 [demo 안내](docs/work-selection-demo.md)에 정리했다.
 
 
+## CHANGE-01·02 시작 전 개인별 취소
+
+고용주 본인 확정 근무의 `POST /api/work-assignments/{assignmentId}/cancellation`을 추가했다. 최초·동일 내용 재요청은 200이며, 이미 취소된 근무는 시작 시각 이후에도 같은 결과를 반환한다. 신규 취소는 약정 시작 전만 허용하고 기존 변경 원본과 보험 조회용 버전을 함께 저장한다. 설명은 앞뒤 공백 제거 후 빈 값을 null로 통일하고 유니코드 코드 포인트 500개를 넘으면 400이다.
+
+[farm-demo 시연 데이터 준비와 API 규격](docs/change-01-02-work-cancellation-api.md)을 참고한다. 기존 마이그레이션·약정·업무 이력은 변경하지 않는다. 테스트 실행·실제 DB 적용·서버 상호 호출 검증은 이번 작업에서 수행하지 않았다.
+
+
+farm-demo의 `/demo/work-cancellation`에서 「취소 시연 데이터 준비」 → 사례 선택 → 「취소 요청 보내기」 → 동일 재요청 200 → 다른 사유 409를 확인할 수 있다. 로그인 화면의 고용주 메뉴에 링크를 추가했다. CSRF는 자동 처리하고 변경 ID·버전·시각 유지 여부와 별도 DB 상태 조회 결과를 표시한다. 자세한 클릭 순서는 [CHANGE-01·02 문서](docs/change-01-02-work-cancellation-api.md)의 farm-demo 간이 화면 확인 순서를 참고한다.
+
+
 ## CHANGE-03 개인별 조기 종료
 
 `POST /api/work-assignments/{assignmentId}/early-end`는 고용주 본인 확정 근무의 실제 종료 시각·사유를 기록한다. 최초·같은 내용 재요청은 200이며, 기존 결과는 입력 기한 이후에도 유지한다. 신규 입력은 약정 시작 시각부터, 실제 종료는 시작 이상·종료 미만·미래 불가, 입력은 약정 종료 + 24시간까지 허용한다. 기한 초과는 문의 안내와 409를 반환하며 정상 완료로 자동 전환하지 않는다.
 
-[규격·재요청·시연 데이터·검증 범위](docs/change-03-work-early-end-api.md)를 참고한다. `farm-demo`에서는 `/demo/api/work-early-end/fixtures`로 즉시 확인할 가상 확정 근무를 준비할 수 있다. work-early-end는 취소 테스트와 분리한 main 기준 작업이며 취소의 미커밋 파일을 포함하지 않는다. 새 마이그레이션·테스트 실행·커밋·푸시는 수행하지 않았다.
+[규격·재요청·시연 데이터·검증 범위](docs/change-03-work-early-end-api.md)를 참고한다. `farm-demo`에서는 `/demo/api/work-early-end/fixtures`로 즉시 확인할 가상 확정 근무를 준비할 수 있다. 시작 전 취소 API와 함께 제공하며 새 마이그레이션은 추가하지 않는다. 선택 단위 테스트의 결과와 미검증 범위는 [검증 보고서](docs/verification/2026-11-28-change-03-early-end/VERIFICATION_REPORT.md)를 참고한다.
 
 
 farm-demo의 `/demo/work-early-end`에서 시연 데이터 준비·달력/시간 선택·최초 기록 200·동일 재요청 200·다른 사유/종료 시각 409·입력 기한 초과 문의 안내를 확인할 수 있다. CSRF와 기본 전송 시각은 자동 처리하고 변경 ID·버전·시각 비교와 별도 저장 상태를 표시한다. 로그인 화면의 고용주 메뉴에 링크를 추가했다. 자세한 버튼 순서는 [CHANGE-03 문서](docs/change-03-work-early-end-api.md)를 참고한다.

@@ -35,11 +35,13 @@ public class SecurityConfig {
 					auth.requestMatchers(HttpMethod.GET, "/demo/my-applications").permitAll();
 					auth.requestMatchers(HttpMethod.GET, "/demo/work-applicants").permitAll();
                     auth.requestMatchers(HttpMethod.GET, "/demo/work-selection").permitAll();
+                    auth.requestMatchers(HttpMethod.GET, "/demo/work-cancellation").permitAll();
                     auth.requestMatchers(HttpMethod.GET, "/demo/work-early-end").permitAll();
                     auth.requestMatchers(HttpMethod.GET, "/demo/api/work-selection/fixtures").hasAnyRole("EMPLOYER", "WORKER");
                     auth.requestMatchers(HttpMethod.POST, "/demo/api/work-selection/fixtures").hasAnyRole("EMPLOYER", "WORKER");
                     auth.requestMatchers(HttpMethod.POST, "/demo/api/work-early-end/fixtures").hasRole("EMPLOYER");
 					auth.requestMatchers(HttpMethod.POST, "/demo/api/work-applicants/fixtures").hasRole("EMPLOYER");
+                    auth.requestMatchers(HttpMethod.POST, "/demo/api/work-cancellation/fixtures").hasRole("EMPLOYER");
 					auth.requestMatchers(HttpMethod.POST, "/demo/api/my-applications/fixtures").hasRole("WORKER");
 					auth.requestMatchers(HttpMethod.GET, "/demo/api/applications/postings/*/history").hasRole("WORKER");
 					auth.requestMatchers(HttpMethod.POST, "/demo/api/applications/fixtures").hasRole("WORKER");
@@ -74,6 +76,8 @@ public class SecurityConfig {
 					.requestMatchers(HttpMethod.DELETE, "/api/me/salary-account").hasRole("WORKER")
 					// 근무 완료는 고용주 세션과 기존 CSRF 검사를 함께 사용한다.
 					.requestMatchers(HttpMethod.POST, "/api/work-assignments/*/completion").hasRole("EMPLOYER")
+					// 개인별 시작 전 취소도 고용주 세션과 기존 CSRF 보호를 사용한다.
+					.requestMatchers(HttpMethod.POST, "/api/work-assignments/*/cancellation").hasRole("EMPLOYER")
 					// 날짜별 지원은 근로자 세션과 기존 CSRF 검사를 사용한다.
 					.requestMatchers(HttpMethod.POST, "/api/job-postings/*/applications").hasRole("WORKER")
 					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
@@ -156,6 +160,13 @@ public class SecurityConfig {
 						response.setHeader("Cache-Control", "no-store");
 						response.setContentType("application/json;charset=UTF-8");
 						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 본인 공고의 확정 근무만 조회할 수 있습니다.\"}");
+                    } else if ((request.getServletPath().matches("/api/work-assignments/[^/]+/cancellation")
+                                || request.getServletPath().equals("/demo/api/work-cancellation/fixtures"))
+                            && request.getMethod().equals("POST") && !(exception instanceof CsrfException)) {
+                        response.setStatus(HttpStatus.FORBIDDEN.value());
+                        response.setHeader("Cache-Control", "no-store");
+                        response.setContentType("application/json;charset=UTF-8");
+                        response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 계정만 본인 공고의 확정 근무를 취소할 수 있습니다.\"}");
 					} else if (request.getServletPath().matches("/api/work-assignments/[^/]+/completion")
 							&& request.getMethod().equals("POST") && !(exception instanceof CsrfException)) {
 						response.setStatus(HttpStatus.FORBIDDEN.value());
