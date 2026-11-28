@@ -124,11 +124,13 @@ function page() {
   get('postings').replaceChildren(Option('공고 선택', '')); get('dates').replaceChildren(Option('날짜 선택', ''));
   get('filter').value = 'PENDING'; get('limit').value = '20';
   const server = fakeServer();
-  const calls = [], overrides = [], held = [], windowListeners = {};
+  const calls = [], overrides = [], held = [], windowListeners = {}, documentListeners = {};
+  let focused = true, visible = true;
   const respond = spec => ({ ok: spec.status >= 200 && spec.status < 300, status: spec.status,
     json: async () => { if (spec.body === undefined) throw new SyntaxError('no json'); return JSON.parse(JSON.stringify(spec.body)); } });
   const context = {
-    document: { getElementById: get, createElement: tag => new El(tag), write: () => forbidden.push('document.write'),
+    document: { hasFocus: () => focused, get visibilityState() { return visible ? 'visible' : 'hidden'; },
+      addEventListener(type, fn) { (documentListeners[type] ??= []).push(fn); }, getElementById: get, createElement: tag => new El(tag), write: () => forbidden.push('document.write'),
       get cookie() { forbidden.push('document.cookie'); return ''; } },
     window: { addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); }, location: { search: '' } },
     Option, AbortController, URLSearchParams,
@@ -150,7 +152,9 @@ function page() {
     once(match, reply) { overrides.push({ match: typeof match === 'string' ? (url => url === match) : match, reply }); },
     show: async () => { windowListeners.pageshow.forEach(fn => fn()); await settle(); },
     hide: async () => { windowListeners.pagehide.forEach(fn => fn()); await settle(); },
-    blur: () => windowListeners.blur.forEach(fn => fn()),
+    blur: () => { focused = false; windowListeners.blur.forEach(fn => fn()); },
+    focus: () => { focused = true; },
+    visibility: value => { visible = value; (documentListeners.visibilitychange ?? []).forEach(fn => fn()); },
     click: async id => { get(id).fire('click'); await settle(); },
     press: async b => { b.fire('click'); await settle(); },
     submit: async id => { get(id).fire('submit'); await settle(); },
@@ -355,15 +359,90 @@ test('늦은 응답: 연락처 대기 중 계정이 바뀌면 이전 계정 번�
   assert.equal(q.els.account.textContent, '고용주 로그인을 다시 확인해 주세요.');
 });
 
-test('[관찰] 연락처 응답 대기 중 창 포커스가 이탈하면, 이탈 뒤 도착한 응답의 전체 번호는 표시된다', async () => {
+test('연락처 응답 대기 중 blur 후 도착한 번호는 표시하지 않음; 포커스를 다시 얻어도 이전 요청은 무효', async () => {
+  for (const refocus of [false, true]) {
+    const p = await listed();
+    p.once(BASE + '/501/contact', 'hold');
+    await p.press(p.rowButton(501, '연락처 보기'));
+    p.blur();
+    if (refocus) p.focus();
+    p.held[0].resolve();
+    await settle();
+    assert.ok(!Object.values(p.els).some(e => e.allText.includes(PHONE)));
+  }
+});
+
+test('연락처 응답 뒤 계정 재확인 대기 중 blur가 발생해도 전체 번호를 표시하지 않음', async () => {
+  const p = await listed();
+  p.once(BASE + '/501/contact', 'hold');
+  await p.press(p.rowButton(501, '연락처 보기'));
+  p.once('/api/auth/me', 'hold');
+  p.held[0].resolve();
+  await settle();
+  assert.equal(p.held.length, 2);
+  p.blur();
+  p.held[1].resolve();
+  await settle();
+  assert.ok(!Object.values(p.els).some(e => e.allText.includes(PHONE)));
+});
+
+test('비활성 화면에서는 연락처 GET을 시작하지 않으며, 다시 포커스를 얻은 후 새 클릭만 표시 허용', async () => {
+  const p = await listed();
+  p.blur();
+  const before = p.calls.filter(c => c.url.endsWith('/contact')).length;
+  await p.press(p.rowButton(501, '연락처 보기'));
+  assert.equal(p.calls.filter(c => c.url.endsWith('/contact')).length, before);
+  assert.ok(!Object.values(p.els).some(e => e.allText.includes(PHONE)));
+  p.focus();
+  await p.press(p.rowButton(501, '연락처 보기'));
+  assert.match(p.els['contact-note'].textContent, new RegExp(PHONE));
+});
+
+test('탭이 숨겨진 뒤 도착한 연락처 응답은 표시하지 않으며, visible 복귀만으로 되살리지 않음', async () => {
+  const p = await listed();
+  p.once(BASE + '/501/contact', 'hold');
+  await p.press(p.rowButton(501, '연락처 보기'));
+  p.visibility(false);
+  p.visibility(true);
+  p.held[0].resolve();
+  await settle();
+  assert.ok(!Object.values(p.els).some(e => e.allText.includes(PHONE)));
+});
+
+// ---- 재검증 보강(검증자 추가, 2026-11-28 p3 재검증) ----
+test('[재검증 보강] 지연 응답 무효화 후 포커스 복귀 → 사용자가 새로 누른 요청은 정상 표시, 저장소·콘솔 접근 없음', async () => {
   const p = await listed();
   p.once(BASE + '/501/contact', 'hold');
   await p.press(p.rowButton(501, '연락처 보기'));
   p.blur();
+  p.focus();
   p.held[0].resolve();
   await settle();
-  // 현재 구현 동작 기록(결함 판정 아님): blur는 이미 표시된 번호만 지우고 대기 중 요청은 취소하지 않는다.
-  assert.match(p.els['contact-note'].textContent, new RegExp(PHONE));
+  assert.equal(p.calls.filter(c => c.url.endsWith('/contact')).length, 1);
+  assert.equal(p.els['contact-note'].textContent, '전체 연락처 조회 전');
+  assert.ok(!Object.values(p.els).some(e => e.allText.includes(PHONE)));
+  await p.press(p.rowButton(501, '연락처 보기'));
+  assert.equal(p.calls.filter(c => c.url.endsWith('/contact')).length, 2);
+  assert.equal(p.els['contact-note'].textContent, '시연 근로자 501 · 지원 #501\n' + PHONE);
+  assert.ok(!p.textExcept(['contact-note']).includes(PHONE));
+  assert.deepEqual(p.forbidden, []);
+});
+
+test('[재검증 보강] 클릭 직후 run의 계정 확인(/me) 대기 중 blur·탭 숨김 → 포커스·표시 복귀만으로 그 클릭의 번호를 표시하지 않음', async () => {
+  const leaked = [];
+  for (const leave of ['blur', 'hidden']) {
+    const p = await listed();
+    p.once('/api/auth/me', 'hold');
+    await p.press(p.rowButton(501, '연락처 보기'));
+    assert.equal(p.held.length, 1, leave);
+    assert.equal(p.calls.filter(c => c.url.endsWith('/contact')).length, 0, leave);
+    if (leave === 'blur') { p.blur(); p.focus(); } else { p.visibility(false); p.visibility(true); }
+    p.held[0].resolve();
+    await settle();
+    if (Object.values(p.els).some(e => e.allText.includes(PHONE)))
+      leaked.push(leave + ': 연락처 GET ' + p.calls.filter(c => c.url.endsWith('/contact')).length + '회, contact-note=' + JSON.stringify(p.els['contact-note'].textContent));
+  }
+  assert.deepEqual(leaked, [], '이탈 전 클릭의 번호가 복귀 뒤 표시됨');
 });
 
 test('시연 준비: 버튼을 눌렀을 때만 CSRF 조회 → 계정 확인 → POST(CSRF 헤더만) → 계정 확인 → 내 공고·첫 날짜 PENDING 20명 조회', async () => {

@@ -321,3 +321,154 @@ farm-api/src/test/java/com/wonday/farm/demo/applicant/WorkApplicantsDemoPageTest
 farm-api/docs/verification/2026-11-28-work-01-applicants/work-applicants-page.test.mjs
 farm-api/docs/verification/2026-11-28-work-01-applicants/VERIFICATION_REPORT.md
 ```
+
+
+## 10. PR 리뷰 p3 보완 — 재검증 전
+
+위 통과 수치는 보완 전 실행 기록이다. 이후 WORK-01 PR 리뷰에 따라 아래를 수정했다.
+- 연락처 요청에 별도 유효성 번호를 부여하고 blur·탭 숨김·화면 초기화 시 증가시킨다.
+- 요청 시작 시 비활성 화면을 차단하고, 응답 뒤 계정 재확인까지 끝난 표시 직전에 번호·포커스·탭 상태를 검사한다.
+- 포커스 복귀만으로 이전 응답의 표시 권한을 되살리지 않는다.
+- P-1 관찰 테스트를 제거하고 지연 응답·계정 재확인 중 blur·비활성 요청·탭 숨김의 회귀 테스트로 교체했다.
+- 이번 보완 후 테스트는 실행하지 않았다. 이전 165/22 통과 기록을 보완 후 결과로 해석하지 않는다.
+
+## 11. PR 리뷰 p3 보완 — 재검증 결과 (2026-11-28, 검증자)
+
+> 이 절은 보완 후 별도 실행 기록이다. 1~9절의 보완 전 Java 165/165·화면 22/22 통과와 합산하지 않는다.
+> Java·Gradle(`unitTest` 포함)·통합 테스트는 이번에 실행하지 않았다. 실제 브라우저 검증이 아니다.
+
+### 11.1 확인한 상태
+- 브랜치 `work-applicants`, HEAD `009b613`, 저장소·farm-api 모두 AGENTS.md 없음.
+- 보완 diff는 세 파일(`farm-work-applicants.html`, `work-applicants-page.test.mjs`, 이 보고서)에만 있음. `work-selection` worktree는 건드리지 않음.
+- 보완 내용(diff 확인): `contactSequence` 증가(`clearContact` — blur·`visibilitychange` hidden·화면 초기화·`run` 시작 시), `loadContact` 시작 시 `document.hasFocus()`·`visibilityState` 검사, `call`(연락처 GET + `/me` 재확인) 완료 뒤 번호·포커스·탭 상태 재검사.
+- 진단창·요청 기록은 `showReply`가 연락처 `phone`을 `[연락처 영역에서만 표시]`로 바꿔 기록함(보완 전과 동일).
+
+### 11.2 실행 명령 (Node만)
+```
+cd C:\Users\HCB\Desktop\wonday\farm-api
+node --test ./docs/verification/2026-11-28-work-01-applicants/work-applicants-page.test.mjs
+```
+Node v26.13.1.
+
+| 실행 | 대상 | tests | pass | fail | skipped |
+|---|---|---:|---:|---:|---:|
+| 1차 | 작성자 보완본 그대로 | 25 | 25 | 0 | 0 |
+| 최종 | 검증자 보강 2건 추가 후 | 27 | 26 | **1** | 0 |
+
+- 25 = 기존 22 − P-1 관찰 1 + 작성자 회귀 4.
+- 보조 확인: 보완 **전** HTML(HEAD 원본)을 scratchpad 사본에 두고 같은 27개를 돌리면 작성자 회귀 4건과 검증자 보강 2건 모두 실패(21/27). 작성자 회귀 테스트가 원래 문제를 실제로 잡는다는 뜻이며, 정식 결과에는 넣지 않는다.
+
+### 11.3 요청 항목별 결과 (가짜 DOM·가짜 fetch)
+| # | 항목 | 결과 | 테스트 |
+|---|---|---|---|
+| 1 | 연락처 응답 대기 → blur → 응답 도착 시 번호 미표시 | 통과 | 작성자 `연락처 응답 대기 중 blur 후…` |
+| 2 | blur 후 focus 복귀해도 이전 응답 번호 미표시 | 응답 대기 중 이탈은 통과 / **클릭 직후 `/me` 대기 중 이탈은 실패(11.4)** | 같은 테스트(refocus) · 검증자 보강 2 |
+| 3 | 연락처 응답 뒤 `/me` 대기 중 blur → 미표시 | 통과 | 작성자 `연락처 응답 뒤 계정 재확인…` |
+| 4 | 비활성 화면에서 연락처 GET 미시작 | 통과 | 작성자 `비활성 화면에서는…` |
+| 5 | 포커스 복귀 후 새 클릭은 정상 표시 | 통과(비활성 클릭 후·지연 응답 무효화 후 두 경우) | 작성자 4번 테스트 · 검증자 보강 1 |
+| 6 | 탭 숨김 → 표시 → 지연 응답, 번호 미부활 | 통과 | 작성자 `탭이 숨겨진 뒤…` |
+| 7 | 정상 조회·권한 거부·계정 전환·화면 이탈 등 기존 회귀 | 통과(기존 21건 모두) | 기존 테스트 |
+| 8 | 진단창·요청 기록·브라우저 저장소에 번호 없음 | 통과 | 새 시나리오는 모든 요소 텍스트 검사, 검증자 보강 1은 `textExcept`·`forbidden=[]` 추가 |
+
+### 11.4 발견한 결함 (재현 테스트 실패 유지, 기대값 낮추지 않음)
+**D-1. 클릭 직후 계정 확인(`/me`) 대기 중 blur·탭 숨김이 일어나고 응답 전에 복귀하면, 이탈 전 클릭의 전체 번호가 표시된다.**
+
+재현 테스트: `[재검증 보강] 클릭 직후 run의 계정 확인(/me) 대기 중 blur·탭 숨김 → …` (blur·hidden 두 경우 모두 실패)
+1. 명단 조회 후 `/api/auth/me` 응답을 보류한 채 501 `연락처 보기` 클릭 → 이 시점 연락처 GET 0회.
+2. blur → focus (또는 hidden → visible).
+3. `/me` 응답 도착.
+4. 결과: 연락처 GET 1회가 나가고 `contact-note`에 `시연 근로자 501 · 지원 #501\n01000001001` 표시.
+
+원인: `run`이 `clearContact()` → `requireEmployer`(/me) → `action` 순서로 동작하고, `loadContact`가 시작할 때 다시 `clearContact()`(번호 증가) 후 `requestSequence`를 잡는다. 그래서 `/me` 대기 중 이탈로 올라간 번호가 이 시점에 새 기준으로 덮이고, 그때 포커스·탭이 이미 복귀해 있으면 `contactIsActive()`도 통과한다. 즉 "포커스 복귀만으로 이전 요청의 표시 권한을 복구하지 않는다"가 연락처 GET 시작 전 구간에서는 지켜지지 않는다.
+- 영향: 표시는 복귀(포커스 있음) 상태에서만 일어나므로 비활성 화면 노출은 아니다. 다만 이탈 전 클릭이 복귀 후 새 클릭 없이 번호를 띄운다.
+- 수정 방향(참고, 운영 코드는 고치지 않음): 클릭(`run` 진입) 시점의 번호를 `loadContact`에 전달해 GET 전·후에 비교하거나, `loadContact` 안에서 번호를 다시 올리지 않는 방식.
+
+### 11.5 그 밖의 관찰
+- O-1: 무효화된 응답은 아무 안내 없이 버려지고 `contact-note`는 `전체 연락처 조회 전`으로 남는다. 다시 누르라는 안내는 비활성 상태에서 시작한 경우에만 나온다(UX 확인 권장, 결함 아님).
+- O-2: 무효화돼도 연락처 GET·`/me`는 이미 서버에 나갔고, 진단창·요청 기록에는 마스킹된 응답이 남는다(번호 없음 확인).
+
+### 11.6 한계
+- `document.hasFocus()`·`visibilityState`·blur·`visibilitychange`는 테스트의 가짜 객체가 흉내 낸 것이다. 실제 브라우저의 이벤트 순서(blur와 visibilitychange의 선후, 개발자 도구 포커스, 모바일 백그라운드 전환, bfcache)는 확인하지 않았다.
+- 서버·세션·CSRF·Security 체인·DB는 없다. 연락처 응답은 가짜 서버 값이다.
+
+### 11.7 이번 재검증 변경 파일
+- `docs/verification/2026-11-28-work-01-applicants/work-applicants-page.test.mjs`: 검증자 보강 테스트 2건 추가(기존·작성자 테스트 수정 없음).
+- `docs/verification/2026-11-28-work-01-applicants/VERIFICATION_REPORT.md`: 이 11절 추가(10절 포함 기존 내용 수정 없음).
+- 운영 코드(`farm-work-applicants.html`)·Java·Gradle은 수정하지 않음. 커밋·푸시 없음.
+
+
+## 클릭 직후 로그인 확인 대기 구간 D-1 보완 — 재검증 전
+
+- 원래 work-applicants 재검증의 27개 중 1개 실패 기록을 바탕으로 초기 /me 대기 구간을 보완했다.
+- 연락처 표시용 contactSequence와 별개로 포커스 이탈 전용 contactFocusSequence를 추가했다.
+- run 진입에서 첫 await 이전에 포커스 기준과 활성 상태를 고정한다.
+- blur·탭 숨김은 포커스 번호를 증가시키며, 복귀나 loadContact 내부 초기화로 이 기준을 재설정하지 않는다.
+- 연락처 GET 전과 응답 뒤 계정 확인 완료 후에 클릭 당시 기준을 모두 검사한다.
+- 사례 버튼이 명단을 초기화하는 정상 동작은 포커스 이탈로 취급하지 않는다.
+- 기존 실패 테스트의 기대값은 변경하지 않았다. 검증자 보강 두 테스트를 work-selection에도 보존했다.
+- 이번 보완은 스크립트 문법만 확인하고 테스트는 실행하지 않는다. 기존 실행 결과를 이번 보완의 통과 결과로 사용하지 않는다.
+
+## 12. D-1(클릭 직후 포커스 이탈) 보완 — 2차 재검증 결과 (2026-11-28, 검증자)
+
+> 이 절은 D-1 보완 후 따로 실행한 기록이다. 1~9절의 보완 전 Java 165/165·화면 22/22, 11절의 25/25·26/27 결과와 합산하지 않는다.
+> Java·Gradle(`unitTest` 포함)·통합 테스트는 이번에 실행하지 않았다. 실제 브라우저·Security 체인·DB 검증이 아니다.
+
+### 12.1 상태
+- 브랜치 `work-applicants`, HEAD `009b613`(변경 없음), AGENTS.md 없음(저장소·farm-api 모두).
+- 미커밋 변경은 세 파일(`farm-work-applicants.html`, `work-applicants-page.test.mjs`, 이 보고서)뿐이다. `work-selection` worktree는 건드리지 않았다.
+- 운영 HTML 해시: 11절 실행 때 `35b057d3…` → 이번 실행 때 `c07109bb…`(작성자 보완 반영).
+- 테스트 파일은 11절 이후 바뀌지 않았다. 선언 27개, 검증자 보강 2건도 그대로이고, 기대값 변경·제외·건너뜀은 없다.
+
+### 12.2 소스 대조 (`farm-work-applicants.html`)
+- `contactSequence`(화면 정리)와 `contactFocusSequence`(포커스 이탈)를 분리했다. `invalidateContactFocus`는 blur와 `visibilitychange`(hidden)에서만 불린다.
+- `run`은 첫 `await`(`requireEmployer`) 전에 같은 동기 구간에서 `context.contactFocusSequence`와 `contactStartedActive=contactIsActive()`를 고정한다.
+- `contactActionIsActive(context)`는 세 조건을 모두 요구한다. 그래서 포커스가 돌아와도 클릭 당시 기준이 다시 살아나지 않는다.
+  - 클릭 당시 화면이 활성이었을 것
+  - 포커스 번호가 그 뒤로 바뀌지 않았을 것
+  - 지금 화면이 활성일 것
+- `loadContact`는 연락처 GET 전에 한 번, `call`(GET + 후속 `/me`) 완료 뒤에 한 번 이 조건을 검사한다. 응답 뒤 검사는 화면 정리 번호(`requestSequence`)도 함께 비교한다.
+- 사례 버튼의 `setTarget → clearList → clearDetail → clearContact`와 `loadContact` 안의 `clearContact`는 `contactSequence`만 올린다. 포커스 기준은 바뀌지 않으므로 새 클릭이 무효화되지 않는다.
+
+### 12.3 실행
+```
+cd C:\Users\HCB\Desktop\wonday\farm-api
+node --test ./docs/verification/2026-11-28-work-01-applicants/work-applicants-page.test.mjs
+```
+Node v26.13.1.
+
+| 실행 | 실행 | 성공 | 실패 | 건너뜀 | 취소 |
+|---|---:|---:|---:|---:|---:|
+| 이번(D-1 보완 후) | 27 | **27** | 0 | 0 | 0 |
+
+선언 수 27개와 실행 수가 같다.
+
+### 12.4 중점 항목 대조 (가짜 DOM·가짜 fetch)
+| 항목 | 결과 | 근거 테스트 |
+|---|---|---|
+| 초기 `/me` 대기 중 blur→focus: 이전 클릭의 GET·번호 없음 | 통과(**D-1 해결**) | `[재검증 보강] 클릭 직후 run의 계정 확인(/me) 대기 중 …`(blur) |
+| 초기 `/me` 대기 중 hidden→visible: 표시 권한 복구 없음 | 통과(**D-1 해결**) | 같은 테스트(hidden) |
+| 연락처 GET 대기 중 이탈: 늦은 번호 미표시 | 통과 | `연락처 응답 대기 중 blur 후…`, `탭이 숨겨진 뒤…` |
+| 응답 뒤 후속 `/me` 대기 중 이탈: 미표시 | 통과 | `연락처 응답 뒤 계정 재확인 대기 중 blur…` |
+| 비활성 화면에서 시작한 클릭: 복귀만으로 유효해지지 않음 | 통과 | `비활성 화면에서는 연락처 GET을 시작하지 않으며…` |
+| 복귀 후 새 클릭: 전체 번호 표시 | 통과 | 위 테스트 후반, `[재검증 보강] 지연 응답 무효화 후 포커스 복귀…` |
+| 사례 버튼의 화면 초기화가 새 클릭을 무효화하지 않음 | 통과(아래 한계 참고) | 사례 `연락처 403 확인`(403 표시), 사례 505 `연락처`(`연락처 미등록` 표시) |
+| 정상 조회·403·404·계정 전환·화면 이탈 유지 | 통과 | 기존 회귀 테스트 |
+| 진단 JSON·요청 기록·브라우저 저장소에 전체 번호 없음 | 통과 | `연락처: 전용 GET…`, `[재검증 보강] 지연 응답…`(`textExcept`·`forbidden=[]`), `외부 문자열은 textContent로만…` |
+
+- 이전 실패 1건(D-1)은 이번 실행에서 통과해 해결됐다.
+- 추가로 발견한 결함은 없다.
+
+### 12.5 검증 공백 (테스트 범위는 늘리지 않았다)
+- **G-1:** 사례 버튼 경로는 403·미등록(phone=null) 표시로만 확인했다.
+  - 두 경우 모두 응답 뒤 검사를 통과해야 화면에 나오므로, 사례 초기화가 새 클릭을 잘못 무효화하지 않는다는 점은 확인된다.
+  - 사례 버튼으로 **전체 번호(AVAILABLE)**를 표시하는 경우와, 사례 경로 중 포커스 이탈 경우는 직접 테스트하지 않았다.
+- **G-2:** 무효화된 응답은 아무 안내 없이 버려진다(11.5 O-1과 같음, 결함 아님).
+
+### 12.6 한계
+- `document.hasFocus()`·`visibilityState`·blur·`visibilitychange`는 가짜 객체가 흉내 낸 것이다.
+- 실제 브라우저의 이벤트 순서, 개발자 도구 포커스, 모바일 백그라운드 전환, bfcache는 확인하지 않았다.
+- 서버·세션·CSRF·Security 체인·DB는 없다. 연락처 응답은 가짜 서버 값이다.
+
+### 12.7 이번 재검증 변경 파일
+- `docs/verification/2026-11-28-work-01-applicants/VERIFICATION_REPORT.md`: 이 12절 추가(기존 절 수정 없음).
+- 테스트 파일·운영 코드·Java·Gradle은 이번에 수정하지 않았다. 커밋·푸시 없음.
