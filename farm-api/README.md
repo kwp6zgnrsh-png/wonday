@@ -301,3 +301,13 @@ farm-demo /demo/work-applicants에서 상태별 가상 지원자 준비와 실�
 
 farm-demo의 `/demo/work-selection` 화면은 실제 사용자 API와 자동 CSRF·조건 버전을 사용한다.
 상태별 시연 데이터 준비와 역할 전환 절차는 [demo 안내](docs/work-selection-demo.md)에 정리했다.
+
+
+## CHANGE-01·02 시작 전 개인별 취소
+
+고용주 본인 확정 근무의 `POST /api/work-assignments/{assignmentId}/cancellation`을 추가했다. 최초·동일 내용 재요청은 200이며, 이미 취소된 근무는 시작 시각 이후에도 같은 결과를 반환한다. 신규 취소는 약정 시작 전만 허용하고 기존 변경 원본과 보험 조회용 버전을 함께 저장한다. 설명은 앞뒤 공백 제거 후 빈 값을 null로 통일하고 유니코드 코드 포인트 500개를 넘으면 400이다.
+
+[farm-demo 시연 데이터 준비와 API 규격](docs/change-01-02-work-cancellation-api.md)을 참고한다. 기존 마이그레이션·약정·업무 이력은 변경하지 않는다. 테스트 실행·실제 DB 적용·서버 상호 호출 검증은 이번 작업에서 수행하지 않았다.
+
+
+farm-demo의 `/demo/work-cancellation`에서 「취소 시연 데이터 준비」 → 사례 선택 → 「취소 요청 보내기」 → 동일 재요청 200 → 다른 사유 409를 확인할 수 있다. 로그인 화면의 고용주 메뉴에 링크를 추가했다. CSRF는 자동 처리하고 변경 ID·버전·시각 유지 여부와 별도 DB 상태 조회 결과를 표시한다. 자세한 클릭 순서는 [CHANGE-01·02 문서](docs/change-01-02-work-cancellation-api.md)의 farm-demo 간이 화면 확인 순서를 참고한다.

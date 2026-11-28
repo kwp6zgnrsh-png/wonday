@@ -6,9 +6,12 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.Objects;
 
 import com.wonday.farm.change.entity.WorkChange;
+import com.wonday.farm.change.exception.WorkCancellationException;
 import com.wonday.farm.change.repository.WorkChangeRepository;
+import com.wonday.farm.change.validation.CancellationInput;
 import com.wonday.farm.insurance.entity.WorkChangeVersion;
 import com.wonday.farm.insurance.exception.InsuranceApiException;
 import com.wonday.farm.insurance.repository.ChangeStreamRepository;
@@ -25,7 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-// 후속 CHANGE 기능에서 업무 검증을 마친 뒤 호출할 저장 경계다. 취소·조기 종료용 사용자 API는 아직 제공하지 않는다.
+// 변경 원본과 보험 조회용 불변 버전을 한 트랜잭션으로 기록한다. 사용자 취소는 시작 전 검증을 포함한 전용 메서드를 사용한다.
 @Service
 public class WorkChangeRecorder {
 	private final MemberRepository members;
@@ -46,7 +49,60 @@ public class WorkChangeRecorder {
 		this.clock = clock;
 	}
 
-	// 시작 기준은 약정 시작 시각이다. 후속 사용자 API가 취소/조기 종료의 시점 검증을 담당한다.
+	// CHANGE-01·02의 최초 취소와 동일 내용 재요청을 처리한다.
+	// 기존 demo 준비·조기 종료 저장 경로의 동작은 바꾸지 않고, 사용자 요청에만 시작 전 검사를 적용한다.
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public RecordedCancellation cancelBeforeStart(long employerId, long assignmentId, WorkChange.Reason reason,
+			WorkChange.WeatherReason weatherReason, String detail) {
+		if (employerId <= 0 || assignmentId <= 0) throw WorkCancellationException.invalid();
+		// 서비스 외 내부 호출도 같은 정규화·500 코드 포인트·사유 조합 검증을 적용한다.
+		var input = CancellationInput.reason(reason, weatherReason, detail);
+		members.findById(employerId).filter(member -> member.memberRole().orElse(null) == MemberRole.EMPLOYER)
+			.orElseThrow(() -> new AccessDeniedException("Employer role required"));
+		var ownership = assignments.findOwnership(assignmentId).orElseThrow(WorkCancellationException::notFound);
+		if (ownership.getEmployerId() != employerId) throw WorkCancellationException.notFound();
+
+		// 보험 폴링·사유 보완과 같은 근로자 스트림 → 확정 근무 → 변경 행 순서를 유지한다.
+		// 완료 API는 확정 근무 → 변경 행만 잠그므로 취소와 완료도 같은 근무 행에서 직렬화된다.
+		streams.ensureExists(ownership.getWorkerId());
+		var stream = streams.lockWorker(ownership.getWorkerId()).orElseThrow(WorkCancellationException::unavailable);
+		var assignment = assignments.findByIdForUpdate(assignmentId).orElseThrow(WorkCancellationException::notFound);
+		if (assignment.getCompletedAtUtc() != null || assignment.getCompletedBy() != null) {
+			throw WorkCancellationException.conflict("WORK_ALREADY_COMPLETED", "완료된 근무는 취소할 수 없습니다.");
+		}
+
+		var previous = changes.findForUpdate(assignmentId);
+		if (previous.isPresent()) {
+			var change = previous.get();
+			if (change.getChangeType() == WorkChange.Type.EARLY_ENDED) {
+				throw WorkCancellationException.conflict("WORK_ALREADY_EARLY_ENDED", "조기 종료된 근무는 시작 전 취소로 바꿀 수 없습니다.");
+			}
+			if (change.getReasonCode() != input.reason() || change.getWeatherReasonCode() != input.weather()
+					|| !Objects.equals(CancellationInput.normalizeDetail(change.getReasonDetail()), input.detail())) {
+				throw WorkCancellationException.conflict("CANCELLATION_REASON_CONFLICT",
+					"이미 기록된 취소 내용과 다릅니다. 사유 보완 기능을 이용해 주세요.");
+			}
+			// 시작 시각이 지난 재요청도 원래 결과를 반환한다. 시각·버전·발행 순번을 갱신하지 않는다.
+			return new RecordedCancellation(change, assignment.getAgreedTimeZone());
+		}
+
+		var zone = InsuranceTime.zone(assignment.getAgreedTimeZone());
+		var start = InsuranceTime.local(assignment.getAgreedStartAt(), zone).toInstant();
+		// 잠금 대기가 끝난 실제 서버 시각으로 검사한다. 정확히 약정 시작 시각이면 거절한다.
+		var instant = clock.instant();
+		if (!instant.isBefore(start)) {
+			throw WorkCancellationException.conflict("WORK_ALREADY_STARTED", "약정 근무 시작 시각 전까지만 취소할 수 있습니다.");
+		}
+		var now = LocalDateTime.ofInstant(instant.truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC);
+		var change = changes.saveAndFlush(new WorkChange(assignmentId, employerId, WorkChange.Type.CANCELLED,
+			input.reason(), input.weather(), input.detail(), now, now));
+		versions.save(new WorkChangeVersion(ownership.getWorkerId(), stream.nextSequence(), change, assignment.getAgreedTimeZone()));
+		return new RecordedCancellation(change, assignment.getAgreedTimeZone());
+	}
+
+	public record RecordedCancellation(WorkChange change, String timeZone) {}
+
+	// 내부 시연·검증된 변경 저장용이다. 정식 시작 전 취소 API는 cancelBeforeStart를 사용한다.
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public long recordValidatedChange(long actorId, long assignmentId, WorkChange.Type type,
 			OffsetDateTime actualEndAt, WorkChange.Reason reason, WorkChange.WeatherReason weatherReason, String detail) {
