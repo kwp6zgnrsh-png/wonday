@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>날짜별 지원자 조회 | WON데이 farm-demo</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,'Malgun Gothic',sans-serif;color:#173328;background:#edf4ef}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;padding:1.5rem 1rem}main{max-width:76rem;margin:auto}
+header,section{background:white;border:1px solid #cddfd3;border-radius:.8rem;padding:1.2rem;margin-bottom:1rem}
+h1{font-size:1.7rem}h2{font-size:1.2rem}p{line-height:1.65}a{color:#1b5e3e}
+.toolbar{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:.8rem 0}
+button,input,select{font:inherit;min-height:2.75rem;border:1px solid #839c8d;border-radius:.45rem;padding:.6rem}
+button{background:#1b5e3e;color:white;cursor:pointer}button:disabled{opacity:.5;cursor:default}select{background:white;max-width:100%}
+input{width:9rem}input[type=number]{width:5rem}.note{background:#f0f7f2;padding:.8rem;border-radius:.5rem;white-space:pre-wrap}
+.muted{color:#53685c;font-size:.9rem}[data-error=true]{color:#a12c26}.changed{background:#fff2d2;font-weight:650}
+.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:.65rem .45rem;text-align:left;vertical-align:top;border-bottom:1px solid #dce6df;white-space:pre-wrap;overflow-wrap:anywhere}
+.wide{min-width:58rem}.conditions{min-width:42rem;table-layout:fixed}.conditions th:first-child{width:22%}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f6f4;padding:.8rem}:focus-visible{outline:3px solid #28754e;outline-offset:3px}
+</style>
+</head>
+<body><main>
+<header>
+<p><a href="/demo/login">로그인 · 계정 전환</a> · <a href="/demo/jobs">내 공고 · 일정 수정</a></p>
+<h1>날짜별 지원자 조회</h1><p id="account" role="status">고용주 로그인을 확인합니다.</p>
+<p class="note">본인 공고의 현재 회차만 조회합니다. 기본은 지원 대기이며 선정·미선정은 필터로 확인합니다.
+이름은 전체, 전화번호는 마스킹해 표시하고 전체 연락처는 별도로 요청합니다. 선정 버튼은 이번 범위에 없습니다.</p>
+</header>
+<p id="notice" class="note" role="status" aria-live="polite">조회 준비 중입니다.</p>
+<section><h2>바로 확인할 시연 데이터</h2>
+<button id="fixture" type="button">WORK-01 지원자 시연 데이터 준비</button>
+<p id="fixture-note" class="note">새 가상 근로자 5명과 공고·일정을 준비합니다. 같은 계정의 오늘 데이터는 재사용하고 기존 내역은 초기화하지 않습니다.</p>
+<div class="table-wrap"><table class="wide"><thead><tr><th>사례</th><th>이름 · 상태</th><th>일정 ID</th><th>지원 ID · 회차</th><th>바로 확인</th></tr></thead><tbody id="cases"></tbody></table></div>
+</section>
+<section><h2>1. 공고·날짜 선택과 지원자 목록</h2>
+<div class="toolbar"><button id="mine" type="button">내 공고 불러오기</button><select id="postings" aria-label="내 공고"><option value="">공고 선택</option></select><select id="dates" aria-label="날짜"><option value="">날짜 선택</option></select></div>
+<form id="list-form" class="toolbar">
+<label for="posting-id">공고 ID</label><input id="posting-id" inputmode="numeric" required>
+<label for="schedule-id">일정 ID</label><input id="schedule-id" inputmode="numeric" required>
+<label for="filter">상태</label><select id="filter"><option value="PENDING">지원 대기</option><option value="ALL">전체</option><option value="SELECTED">선정</option><option value="NOT_SELECTED">미선정</option></select>
+<label for="limit">개수</label><input id="limit" type="number" min="1" max="100" step="1" value="20" required>
+<button id="list" type="submit">처음부터 조회</button><button id="next" type="button" disabled>다음 페이지</button>
+</form>
+<p id="capacity" class="note">정원 조회 전</p><p id="list-note" role="status">날짜를 선택해 주세요.</p>
+<p class="muted">먼저 지원한 순서이며 같은 시각이면 지원 ID가 작은 순서입니다. 1명씩 조회하면 다음 페이지를 쉽게 확인할 수 있습니다.</p>
+<div class="table-wrap"><table class="wide"><thead><tr><th>이름 · 마스킹 연락처</th><th>지원 ID · 회차</th><th>지원·근무 상태</th><th>지원 시각</th><th>조건 버전</th><th>확인</th></tr></thead><tbody id="applicants"></tbody></table></div>
+</section>
+<section><h2>2. 지원자 상세와 연락처</h2>
+<form id="detail-form" class="toolbar"><label for="application-id">지원 ID</label><input id="application-id" inputmode="numeric" required>
+<button id="detail" type="submit">상세·조건 비교</button><button id="contact" type="button">전체 연락처 조회</button></form>
+<p id="detail-note" role="status">목록이나 시연 사례에서 상세를 선택해 주세요.</p>
+<p id="contact-note" class="note" role="status">전체 연락처 조회 전</p>
+<p class="muted">미선정·과거 회차의 연락처 요청은 403입니다. 최신 회원번호를 요청 시 다시 확인하며, 전체 번호는 이 영역에만 표시합니다.</p>
+<div id="detail-panel" hidden><p id="detail-heading"></p><p id="comparison-note" class="note"></p>
+<div class="table-wrap"><table class="conditions"><thead><tr><th>항목</th><th>지원 당시 조건</th><th>최신 모집 조건</th></tr></thead><tbody id="conditions"></tbody></table></div>
+<h3>개인별 확정 근무에 저장된 약정</h3><p id="assignment-note"></p>
+<div class="table-wrap"><table id="agreed-table" hidden><thead><tr><th>항목</th><th>저장된 약정</th></tr></thead><tbody id="agreed"></tbody></table></div>
+</div></section>
+<section><h2>최근 API 응답</h2><p id="http-status" role="status">요청 전</p>
+<details><summary>마지막 응답 JSON · 전체 전화번호는 제외</summary><pre id="response">조회 전</pre></details>
+<div class="table-wrap"><table><thead><tr><th>요청</th><th>HTTP</th><th>오류 코드</th></tr></thead><tbody id="requests"></tbody></table></div>
+<p class="muted">목록·상세·연락처는 GET, 시연 준비만 POST입니다. 시연 준비의 CSRF는 자동 처리하고 쿠키·토큰·전체 번호는 진단 기록에 남기지 않습니다.</p>
+</section>
+</main><script>
+(() => {
+'use strict';
+const $=id=>document.getElementById(id);
+const statuses={PENDING:'지원 대기',SELECTED:'선정',NOT_SELECTED:'미선정'};
+const workStatuses={PENDING:'지원 대기',CONFIRMED:'확정 근무',NOT_SELECTED:'미선정',CANCELLED:'취소',EARLY_ENDED:'조기 종료',COMPLETED:'근무 완료',UNKNOWN:'상태 확인 필요'};
+const recruiting={OPEN:'모집 중',PAUSED:'일시중단',CLOSED:'마감',REMOVED:'모집 취소'};
+const fields=[['workDate','근무일'],['timeZone','시간대'],['workLocation','작업지'],['latitude','위도'],['longitude','경도'],['cropCode','작목'],['workTypeCode','작업 유형'],['description','작업 내용'],['headcount','정원'],['dailyWage','일급'],['plannedStartAt','예정 시작'],['plannedEndAt','예정 종료'],['breakStartAt','휴게 시작'],['breakEndAt','휴게 종료']];
+let contactSequence=0;
+// 클릭 뒤 로그인 확인을 기다리는 동안의 이탈도 기록한다. 화면 정리용 번호와 분리한다.
+let contactFocusSequence=0;
+let owner=null,busy=false,generation=0,controller=null,mine=[],nextCursor=null,listQuery=null,page=0;
+function node(tag,value){const item=document.createElement(tag);if(value!==undefined)item.textContent=String(value);return item}
+function text(id,value,error=false){$(id).textContent=value;$(id).dataset.error=String(error)}
+function notice(value,error=false){text('notice',value,error)}
+function validId(value){return Number.isSafeInteger(value)&&value>0}
+function ensure(context){if(context.generation!==generation)throw new Error('화면이 전환되었습니다.')}
+function describe(reply){return 'HTTP '+reply.status+(reply.body?.code?' · '+reply.body.code:'')+' · '+(reply.body?.message||'응답을 확인해 주세요.')}
+// 포커스 이탈은 이미 표시한 번호뿐 아니라 대기 중 연락처의 표시 권한도 무효화한다.
+function clearContact(){contactSequence++;text('contact-note','전체 연락처 조회 전')}
+function contactIsActive(){return document.hasFocus() && document.visibilityState !== 'hidden'}
+function invalidateContactFocus(){contactFocusSequence++;clearContact()}
+function contactActionIsActive(context){
+ return context.contactStartedActive
+  && context.contactFocusSequence===contactFocusSequence
+  && contactIsActive();
+}
+function clearDetail(){$('detail-panel').hidden=true;$('conditions').replaceChildren();$('agreed').replaceChildren();$('agreed-table').hidden=true;text('detail-note','상세 조회 전');text('detail-heading','');text('comparison-note','');text('assignment-note','');clearContact()}
+function clearList(){nextCursor=null;listQuery=null;page=0;$('applicants').replaceChildren();text('capacity','정원 조회 전');text('list-note','처음부터 조회해 주세요.');clearDetail()}
+function clearAll(){clearList();mine=[];$('cases').replaceChildren();$('postings').replaceChildren(new Option('공고 선택',''));$('dates').replaceChildren(new Option('날짜 선택',''));for(const id of ['posting-id','schedule-id','application-id'])$(id).value='';$('requests').replaceChildren();text('response','조회 전');text('http-status','요청 전');text('fixture-note','시연 준비 버튼을 누르면 오늘 데이터를 준비하거나 다시 조회합니다.')}
+function controls(){const off=busy||owner===null;for(const id of ['mine','fixture','postings','dates','posting-id','schedule-id','application-id','filter','limit','list','detail','contact'])$(id).disabled=off;$('next').disabled=off||!nextCursor;for(const target of ['cases','applicants'])for(const b of $(target).querySelectorAll('button'))b.disabled=off||b.dataset.allowed==='false'}
+async function raw(path,context,options={}){const response=await fetch(path,{...options,credentials:'same-origin',cache:'no-store',signal:context.signal});ensure(context);let body=null;try{body=await response.json()}catch{}ensure(context);return {status:response.status,body}}
+function showReply(path,reply,method='GET'){const body=path.endsWith('/contact')&&reply.body?.phone!==undefined?{...reply.body,phone:reply.body.phone===null?null:'[연락처 영역에서만 표시]'}:reply.body;text('http-status',method+' '+path+' · HTTP '+reply.status,reply.status<200||reply.status>=300);text('response',JSON.stringify(body,null,2));const row=node('tr');for(const value of [method+' '+path,reply.status,body?.code||'—'])row.append(node('td',value));$('requests').prepend(row);while($('requests').children.length>12)$('requests').lastElementChild.remove()}
+async function requireEmployer(context,expected){let reply;try{reply=await raw('/api/auth/me',context)}catch(error){ensure(context);owner=null;clearAll();text('account','로그인 상태를 확인할 수 없습니다.');throw error}if(reply.status!==200||reply.body?.role!=='EMPLOYER'||!validId(reply.body?.id)){owner=null;clearAll();text('account','고용주로 로그인해 주세요.');throw new Error('로그인 확인 HTTP '+reply.status+' · 고용주 로그인이 필요합니다.')}if(expected!==undefined&&reply.body.id!==expected){owner=null;clearAll();text('account','계정이 변경되었습니다. 다시 조회해 주세요.');throw new Error('이전 계정의 조회 결과를 지웠습니다.')}if(owner!==reply.body.id)clearAll();owner=reply.body.id;text('account',reply.body.name+' · 고용주 · 회원 ID '+owner);return owner}
+async function call(path,context,account,options={}){let reply;try{reply=await raw(path,context,options)}catch(error){ensure(context);await requireEmployer(context,account);throw error}await requireEmployer(context,account);if(reply.status===401||(reply.status===403&&reply.body?.code!=='CONTACT_ACCESS_DENIED')){owner=null;clearAll();throw new Error(describe(reply))}showReply(path,reply,options.method||'GET');return reply}
+async function run(action){if(busy)return;busy=true;clearContact();controller=new AbortController();const context={generation,signal:controller.signal,posted:false,
+ // 첫 비동기 로그인 확인 전에 클릭의 포커스 기준을 고정한다.
+ contactFocusSequence,contactStartedActive:contactIsActive()};controls();try{const account=await requireEmployer(context);await action(context,account)}catch(error){if(context.generation===generation)notice(context.posted?'시연 준비 또는 후속 조회 결과를 확인하지 못했습니다. 자동 재전송하지 않습니다. 준비 버튼으로 오늘 데이터를 다시 확인하세요.':error.message||'연결 상태를 확인해 주세요.',true)}finally{if(context.generation===generation){busy=false;controller=null;controls()}}}
+function inputId(id){const value=$(id).value.trim();if(!/^[1-9][0-9]*$/.test(value)||!validId(Number(value)))throw new Error('양수인 공고·일정·지원 ID를 입력해 주세요.');return Number(value)}
+function size(){const value=$('limit').value;if(!/^[0-9]{1,3}$/.test(value)||Number(value)<1||Number(value)>100)throw new Error('조회 개수는 1~100이어야 합니다.');return Number(value)}
+function pathFor(p,s){return '/api/job-postings/'+p+'/schedules/'+s+'/applications'}
+function actionButton(label,action,allowed=true){const b=node('button',label);b.type='button';b.dataset.allowed=String(allowed);b.disabled=busy||!allowed;b.addEventListener('click',()=>run(action));return b}
+function setTarget(p,s){$('posting-id').value=String(p);$('schedule-id').value=String(s);clearList()}
+async function loadMine(context,account){const reply=await call('/api/job-postings/mine',context,account);if(reply.status!==200){notice(describe(reply),true);return false}if(!Array.isArray(reply.body?.jobPostings)||reply.body.jobPostings.some(p=>!validId(p?.jobPostingId)||!Array.isArray(p.schedules)))throw new Error('내 공고 응답 형식을 확인할 수 없습니다.');mine=reply.body.jobPostings;$('postings').replaceChildren(new Option(mine.length?'공고 선택':'본인 공고 없음',''));for(const p of mine)$('postings').append(new Option('#'+p.jobPostingId+' · '+p.title,String(p.jobPostingId)));return true}
+function selectPosting(){const p=mine.find(p=>p.jobPostingId===Number($('postings').value));$('dates').replaceChildren(new Option('날짜 선택',''));clearList();$('schedule-id').value='';$('application-id').value='';$('posting-id').value=p?String(p.jobPostingId):'';if(p)for(const d of p.schedules)$('dates').append(new Option(d.workDate+' · #'+d.workScheduleId+' · '+(recruiting[d.status]||d.status),String(d.workScheduleId)));controls()}
+async function loadList(context,account,cursor=null){const query=cursor===null?{p:inputId('posting-id'),s:inputId('schedule-id'),filter:$('filter').value,size:size()}:listQuery;if(!query)throw new Error('처음부터 조회해 주세요.');nextCursor=null;$('applicants').replaceChildren();clearDetail();text('list-note','지원자 조회 중입니다.');const params=new URLSearchParams({status:query.filter,limit:String(query.size)});if(cursor)params.set('cursor',cursor);try{const reply=await call(pathFor(query.p,query.s)+'?'+params,context,account);if(reply.status!==200){text('list-note',describe(reply),true);notice(describe(reply),true);return false}const b=reply.body;if(b?.jobPostingId!==query.p||b.workScheduleId!==query.s||!Array.isArray(b.items)||typeof b.hasMore!=='boolean'||(b.hasMore?typeof b.nextCursor!=='string'||!b.nextCursor:b.nextCursor!==null)||b.items.some(r=>!validId(r?.applicationId)||!validId(r.workerId)))throw new Error('명단 응답 형식을 확인할 수 없습니다.');listQuery=query;nextCursor=b.nextCursor;page=cursor===null?1:page+1;text('capacity',b.workDate+' · '+(recruiting[b.recruitmentStatus]||b.recruitmentStatus)+' · 정원 '+b.headcount+'명 / 확정 '+b.confirmedCount+'명 / 남은 자리 '+b.remainingSlots+'명');text('list-note',page+'페이지 · '+b.items.length+'명 · '+(b.hasMore?'다음 페이지 있음':'마지막 페이지'));if(!b.items.length){const row=node('tr'),td=node('td','현재 필터에 해당하는 지원자가 없습니다.');td.colSpan=6;row.append(td);$('applicants').append(row)}for(const item of b.items){const row=node('tr'),actions=node('td');actions.append(actionButton('상세',(c,a)=>loadDetail(c,a,query.p,query.s,item.applicationId)),actionButton('연락처 보기',(c,a)=>loadContact(c,a,query.p,query.s,item.applicationId),item.canViewContact===true&&item.phoneState==='AVAILABLE'));row.append(node('td',item.name+'\n'+(item.maskedPhone|| (item.phoneState==='INVALID_FORMAT'?'연락처 형식 확인 필요':'연락처 미등록'))),node('td','#'+item.applicationId+' · '+item.applicationRound+'회차'),node('td',(statuses[item.status]||item.status)+'\n'+(workStatuses[item.workStatus]||item.workStatus)),node('td',item.appliedAt||(item.legacyAppliedAt+' · 원본 시각, 시간대 미확인')),node('td','접수 '+(item.appliedTermsVersion??'미확인')+' → 최신 '+item.latestTermsVersion+'\n'+(item.conditionComparisonStatus==='CHANGED'?'지원 후 조건 변경':item.conditionComparisonStatus==='UNCHANGED'?'같은 조건 버전':'지원 당시 조건 확인 불가')),actions);$('applicants').append(row)}notice('현재 회차 지원자 명단을 조회했습니다.');return true}catch(error){ensure(context);text('list-note','명단 조회 실패 · 처음부터 다시 조회해 주세요.',true);throw error}}
+function conditionValue(c,field){if(!c||c.availability==='UNAVAILABLE'||c.unavailableFields?.includes(field))return '확인 불가 · 저장 기록 또는 시각 기준 없음';const value=c[field];if(value===null||value===undefined)return field.startsWith('break')?'휴게 없음':'미등록';if(field==='cropCode')return (c.cropName||'이름 미확인')+' ('+value+')';if(field==='workTypeCode')return (c.workTypeName||'이름 미확인')+' ('+value+')';return String(value)+(field==='dailyWage'?'원':field==='headcount'?'명':'')}
+async function loadDetail(context,account,p,s,id){clearDetail();$('application-id').value=String(id);text('detail-note','상세 조회 중입니다.');try{const reply=await call(pathFor(p,s)+'/'+id,context,account);if(reply.status!==200){text('detail-note',describe(reply),true);notice(describe(reply),true);return}const b=reply.body;if(b?.applicationId!==id||!Array.isArray(b.changedFields)||!Array.isArray(b.unavailableComparisonFields)||!b.appliedConditions||!b.latestConditions||(b.assignment!==null&&!b.assignment?.agreedConditions))throw new Error('상세 응답 형식을 확인할 수 없습니다.');text('detail-heading',b.name+' · 지원 #'+id+' · '+b.applicationRound+'회차 · '+(statuses[b.status]||b.status)+' · '+(b.maskedPhone||'연락처 미등록'));text('comparison-note','접수 버전 '+(b.appliedTermsVersion??'미확인')+' / 최신 버전 '+b.latestTermsVersion+'\n'+(b.conditionComparisonStatus==='CHANGED'?'지원 후 조건 변경':b.conditionComparisonStatus==='UNKNOWN'?'지원 당시 조건 확인 불가':'같은 조건 버전')+'\n'+(b.comparisonComplete?(b.changedFields.length?'변경 항목을 확인하세요.':'현재 비교 항목은 모두 같습니다.'):'일부 기록이 없어 전체 동일 여부를 판단할 수 없습니다.'));const changed=new Set(b.changedFields);for(const [field,label]of fields){const row=node('tr');if(changed.has(field))row.className='changed';row.append(node('th',label),node('td',conditionValue(b.appliedConditions,field)),node('td',conditionValue(b.latestConditions,field)));$('conditions').append(row)}if(b.assignment===null)text('assignment-note','연결된 확정 근무가 없습니다.');else{const a=b.assignment;text('assignment-note','확정 근무 #'+a.assignmentId+' · 확정 일시 '+(a.confirmedAt||'미확인')+' · 완료 일시 '+(a.completedAt||'기록 없음')+(a.change?' · '+(workStatuses[a.change.changeType]||a.change.changeType):''));$('agreed-table').hidden=false;for(const [field,label]of fields.filter(([field])=>field!=='headcount'&&field!=='description')){const row=node('tr');row.append(node('th',label),node('td',conditionValue(a.agreedConditions,field)));$('agreed').append(row)}}$('detail-panel').hidden=false;text('detail-note','상세 HTTP 200 · 조회로 선정·동의 상태를 변경하지 않습니다.');notice('지원 당시·최신 조건과 별도 확정 약정을 확인하세요.')}catch(error){ensure(context);clearDetail();text('detail-note','상세 조회 실패 · 정상 명단은 유지합니다.',true);throw error}}
+async function loadContact(context,account,p,s,id){clearContact();$('application-id').value=String(id);
+// 내부 clearContact나 사례 선택의 화면 초기화가 클릭 당시 포커스 기준을 갱신하지 않도록 한다.
+if(!contactActionIsActive(context)){text('contact-note','화면으로 돌아온 뒤 연락처 버튼을 다시 눌러 주세요.');return}
+const requestSequence=contactSequence;
+const reply=await call(pathFor(p,s)+'/'+id+'/contact',context,account);
+// call 안의 계정 재확인까지 끝난 뒤, 요청 시작 때의 유효성과 현재 포커스를 함께 검사한다.
+if(requestSequence!==contactSequence||!contactActionIsActive(context))return;
+if(reply.status!==200){text('contact-note',describe(reply),true);notice(describe(reply),true);return}const b=reply.body;if(b?.applicationId!==id||!validId(b.workerId)||(b.phone!==null&&typeof b.phone!=='string'))throw new Error('연락처 응답 형식을 확인할 수 없습니다.');text('contact-note',b.name+' · 지원 #'+id+'\n'+(b.phone===null?(b.phoneState==='INVALID_FORMAT'?'연락처 형식 확인 필요':'연락처 미등록'):b.phone));notice('요청 시점의 현재 회차·지원 상태와 최신 회원 연락처를 확인했습니다.')}
+async function prepare(context,account){const token=await raw('/api/auth/csrf',context);await requireEmployer(context,account);if(token.status!==200||typeof token.body?.headerName!=='string'||!token.body.headerName||typeof token.body?.token!=='string'||!token.body.token)throw new Error('CSRF 토큰을 가져오지 못했습니다.');context.posted=true;const reply=await call('/demo/api/work-applicants/fixtures',context,account,{method:'POST',headers:{[token.body.headerName]:token.body.token}});if(reply.status!==201&&reply.status!==200){text('fixture-note',describe(reply),true);notice(describe(reply),true);return}const b=reply.body;if(!validId(b?.jobPostingId)||typeof b.created!=='boolean'||!Array.isArray(b.schedules)||!Array.isArray(b.scenarios)||b.scenarios.some(row=>!validId(row?.applicationId)||!validId(row.workScheduleId)))throw new Error('시연 데이터 응답 형식을 확인할 수 없습니다.');$('cases').replaceChildren();for(const item of b.scenarios){const row=node('tr'),actions=node('td');const target=()=>{setTarget(b.jobPostingId,item.workScheduleId);$('application-id').value=String(item.applicationId)};actions.append(actionButton(item.current?'상세':'상세 404 확인',async(c,a)=>{target();await loadDetail(c,a,b.jobPostingId,item.workScheduleId,item.applicationId)}),actionButton(item.current&&item.status!=='NOT_SELECTED'?'연락처':'연락처 403 확인',async(c,a)=>{target();await loadContact(c,a,b.jobPostingId,item.workScheduleId,item.applicationId)}));row.append(node('td',item.label),node('td',item.name+' · '+(statuses[item.status]||item.status)),node('td',item.workScheduleId),node('td','#'+item.applicationId+' · '+item.applicationRound+'회차 · '+(item.current?'현재':'과거')),actions);$('cases').append(row)}const summary='POST HTTP '+reply.status+' · 공고 #'+b.jobPostingId+' · '+(b.created?'새 시연 데이터를 준비했습니다.':'오늘 데이터를 재사용합니다. 기존 변경은 유지합니다.');text('fixture-note',summary);try{await loadMine(context,account);if(b.schedules.length){$('postings').value=String(b.jobPostingId);selectPosting();$('dates').value=String(b.schedules[0].workScheduleId);setTarget(b.jobPostingId,b.schedules[0].workScheduleId);$('filter').value='PENDING';$('limit').value='20';const ok=await loadList(context,account);notice(summary+(ok?'\n첫 날짜의 지원 대기자를 조회했습니다.':'\n목록 재조회 실패 · 위 사례의 ID로 다시 조회하세요.'),!ok)}}catch(error){ensure(context);if(owner!==account)throw error;notice(summary+'\n자동 조회 실패 · 위 사례의 상세·연락처 버튼으로 다시 확인하세요.',true)}}
+$('mine').addEventListener('click',()=>run(async(c,a)=>{if(await loadMine(c,a))notice('본인 공고를 불러왔습니다. 날짜를 선택해 주세요.')}));
+$('fixture').addEventListener('click',()=>run(prepare));
+$('postings').addEventListener('change',selectPosting);
+$('dates').addEventListener('change',()=>{const p=Number($('postings').value),s=Number($('dates').value);if(validId(p)&&validId(s))setTarget(p,s);else clearList();controls()});
+for(const id of ['posting-id','schedule-id','filter','limit'])$(id).addEventListener('change',()=>{clearList();controls()});
+$('list-form').addEventListener('submit',e=>{e.preventDefault();run((c,a)=>loadList(c,a))});
+$('next').addEventListener('click',()=>{const cursor=nextCursor;if(cursor)run((c,a)=>loadList(c,a,cursor))});
+$('detail-form').addEventListener('submit',e=>{e.preventDefault();run((c,a)=>loadDetail(c,a,inputId('posting-id'),inputId('schedule-id'),inputId('application-id')))});
+$('contact').addEventListener('click',()=>run((c,a)=>loadContact(c,a,inputId('posting-id'),inputId('schedule-id'),inputId('application-id'))));
+window.addEventListener('blur',invalidateContactFocus);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')invalidateContactFocus()});
+window.addEventListener('pagehide',()=>{generation++;controller?.abort();owner=null;busy=false;controller=null;clearAll();controls();text('account','고용주 로그인을 다시 확인해 주세요.')});
+window.addEventListener('pageshow',()=>run(async(c,a)=>{if(await loadMine(c,a))notice('공고·날짜를 선택하거나 시연 데이터를 준비하세요.')}));
+controls();
+})();
+</script></body></html>

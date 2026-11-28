@@ -33,6 +33,8 @@ public class SecurityConfig {
 					auth.requestMatchers(HttpMethod.GET, "/demo/work-completion").permitAll();
 					auth.requestMatchers(HttpMethod.GET, "/demo/job-apply").permitAll();
 					auth.requestMatchers(HttpMethod.GET, "/demo/my-applications").permitAll();
+					auth.requestMatchers(HttpMethod.GET, "/demo/work-applicants").permitAll();
+					auth.requestMatchers(HttpMethod.POST, "/demo/api/work-applicants/fixtures").hasRole("EMPLOYER");
 					auth.requestMatchers(HttpMethod.POST, "/demo/api/my-applications/fixtures").hasRole("WORKER");
 					auth.requestMatchers(HttpMethod.GET, "/demo/api/applications/postings/*/history").hasRole("WORKER");
 					auth.requestMatchers(HttpMethod.POST, "/demo/api/applications/fixtures").hasRole("WORKER");
@@ -69,6 +71,10 @@ public class SecurityConfig {
 					.requestMatchers(HttpMethod.POST, "/api/job-postings/*/applications").hasRole("WORKER")
 					.requestMatchers(HttpMethod.POST, "/api/job-postings").hasRole("EMPLOYER")
 					.requestMatchers(HttpMethod.GET, "/api/job-postings/mine").hasRole("EMPLOYER")
+					// WORK-01: 지원자 개인정보는 고용주 세션에서만 조회한다.
+					.requestMatchers(HttpMethod.GET, "/api/job-postings/*/schedules/*/applications",
+						"/api/job-postings/*/schedules/*/applications/*",
+						"/api/job-postings/*/schedules/*/applications/*/contact").hasRole("EMPLOYER")
 					// /mine의 고용주 규칙을 먼저 적용하고 근로자의 목록·상세 조회를 구분한다.
 					.requestMatchers(HttpMethod.GET, "/api/job-postings", "/api/job-postings/*").hasRole("WORKER")
 					.requestMatchers(HttpMethod.PUT, "/api/job-postings/*/schedules/*").hasRole("EMPLOYER")
@@ -79,7 +85,15 @@ public class SecurityConfig {
 			.exceptionHandling(exceptions -> exceptions
 				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
 				.accessDeniedHandler((request, response, exception) -> {
-					if (request.getMethod().equals("GET")
+					if (((request.getMethod().equals("GET")
+							&& request.getServletPath().matches("/api/job-postings/[^/]+/schedules/[^/]+/applications(/[^/]+(/contact)?)?"))
+							|| (request.getMethod().equals("POST") && request.getServletPath().equals("/demo/api/work-applicants/fixtures")))
+							&& !(exception instanceof CsrfException)) {
+						response.setStatus(HttpStatus.FORBIDDEN.value());
+						response.setHeader("Cache-Control", "no-store");
+						response.setContentType("application/json;charset=UTF-8");
+						response.getWriter().write("{\"code\":\"EMPLOYER_ROLE_REQUIRED\",\"message\":\"고용주 본인 공고의 지원자만 조회할 수 있습니다.\"}");
+					} else if (request.getMethod().equals("GET")
 							&& request.getServletPath().matches("/api/me/applications(/[^/]+(/history)?)?")
 							&& !(exception instanceof CsrfException)) {
 						response.setStatus(HttpStatus.FORBIDDEN.value());

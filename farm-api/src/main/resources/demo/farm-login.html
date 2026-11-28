@@ -28,7 +28,7 @@
     dl { margin: 0 0 1.25rem; padding: .75rem 1rem; background: #f0f7f2; border-radius: .5rem; }
     dl div { display: flex; justify-content: space-between; gap: .75rem; padding: .35rem 0; }
     dd { margin: 0; font-weight: 650; }
-    #jobs-link, #worker-jobs-link, #location-link, #verification-link, #signup-link, #salary-account-link, #insurance-salary-link, #completion-link, #apply-link, #my-applications-link { display: block; margin: 0 0 1rem; padding: .8rem; border-radius: .5rem; background: #e8f3ec; color: #18492f; font-weight: 700; text-align: center; }
+    #jobs-link, #worker-jobs-link, #location-link, #verification-link, #signup-link, #salary-account-link, #insurance-salary-link, #completion-link, #apply-link, #my-applications-link, #applicants-link { display: block; margin: 0 0 1rem; padding: .8rem; border-radius: .5rem; background: #e8f3ec; color: #18492f; font-weight: 700; text-align: center; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -56,6 +56,7 @@
       </dl>
       <a href="/demo/jobs" id="jobs-link" hidden>내 공고 조회 · 일정 수정·취소하기</a>
       <a href="/demo/work-completion" id="completion-link" hidden>개인별 근무 완료 · 완료 일시 확인</a>
+      <a href="/demo/work-applicants" id="applicants-link" hidden>날짜별 지원자 · 조건 비교 · 연락처 확인</a>
       <a href="/demo/worker-jobs" id="worker-jobs-link" hidden>공고 목록 · 상세 보기</a>
       <a href="/demo/job-apply" id="apply-link" hidden>날짜 선택 지원 · 재요청 · 재지원</a>
       <a href="/demo/my-applications" id="my-applications-link" hidden>내 지원 내역 · 조건 비교 · 과거 회차</a>
@@ -110,6 +111,7 @@
         ? '미등록 (null)' : `${nationalities[account.nationalityType] || account.nationalityType} (${account.nationalityType})`;
       document.querySelector('#jobs-link').hidden = account.role !== 'EMPLOYER';
       document.querySelector('#completion-link').hidden = account.role !== 'EMPLOYER';
+      document.querySelector('#applicants-link').hidden = account.role !== 'EMPLOYER';
       document.querySelector('#worker-jobs-link').hidden = account.role !== 'WORKER';
       document.querySelector('#apply-link').hidden = account.role !== 'WORKER';
       document.querySelector('#my-applications-link').hidden = account.role !== 'WORKER';
