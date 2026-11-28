@@ -18,8 +18,9 @@ import org.springframework.web.bind.annotation.*;
 class WeatherCollectionApi {
 	private final WeatherCollectionService collections;
 	@PostMapping
-	ResponseEntity<WeatherCollectionView> collect(@AuthenticationPrincipal MemberPrincipal member, @Valid @RequestBody Request request) {
-		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(collections.collect(member.memberId(), request.stationCode(), request.date()));
+	ResponseEntity<WeatherCollectionView> collect(@AuthenticationPrincipal MemberPrincipal member, @Valid @RequestBody Request request,
+		@RequestHeader(value = "Idempotency-Key", required = false) String key) {
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(collections.collect(member.memberId(), request.stationCode(), request.date(), key));
 	}
 	@GetMapping
 	ResponseEntity<List<WeatherCollectionView>> list(@AuthenticationPrincipal MemberPrincipal member, @RequestParam String stationCode, @RequestParam LocalDate date) {

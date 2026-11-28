@@ -64,6 +64,19 @@ const upstream = createHttpServer((request, response) => {
     assert.equal(request.headers['x-csrf-token'], 'proxy-csrf')
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     response.end(JSON.stringify({ id: 11, stationCode: '477802A001', state: 'RECEIVED' }))
+  } else if (request.method === 'GET' && request.url === '/api/admin/weather/collection-jobs?state=FAILED') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ items: [{ id: 21, state: 'FAILED' }], hasMore: false, nextBeforeId: null }))
+  } else if (request.method === 'GET' && request.url === '/api/admin/weather/collection-jobs/21/attempts') {
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ items: [{ id: 33, state: 'FAILED' }], hasMore: false, nextBeforeId: null }))
+  } else if (request.method === 'POST' && request.url === '/api/admin/weather/collection-jobs/21/retry') {
+    request.resume()
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    assert.equal(request.headers['x-csrf-token'], 'proxy-csrf')
+    assert.equal(request.headers['idempotency-key'], requestKey)
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ id: 11, stationCode: '477802A001', state: 'RECEIVED' }))
   } else {
     response.writeHead(404)
     response.end()
@@ -166,6 +179,21 @@ try {
       assert.equal(weather.headers.get('cache-control'), 'no-store')
       assert.deepEqual(await weather.json(), { id: 11, stationCode: '477802A001', state: 'RECEIVED' })
       console.log('PASS ' + web + ': weather station lookup and admin collection routing, session and CSRF forwarding')
+      const failedJobs = await fetch(origin + '/api/insurance/admin/weather/collection-jobs?state=FAILED')
+      assert.equal(failedJobs.status, 200)
+      assert.equal(failedJobs.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await failedJobs.json(), { items: [{ id: 21, state: 'FAILED' }], hasMore: false, nextBeforeId: null })
+      const attempts = await fetch(origin + '/api/insurance/admin/weather/collection-jobs/21/attempts')
+      assert.equal(attempts.status, 200)
+      assert.deepEqual(await attempts.json(), { items: [{ id: 33, state: 'FAILED' }], hasMore: false, nextBeforeId: null })
+      const retried = await fetch(origin + '/api/insurance/admin/weather/collection-jobs/21/retry', {
+        method: 'POST',
+        headers: { Cookie: 'INSURANCESESSION=proxy-test', 'X-CSRF-TOKEN': 'proxy-csrf', 'Idempotency-Key': requestKey },
+      })
+      assert.equal(retried.status, 200)
+      assert.equal(retried.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await retried.json(), { id: 11, stationCode: '477802A001', state: 'RECEIVED' })
+      console.log('PASS ' + web + ': failed weather jobs, attempt history and retry routing, session/CSRF/request-key forwarding')
     } finally {
       await vite.close()
     }

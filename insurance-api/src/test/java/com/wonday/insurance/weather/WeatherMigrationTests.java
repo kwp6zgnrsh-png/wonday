@@ -39,4 +39,19 @@ class WeatherMigrationTests {
 		return Flyway.configure().dataSource(database).locations("classpath:db/migration")
 			.javaMigrations(new V8__encrypt_legacy_member_identity()).target(target).load();
 	}
+	@Test void upgradeFromV10PreservesOriginalsAndStartsWithoutInventedHistory() throws Exception {
+		String schema="insurance_weather_jobs_"+UUID.randomUUID().toString().replace("-","");
+		HikariDataSource source=dataSource.unwrap(HikariDataSource.class);
+		DataSource database=new DriverManagerDataSource(source.getJdbcUrl().replaceFirst("/[^/?]+(?=\\?|$)","/"+schema),source.getUsername(),source.getPassword());
+		try {
+			migration(database,"10").migrate(); JdbcTemplate jdbc=new JdbcTemplate(database);
+			jdbc.update("insert into weather_collection (station_code,observation_date,observation_count,payload_sha256,payload_pages_json,collected_at) values ('477802A001','2026-11-25',0,?,'[\"<empty/>\"]','2026-11-27 08:00:00')","a".repeat(64));
+			var before=jdbc.queryForMap("select * from weather_collection");
+			var next=migration(database,"11"); assertThat(next.migrate().migrationsExecuted).isEqualTo(1);
+			assertThat(jdbc.queryForMap("select * from weather_collection")).isEqualTo(before);
+			assertThat(jdbc.queryForObject("select count(*) from weather_collection_job",Integer.class)).isZero();
+			assertThat(jdbc.queryForObject("select count(*) from weather_collection_attempt",Integer.class)).isZero();
+			assertThat(next.migrate().migrationsExecuted).isZero();
+		} finally { try(var connection=dataSource.getConnection();var statement=connection.createStatement()) { statement.execute("drop database if exists `"+schema+"`"); } }
+	}
 }

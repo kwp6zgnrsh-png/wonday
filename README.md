@@ -148,6 +148,7 @@ IntelliJ에서 각 모듈의 Gradle 프로젝트를 열고 표에 나온 애플�
 #### 기상 수집 기반
 
 기상 원본 수집·경기 24개 관측소 기준정보·최근접 조회 API는 [기상 수집 기반 문서](insurance-api/docs/weather-foundation.md)를 참고한다.
+실패 작업 조회·수동 재시도·요청 키와 중단 복구는 [기상 수집 이력·재시도 문서](insurance-api/docs/weather-collection-retry.md)를 참고한다.
 관리자가 날짜를 지정해 원본을 보관하는 단계이며 자동 기상 배치·모델 집계·RabbitMQ 전송은 아직 연결하지 않는다.
 
 #### 보험 회원 내·외국인 구분과 식별정보 저장

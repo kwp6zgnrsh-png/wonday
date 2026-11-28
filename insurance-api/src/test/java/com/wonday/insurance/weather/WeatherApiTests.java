@@ -46,6 +46,8 @@ class WeatherApiTests {
 	@Autowired EntityManager entities;
 	@Autowired PlatformTransactionManager transactions;
 	@Autowired WeatherCollectionRepository collections;
+	@Autowired WeatherCollectionAttemptRepository attempts;
+	@Autowired WeatherCollectionJobRepository jobs;
 	@MockitoSpyBean WeatherStationRepository stations;
 	@Autowired WeatherStationService stationService;
 	@Autowired WeatherStationWriter stationWriter;
@@ -54,7 +56,7 @@ class WeatherApiTests {
 	@MockitoBean RdaWeatherClient provider;
 	@MockitoBean Clock clock;
 	@BeforeEach void prepare() {
-		tx(() -> { collections.deleteAllInBatch(); stations.deleteAllInBatch(); entities.createQuery("delete from Member").executeUpdate(); return null; });
+		tx(() -> { attempts.deleteAllInBatch(); jobs.deleteAllInBatch(); collections.deleteAllInBatch(); stations.deleteAllInBatch(); entities.createQuery("delete from Member").executeUpdate(); return null; });
 		when(clock.instant()).thenReturn(Instant.parse("2026-11-27T09:00:00.123456789Z"));
 		doAnswer(invocation -> {
 			assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
@@ -104,7 +106,7 @@ class WeatherApiTests {
 			"{\"stationCode\":\"477802A001\",\"date\":\"2026-11-28\"}","{}")) {
 			mvc.perform(post(ROOT).session(admin.session()).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest());
 		}
-		verifyNoInteractions(provider); assertThat(collections.count()).isZero();
+		verifyNoInteractions(provider); assertThat(collections.count()).isZero(); assertThat(jobs.count()).isZero(); assertThat(attempts.count()).isZero();
 	}
 	@Test void adminSessionAndCsrfAreRequiredForCollection() throws Exception {
 		mvc.perform(post(ROOT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(request())).andExpect(status().isUnauthorized());
@@ -221,9 +223,9 @@ class WeatherApiTests {
 		return scope.names().keySet().stream().sorted().map(code -> new RdaWeatherClient.Station(code,prefix+" "+code,
 			prefix+" address",new BigDecimal(latitude),new BigDecimal(longitude))).toList();
 	}
-	@Test void simultaneousAdministratorsStoreOneIdenticalCapture() throws Exception {
+	@Test void simultaneousAdministratorsDoNotFetchTheSameTargetTwice() throws Exception {
 		Account one=account(true),two=account(true);
-		CountDownLatch entered=new CountDownLatch(2),release=new CountDownLatch(1);
+		CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
 		doAnswer(invocation -> {
 			assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
 			entered.countDown(); assertThat(release.await(15,TimeUnit.SECONDS)).isTrue();
@@ -232,9 +234,15 @@ class WeatherApiTests {
 		ExecutorService pool=Executors.newFixedThreadPool(2);
 		try {
 			Future<Long> a=pool.submit(() -> collecting.collect(one.id(),CODE,DATE).id());
-			Future<Long> b=pool.submit(() -> collecting.collect(two.id(),CODE,DATE).id());
-			assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue(); release.countDown();
-			assertThat(a.get(20,TimeUnit.SECONDS)).isEqualTo(b.get(20,TimeUnit.SECONDS)); assertThat(collections.count()).isEqualTo(1);
+			assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
+			Future<String> b=pool.submit(() -> {
+				try { collecting.collect(two.id(),CODE,DATE); return "unexpected success"; }
+				catch(WeatherException conflict) { return conflict.getCode(); }
+			});
+			assertThat(b.get(5,TimeUnit.SECONDS)).isEqualTo("WEATHER_COLLECTION_IN_PROGRESS");
+			verify(provider,times(1)).observations(CODE,DATE);
+			release.countDown(); assertThat(a.get(20,TimeUnit.SECONDS)).isPositive();
+			assertThat(collections.count()).isEqualTo(1); assertThat(attempts.count()).isEqualTo(1);
 		} finally { release.countDown(); pool.shutdownNow(); assertThat(pool.awaitTermination(5,TimeUnit.SECONDS)).isTrue(); }
 	}
 	private MockHttpServletRequestBuilder collect(Account account) {

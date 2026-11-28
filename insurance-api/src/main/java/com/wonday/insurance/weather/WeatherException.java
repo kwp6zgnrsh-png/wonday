@@ -7,8 +7,13 @@ import org.springframework.http.HttpStatus;
 class WeatherException extends RuntimeException {
 	private final HttpStatus status;
 	private final String code;
+	private final Long jobId;
+	private final Long attemptId;
 	WeatherException(HttpStatus status, String code, String message) {
-		super(message); this.status = status; this.code = code;
+		this(status, code, message, null, null);
+	}
+	WeatherException(HttpStatus status, String code, String message, Long jobId, Long attemptId) {
+		super(message); this.status = status; this.code = code; this.jobId = jobId; this.attemptId = attemptId;
 	}
 	static WeatherException invalid() {
 		return new WeatherException(HttpStatus.BAD_GATEWAY, "INVALID_WEATHER_RESPONSE", "Invalid weather provider response");
