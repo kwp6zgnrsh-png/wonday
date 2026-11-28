@@ -9,6 +9,19 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface JobApplicationRepository extends JpaRepository<JobApplication, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select app from JobApplication app where app.id = :applicationId and app.workScheduleId = :scheduleId")
+    Optional<JobApplication> findScopedForUpdate(@Param("applicationId") long applicationId, @Param("scheduleId") long scheduleId);
+
+    // 재확인에서 잠금 순서를 정하기 위한 본인 소속 조회다. 잠금 뒤 소유자·회차를 다시 검사한다.
+    @Query(value = """
+        select schedule.job_posting_id as postingId, schedule.id as scheduleId
+        from application app join work_schedule schedule on schedule.id = app.work_schedule_id
+        where app.id = :applicationId and app.worker_id = :workerId
+        """, nativeQuery = true)
+    Optional<OwnedLocation> findOwnedLocation(@Param("workerId") long workerId, @Param("applicationId") long applicationId);
+    interface OwnedLocation { long getPostingId(); long getScheduleId(); }
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("""
 		select app from JobApplication app

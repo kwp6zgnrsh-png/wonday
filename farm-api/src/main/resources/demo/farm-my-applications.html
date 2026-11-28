@@ -29,7 +29,8 @@
 <main>
 <header>
   <p><a href="/demo/login">로그인 · 계정 전환</a> · <a href="/demo/job-apply">날짜 선택 · 지원하기</a> · <a href="/demo/worker-jobs">공고 목록</a></p>
-  <h1>내 지원 내역 · 조건 비교</h1>
+  <p><a href="/demo/work-selection">선정 · 조건 재확인 확인 화면</a></p>
+<h1>내 지원 내역 · 조건 비교</h1>
   <p id="account" role="status">근로자 로그인을 확인합니다.</p>
   <p class="note">실제 APP-04 조회 API를 사용합니다. 기본 목록은 현재 회차만, 과거 회차는 아래 이력에서 확인합니다.
 조회만으로 변경 조건에 동의하거나 지원·근무를 취소하지 않습니다.</p>
@@ -247,9 +248,20 @@
   function appliedTime(item) {
     return item.appliedAt || (item.legacyAppliedAt ? item.legacyAppliedAt + ' · 원본 시각, 시간대 미확인' : '지원 시각 확인 불가');
   }
+
+function confirmationLabel(item) {
+  const info = item.conditionConfirmation;
+  if (!info) return '조건 확인 기록 미확인';
+  const state = info.latestTermsConfirmed
+    ? (info.source === 'INITIAL_APPLICATION' ? '최초 지원으로 최신 조건 확인' : '최신 조건 재확인 완료')
+    : '최신 조건 재확인 필요';
+  return state + (info.acknowledgedAt ? '\n마지막 재확인: ' + info.acknowledgedAt : '');
+}
+
   function comparisonLabel(item) {
-    return item.conditionComparisonStatus === 'CHANGED' ? '조건 변경됨'
+    const comparison = item.conditionComparisonStatus === 'CHANGED' ? '조건 변경됨'
       : item.conditionComparisonStatus === 'UNCHANGED' ? '같은 조건 버전' : '지원 당시 버전 미확인';
+    return comparison + '\n' + confirmationLabel(item);
   }
   function button(label, action) {
     const item = node('button', label); item.type = 'button'; item.disabled = busy;

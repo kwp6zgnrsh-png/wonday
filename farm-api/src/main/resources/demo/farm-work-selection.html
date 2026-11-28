@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>선정·조건 재확인 | WON데이 farm-demo</title>
+<style>
+:root{font-family:system-ui,'Malgun Gothic',sans-serif;color:#173b2c;background:#edf4ef;color-scheme:light}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;padding:1.2rem}main{max-width:72rem;margin:auto}
+header,section{background:white;border:1px solid #c8ddd0;border-radius:.8rem;padding:1.1rem;margin-bottom:1rem}
+h1{font-size:1.65rem}h2{font-size:1.2rem}p,li{line-height:1.7}a{color:#195d3b}
+.toolbar{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin:.8rem 0}
+button,select,input{font:inherit;min-height:2.7rem;padding:.6rem;border:1px solid #88a392;border-radius:.4rem}
+button{background:#1b5e3e;color:white;cursor:pointer}button:disabled{opacity:.45;cursor:default}
+input{width:6rem}.note{white-space:pre-wrap;background:#edf6ef;padding:.85rem;border-radius:.5rem}
+[data-error=true]{color:#a02420}.muted{color:#53695c;font-size:.9rem}
+.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{border-bottom:1px solid #d6e4da;padding:.65rem;text-align:left;vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere}
+#case-table{min-width:60rem}#compare{min-width:40rem}.changed{background:#fff1cd}
+pre{background:#f1f6f3;padding:.8rem;white-space:pre-wrap;overflow-wrap:anywhere}
+:focus-visible{outline:3px solid #2b7b4e;outline-offset:3px}
+</style>
+</head>
+<body><main>
+<header>
+<p><a href="/demo/login">로그인 · 계정 전환</a> · <a href="/demo/my-applications">근로자 내 지원</a> · <a href="/demo/work-applicants">고용주 지원자 목록</a></p>
+<h1>한 명씩 선정 · 변경 조건 재확인</h1>
+<p id="account" role="status">로그인을 확인합니다.</p>
+<p class="note">고용주와 근로자는 각각 실제 로그인 계정으로 처리합니다. 처음에는 demo-employer·demo-worker 계정을 사용하는 것이 가장 간단합니다.
+같은 브라우저에서는 로그인 계정을 바꾸면 이전 계정 세션도 바뀝니다. 두 역할을 동시에 보려면 일반 창과 시크릿 창을 나누세요.
+선정·재확인은 실제 API를 호출하며 서버의 권한·CSRF·버전 검사를 통과해야 합니다.</p>
+</header>
+<p id="notice" class="note" role="status" aria-live="polite">시연 준비 전입니다.</p>
+<section>
+<h2>1. 시연 데이터 준비와 사례 선택</h2>
+<div class="toolbar"><button id="prepare" type="button">선정·재확인 시연 데이터 준비</button><button id="reload" type="button">내 시연 사례 새로 불러오기</button></div>
+<p id="fixture-note" class="note">처음 준비는 201, 같은 고용주·근로자·날짜의 재사용은 200입니다. 재요청으로 기존 상태를 초기화하지 않습니다.
+고용주로 준비하면 상대는 demo-worker, 근로자로 준비하면 상대는 demo-employer입니다. 기존 회원의 이름·비밀번호는 변경하지 않습니다.</p>
+<div class="scroll"><table id="case-table"><thead><tr><th>사례</th><th>고용주 · 근로자</th><th>날짜 · 모집 상태</th><th>지원 · 확정 상태</th><th>선택</th></tr></thead><tbody id="cases"></tbody></table></div>
+</section>
+<section>
+<h2>2. 선택한 지원의 조건 확인</h2>
+<p id="target-note" class="note">위 표에서 「이 사례 선택」을 눌러 주세요.</p>
+<div class="toolbar"><button id="detail" type="button">최신 조건 · 확인 상태 조회</button>
+<label for="version">화면에서 확인한 조건 버전</label><input id="version" readonly aria-readonly="true"></div>
+<p id="confirmation" class="note">조건 조회 전</p>
+<p class="muted">조건 버전은 조회 응답에서 자동으로 가져옵니다. 쓰기 요청 직전에 새 버전을 몰래 덮어쓰지 않습니다.
+다른 창에서 조건을 바꿨다면 기존 화면의 요청은 409가 될 수 있습니다. 최신 조건을 직접 조회한 뒤 다시 요청하세요.</p>
+<div class="scroll"><table id="compare"><thead><tr><th>항목</th><th>최초 지원 조건</th><th>최신 조건</th></tr></thead><tbody id="conditions"></tbody></table></div>
+<p id="assignment" class="note">확정 근무 조회 전</p>
+</section>
+<section id="employer-panel" hidden>
+<h2>3. 고용주 — 선정·재요청·409</h2>
+<div class="toolbar"><button id="select" type="button">이 지원자 선정</button><button id="repeat-select" type="button" disabled>같은 선정 요청 다시 보내기</button>
+<button id="old-select" type="button">이전 버전으로 선정 요청 · 409 확인</button></div>
+<p>「정상 선정」 사례: 선정 201 → 같은 요청 200, 확정 근무 ID·확정 일시가 유지되는지 확인하세요.</p>
+<p>「변경 조건 재확인 후 선정」 사례: 근로자가 확인하기 전에는 409입니다. 근로자 계정에서 재확인한 뒤 다시 선정하면 201입니다.</p>
+<p class="muted">이전 버전 버튼은 버전이 2 이상인 사례에서 조회 버전보다 1 작은 값을 의도적으로 전송합니다.
+정원 충족·마감·모집 취소·시작 경과·취소된 근무는 해당 사례에서 일반 선정 버튼으로 409를 확인하세요.
+이미 확정된 정상 요청은 이전 버전을 보내도 기존 결과를 200으로 반환합니다. 버전 409는 아직 선정하지 않은 사례에서 확인하세요.</p>
+</section>
+<section id="worker-panel" hidden>
+<h2>3. 근로자 — 재확인·재요청·409</h2>
+<div class="toolbar"><button id="confirm" type="button">최신 조건으로 지원 유지 · 재확인</button><button id="repeat-confirm" type="button" disabled>같은 재확인 요청 다시 보내기</button>
+<button id="old-confirm" type="button">이전 버전으로 재확인 · 409 확인</button></div>
+<p>「변경 조건 재확인 후 선정」 사례에서 변경 내용을 먼저 읽고 재확인을 누르세요. 200 응답 후 같은 요청을 보내도 최초 재확인 ID·시각이 유지돼야 합니다.</p>
+<p class="muted">최초 지원 버전이 최신이면 별도 재확인 기록 없이 200입니다. 재확인은 선정이나 자리 확보가 아닙니다.
+고용주가 이미 선정했다면 재확인 대상이 아니므로 409입니다.</p>
+</section>
+<section>
+<h2>4. 최근 쓰기 결과와 API 응답</h2>
+<p id="write-status" class="note" role="status">쓰기 요청 전</p><pre id="write-response">쓰기 응답 없음</pre>
+<p id="http-status" role="status">요청 전</p><details><summary>최근 API 응답 JSON</summary><pre id="response">응답 없음</pre></details>
+<div class="scroll"><table><thead><tr><th>요청</th><th>HTTP</th><th>오류 코드</th></tr></thead><tbody id="requests"></tbody></table></div>
+<p class="muted">CSRF·세션 쿠키·비밀번호·서버 토큰은 표시하거나 저장하지 않습니다. 쓰기는 자동 재전송하지 않습니다.</p>
+</section>
+</main>
+<script>
+(() => {
+'use strict';
+const $=id=>document.getElementById(id);
+const recruit={OPEN:'모집 중',PAUSED:'일시중단',CLOSED:'마감',REMOVED:'모집 취소'};
+const states={PENDING:'지원 대기',SELECTED:'선정',CONFIRMED:'확정 근무',CANCELLED:'취소',EARLY_ENDED:'조기 종료',COMPLETED:'완료',NOT_SELECTED:'미선정'};
+const fields=[['workDate','근무일'],['timeZone','시간대'],['workLocation','작업지'],['latitude','위도'],['longitude','경도'],['cropCode','작목'],['workTypeCode','작업 유형'],['description','작업 내용'],['headcount','정원'],['dailyWage','일급'],['plannedStartAt','예정 시작'],['plannedEndAt','예정 종료'],['breakStartAt','휴게 시작'],['breakEndAt','휴게 종료']];
+let account=null,target=null,viewVersion=null,busy=false,generation=0,abort=null,lastSelection=null,lastConfirmation=null;
+function el(tag,value){const node=document.createElement(tag);if(value!==undefined)node.textContent=String(value);return node}
+function text(id,value,error=false){$(id).textContent=value;$(id).dataset.error=String(error)}
+function notice(value,error=false){text('notice',value,error)}
+function positive(value){return Number.isSafeInteger(value)&&value>0}
+function active(ctx){if(ctx.generation!==generation)throw new Error('화면이 전환되었습니다.')}
+function clearTarget(){
+ target=null;viewVersion=null;lastSelection=null;lastConfirmation=null;$('version').value='';
+ $('conditions').replaceChildren();text('target-note','위 표에서 「이 사례 선택」을 눌러 주세요.');
+ text('confirmation','조건 조회 전');text('assignment','확정 근무 조회 전');
+}
+function clearAll(){
+ clearTarget();$('cases').replaceChildren();$('requests').replaceChildren();text('response','응답 없음');
+ text('write-response','쓰기 응답 없음');text('write-status','쓰기 요청 전');text('http-status','요청 전');
+}
+function controls(){
+ const off=busy||account===null, selected=target!==null&&viewVersion!==null;
+ for(const id of ['prepare','reload'])$(id).disabled=off;
+ $('detail').disabled=off||!target;
+ $('employer-panel').hidden=account?.role!=='EMPLOYER';$('worker-panel').hidden=account?.role!=='WORKER';
+ for(const id of ['select','old-select'])$(id).disabled=off||!selected||account?.role!=='EMPLOYER'||(id==='old-select'&&viewVersion<2);
+ for(const id of ['confirm','old-confirm'])$(id).disabled=off||!selected||account?.role!=='WORKER'||(id==='old-confirm'&&viewVersion<2);
+ $('repeat-select').disabled=off||!lastSelection||account?.role!=='EMPLOYER';
+ $('repeat-confirm').disabled=off||!lastConfirmation||account?.role!=='WORKER';
+ for(const button of $('cases').querySelectorAll('button'))button.disabled=off;
+}
+async function raw(path,ctx,options={}){
+ const response=await fetch(path,{...options,credentials:'same-origin',cache:'no-store',signal:ctx.signal});active(ctx);
+ let body=null;try{body=await response.json()}catch{}active(ctx);
+ return {status:response.status,body};
+}
+async function requireAccount(ctx,expected){
+ const reply=await raw('/api/auth/me',ctx);
+ const member=reply.body;
+ if(reply.status!==200||!positive(member?.id)||!['EMPLOYER','WORKER'].includes(member.role)){
+  account=null;clearAll();text('account','고용주 또는 근로자로 로그인해 주세요.');throw new Error('로그인이 필요합니다. 로그인 화면에서 계정을 확인하세요.');
+ }
+ if(expected&&(member.id!==expected.id||member.role!==expected.role)){
+  account=null;clearAll();text('account','계정이 변경되었습니다. 사례를 다시 불러오세요.');throw new Error('계정이 바뀌어 이전 요청 결과를 표시하지 않습니다.');
+ }
+ if(account&&(account.id!==member.id||account.role!==member.role))clearAll();
+ account={id:member.id,role:member.role,name:member.name};
+ text('account',member.name+' · '+(member.role==='EMPLOYER'?'고용주':'근로자')+' · 회원 ID '+member.id);
+ return {...account};
+}
+function show(path,reply,method='GET'){
+ const error=reply.status<200||reply.status>=300;
+ text('http-status',method+' '+path+' · HTTP '+reply.status,error);text('response',JSON.stringify(reply.body,null,2));
+ const row=el('tr');for(const value of [method+' '+path,reply.status,reply.body?.code||'—'])row.append(el('td',value));
+ $('requests').prepend(row);while($('requests').children.length>16)$('requests').lastElementChild.remove();
+ if(method==='POST'){
+  const body=reply.body;
+  const result=body?.assignmentId
+   ? '확정 근무 #'+body.assignmentId+' · '+(states[body.workStatus]||body.workStatus)+' · 확정 일시 '+(body.confirmedAt||'미확인')
+   : body?.conditionConfirmation
+    ? confirmationLabel(body.conditionConfirmation)
+    : body?.created!==undefined?(body.created?'새 시연 데이터 준비':'오늘 시연 데이터 재사용'):body?.message||'응답을 확인하세요.';
+  text('write-status','HTTP '+reply.status+(body?.code?' · '+body.code:'')+'\n'+result,error);
+  text('write-response',JSON.stringify(body,null,2));
+ }
+}
+async function request(path,ctx,expected,options={}){
+ let reply;
+ try{reply=await raw(path,ctx,options)}catch(error){active(ctx);await requireAccount(ctx,expected);throw error}
+ await requireAccount(ctx,expected);show(path,reply,options.method||'GET');
+ if(reply.status===401||(reply.status===403&&['EMPLOYER_ROLE_REQUIRED','WORKER_ROLE_REQUIRED','FARM_ROLE_REQUIRED'].includes(reply.body?.code))){
+  account=null;clearAll();throw new Error('접근 권한이 바뀌었습니다. 다시 로그인해 주세요.');
+ }
+ return reply;
+}
+async function post(path,body,ctx,expected){
+ const csrf=await raw('/api/auth/csrf',ctx);await requireAccount(ctx,expected);
+ if(csrf.status!==200||typeof csrf.body?.headerName!=='string'||!csrf.body.headerName
+   ||typeof csrf.body?.token!=='string'||!csrf.body.token)throw new Error('CSRF 토큰을 발급받지 못했습니다.');
+ ctx.posted=true;
+ const headers={[csrf.body.headerName]:csrf.body.token};
+ const options={method:'POST',headers};
+ if(body!==null){headers['Content-Type']='application/json';options.body=JSON.stringify(body)}
+ return request(path,ctx,expected,options);
+}
+async function run(action){
+ if(busy)return;busy=true;abort=new AbortController();const ctx={generation,signal:abort.signal,posted:false};controls();
+ try{const who=await requireAccount(ctx);await action(ctx,who)}
+ catch(error){if(ctx.generation===generation)notice((error.message||'연결을 확인해 주세요.')+(ctx.posted?'\n쓰기 요청 결과가 불확실하면 최신 상태를 조회하세요. 자동 재전송하지 않습니다.':''),true)}
+ finally{if(ctx.generation===generation){busy=false;abort=null;controls()}}
+}
+function confirmationLabel(info){
+ if(!info)return '확인 기록 미확인';
+ const state=info.latestTermsConfirmed?(info.source==='INITIAL_APPLICATION'?'최초 지원으로 최신 조건 확인':'최신 조건 재확인 완료'):'최신 조건 재확인 필요';
+ return state+'\n확인 근거 버전: '+(info.confirmedTermsVersion??'미확인')
+  +'\n재확인 ID: '+(info.acknowledgementId??'없음')+'\n최초 재확인 일시: '+(info.acknowledgedAt??'없음');
+}
+function value(conditions,field){
+ if(!conditions||conditions.availability==='UNAVAILABLE'||conditions.unavailableFields?.includes(field))return '확인 불가 · 저장 기록 없음';
+ const v=conditions[field];if(v===null||v===undefined)return field.startsWith('break')?'휴게 없음':'미등록';
+ if(field==='cropCode')return (conditions.cropName||'이름 미확인')+' ('+v+')';
+ if(field==='workTypeCode')return (conditions.workTypeName||'이름 미확인')+' ('+v+')';
+ return String(v)+(field==='dailyWage'?'원':field==='headcount'?'명':'');
+}
+async function loadDetail(ctx,who){
+ if(!target)throw new Error('먼저 사례를 선택해 주세요.');
+ viewVersion=null;$('version').value='';$('conditions').replaceChildren();text('confirmation','조건 조회 중');
+ const path=who.role==='EMPLOYER'
+  ? '/api/job-postings/'+target.jobPostingId+'/schedules/'+target.workScheduleId+'/applications/'+target.applicationId
+  : '/api/me/applications/'+target.applicationId;
+ const reply=await request(path,ctx,who);
+ if(reply.status!==200){notice('상세 HTTP '+reply.status+' · '+(reply.body?.message||'조회 실패'),true);return false}
+ const b=reply.body;
+ if(b?.applicationId!==target.applicationId||!positive(b.latestTermsVersion)||!b.appliedConditions||!b.latestConditions
+    ||!Array.isArray(b.changedFields))throw new Error('상세 응답 형식을 확인할 수 없습니다.');
+ viewVersion=b.latestTermsVersion;$('version').value=String(viewVersion);
+ text('confirmation','최초 지원 버전: '+(b.appliedTermsVersion??'미확인')+' / 최신 버전: '+viewVersion+'\n'+confirmationLabel(b.conditionConfirmation));
+ const changed=new Set(b.changedFields);
+ for(const [key,label] of fields){const row=el('tr');if(changed.has(key))row.className='changed';row.append(el('th',label),el('td',value(b.appliedConditions,key)),el('td',value(b.latestConditions,key)));$('conditions').append(row)}
+ const a=b.assignment;
+ text('assignment',a?'확정 근무 #'+a.assignmentId+' · 확정 일시 '+(a.confirmedAt||'미확인')+' · 완료 일시 '+(a.completedAt||'없음')
+  +(a.change?' · '+(states[a.change.changeType]||a.change.changeType):''):'아직 확정 근무가 없습니다.');
+ notice('최신 조건을 조회했습니다. 내용을 확인한 뒤 해당 역할의 버튼을 눌러 주세요.');return true;
+}
+async function choose(row,ctx,who){
+ clearTarget();target={...row};text('target-note',row.label+'\n공고 #'+row.jobPostingId+' / 일정 #'+row.workScheduleId+' / 지원 #'+row.applicationId
+  +'\n고용주 '+row.employerName+' (#'+row.employerId+') / 근로자 '+row.workerName+' (#'+row.workerId+')');
+ await loadDetail(ctx,who);
+}
+function renderCases(rows){
+ $('cases').replaceChildren();
+ if(!rows.length){const row=el('tr'),td=el('td','아직 본인 시연 사례가 없습니다. 준비 버튼을 눌러 주세요.');td.colSpan=5;row.append(td);$('cases').append(row);return}
+ for(const item of rows){
+  const row=el('tr'),actions=el('td'),button=el('button','이 사례 선택');button.type='button';button.addEventListener('click',()=>run((ctx,who)=>choose(item,ctx,who)));actions.append(button);
+  row.append(el('td',item.label+'\n공고 #'+item.jobPostingId),el('td',item.employerName+' (#'+item.employerId+')\n'+item.workerName+' (#'+item.workerId+')'),
+   el('td',item.workDate+'\n'+(recruit[item.recruitmentStatus]||item.recruitmentStatus)),
+   el('td','지원 #'+item.applicationId+' · '+(states[item.applicationStatus]||item.applicationStatus)+'\n'+(states[item.workStatus]||item.workStatus)),actions);
+  $('cases').append(row);
+ }
+}
+function checkCases(body){
+ if(!Array.isArray(body?.cases)||body.cases.some(r=>!positive(r.applicationId)||!positive(r.jobPostingId)||!positive(r.workScheduleId)))
+  throw new Error('시연 사례 응답 형식을 확인할 수 없습니다.');
+ return body.cases;
+}
+async function reload(ctx,who){
+ const reply=await request('/demo/api/work-selection/fixtures',ctx,who);
+ if(reply.status!==200){notice(reply.body?.message||'시연 사례를 조회하지 못했습니다.',true);return}
+ clearTarget();renderCases(checkCases(reply.body));notice('본인 시연 사례를 불러왔습니다. 표 오른쪽의 「이 사례 선택」을 누르세요.');
+}
+async function prepare(ctx,who){
+ const reply=await post('/demo/api/work-selection/fixtures',null,ctx,who);
+ if(![200,201].includes(reply.status)){notice(reply.body?.message||'시연 준비 실패',true);return}
+ const rows=checkCases(reply.body);
+ text('fixture-note','시연 준비 HTTP '+reply.status+' · '+(reply.body.created?'새 데이터 생성':'기존 상태를 유지하고 재사용')
+  +'\n계정을 바꾼 뒤에는 「내 시연 사례 새로 불러오기」로 같은 공고·지원 ID를 찾으세요.');
+ clearTarget();renderCases(rows);
+ const first=rows.find(r=>r.jobPostingId===reply.body.preparedJobPostingId)||rows[0];
+ if(first)await choose(first,ctx,who);
+}
+async function write(kind,old,repeat,ctx,who){
+ if(!target||viewVersion===null)throw new Error('사례의 최신 조건을 먼저 조회해 주세요.');
+ const selecting=kind==='selection';
+ if(who.role!==(selecting?'EMPLOYER':'WORKER'))throw new Error('해당 역할로 로그인해 주세요.');
+ const previous=selecting?lastSelection:lastConfirmation;
+ const path=repeat?previous?.path:selecting
+  ? '/api/job-postings/'+target.jobPostingId+'/schedules/'+target.workScheduleId+'/applications/'+target.applicationId+'/selection'
+  : '/api/me/applications/'+target.applicationId+'/condition-confirmation';
+ const body=repeat?previous?.body:{termsVersion:old?viewVersion-1:viewVersion};
+ if(!path||!body||!positive(body.termsVersion))throw new Error('정상 요청 후 재요청하거나 버전 2 이상 사례를 선택해 주세요.');
+ const reply=await post(path,body,ctx,who);
+ if(reply.status===200||reply.status===201){
+  if(selecting)lastSelection={path,body:{...body}};else lastConfirmation={path,body:{...body}};
+  notice('HTTP '+reply.status+' · '+(selecting?'선정 결과':'재확인 결과')+'를 아래 「최근 쓰기 결과」에서 확인하세요.\n조건 표·명단은 조회 버튼으로 갱신할 수 있습니다.');
+ }else notice('HTTP '+reply.status+' · '+(reply.body?.code||'')+' · '+(reply.body?.message||'응답을 확인하세요.'),true);
+}
+$('prepare').addEventListener('click',()=>run(prepare));$('reload').addEventListener('click',()=>run(reload));
+$('detail').addEventListener('click',()=>run(loadDetail));
+$('select').addEventListener('click',()=>run((c,a)=>write('selection',false,false,c,a)));
+$('repeat-select').addEventListener('click',()=>run((c,a)=>write('selection',false,true,c,a)));
+$('old-select').addEventListener('click',()=>run((c,a)=>write('selection',true,false,c,a)));
+$('confirm').addEventListener('click',()=>run((c,a)=>write('confirmation',false,false,c,a)));
+$('repeat-confirm').addEventListener('click',()=>run((c,a)=>write('confirmation',false,true,c,a)));
+$('old-confirm').addEventListener('click',()=>run((c,a)=>write('confirmation',true,false,c,a)));
+window.addEventListener('pagehide',()=>{generation++;abort?.abort();account=null;busy=false;clearAll();controls();text('account','로그인을 다시 확인해 주세요.');});
+window.addEventListener('pageshow',()=>run(reload));controls();
+})();
+</script></body></html>
