@@ -56,11 +56,11 @@ WEATHER_API_SERVICE_KEY=일반_인증키_Decoding_권장
   "state": "RECEIVED",
   "observationCount": 144,
   "payloadSha256": "원본_페이지_JSON의_SHA256",
-  "collectedAt": "2026-11-27T01:00:00Z"
+  "collectedAt": "2026-11-27T10:00:00+09:00"
 }
 ```
 
-- `date`는 GMT+9 기준 관측일이며 미래 날짜는 거부한다. 저장 시각은 UTC DATETIME(6), 응답은 ISO 8601 Z다.
+- `date`는 GMT+9 기준 관측일이며 미래 날짜는 거부한다. 저장 시각은 UTC DATETIME(6), 응답은 ISO 8601 GMT+9 `+09:00`이다.
 - 요청은 `getWeatherTenMinList3`의 `date`, `obsr_Spot_Cd`, `Page_No`, `Page_Size=144`를 사용한다.
 - 모든 페이지의 결과코드·페이지 번호·전체 건수·관측소·관측일·중복 시각을 확인한 뒤 저장한다. 알 수 없는 기상 열도 원문에 남는다.
 - 통신 오류·HTTP 429/5xx는 최대 3회 요청한다. 인증·매개변수 거부와 잘못된 XML은 무제한 재시도하지 않는다.

@@ -1,5 +1,6 @@
 package com.wonday.insurance.claim;
 
+import com.wonday.insurance.api.ApiTime;
 import com.wonday.insurance.member.MemberAccessService;
 import com.wonday.insurance.weather.WeatherStationCatalog;
 import java.math.BigDecimal;
@@ -70,7 +71,7 @@ class ClaimWeatherStationService {
 	public ClaimWeatherStationView saved(long claimId) {
 		return selections.selection(claimId).map(row -> new ClaimWeatherStationView(row.getClaimCaseId(), row.getStationId(),
 			row.getProvider(), row.getStationCode(), row.getName(), row.getAddress(), row.getLatitude(), row.getLongitude(),
-			row.getDistanceMeters(), row.getSelectionRule(), row.getSelectedAt().atOffset(ZoneOffset.UTC))).orElse(null);
+			row.getDistanceMeters(), row.getSelectionRule(), ApiTime.fromUtc(row.getSelectedAt()))).orElse(null);
 	}
 
 	private Coordinates coordinates(ClaimCase claim, Long expectedWorkerId) {

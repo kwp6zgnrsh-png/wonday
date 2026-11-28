@@ -98,7 +98,7 @@ class PlatformLinkApiTests {
 			.andExpect(header().string("Cache-Control", "no-store"))
 			.andExpect(jsonPath("$.linked").value(true)).andExpect(jsonPath("$.consentRequired").value(false))
 			.andExpect(jsonPath("$.requiredConsentVersion").value(VERSION)).andExpect(jsonPath("$.consentVersion").value(VERSION))
-			.andExpect(jsonPath("$.consentedAt").value("2026-11-27T09:00:00.123456Z"))
+			.andExpect(jsonPath("$.consentedAt").value("2026-11-27T18:00:00.123456+09:00"))
 			.andReturn().getResponse().getContentAsString();
 		assertThat(response).doesNotContain("workerId", "memberId", "identityNumber", "phone", "ciphertext", "0000000000000", "9001015000000");
 		var member = jdbc.queryForMap("select * from member where id = ?", own.id());

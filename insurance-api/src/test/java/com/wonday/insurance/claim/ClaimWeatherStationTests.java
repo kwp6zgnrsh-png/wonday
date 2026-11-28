@@ -68,7 +68,7 @@ class ClaimWeatherStationTests {
 			.andExpect(jsonPath("$.stationCode").value(CODE)).andExpect(jsonPath("$.latitude").value(37.846217))
 			.andExpect(jsonPath("$.longitude").value(127.500637)).andExpect(jsonPath("$.distanceMeters").value(0))
 			.andExpect(jsonPath("$.selectionRule").value("nearest-gyeonggi-haversine-v1"))
-			.andExpect(jsonPath("$.selectedAt").value("2026-11-28T03:00:00.123456Z"));
+			.andExpect(jsonPath("$.selectedAt").value("2026-11-28T12:00:00.123456+09:00"));
 		mvc.perform(get(path(c)).session(admin.session())).andExpect(status().isOk()).andExpect(jsonPath("$.selected").value(true))
 			.andExpect(jsonPath("$.selection.stationCode").value(CODE));
 		mvc.perform(get(ROOT+"/"+c.id()).session(admin.session())).andExpect(status().isOk()).andExpect(jsonPath("$.weatherStation.stationCode").value(CODE));

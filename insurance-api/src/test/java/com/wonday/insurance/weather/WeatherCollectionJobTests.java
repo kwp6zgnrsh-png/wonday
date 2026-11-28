@@ -82,9 +82,13 @@ class WeatherCollectionJobTests {
 		mvc.perform(get(ROOT).session(admin.session()).param("state","FAILED").param("stationCode",CODE).param("date",DATE.toString()))
 			.andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
 			.andExpect(jsonPath("$.items[0].id").value(jobId)).andExpect(jsonPath("$.items[0].attemptCount").value(1))
+			.andExpect(jsonPath("$.items[0].createdAt").value("2026-11-27T18:00:00.123456+09:00"))
+			.andExpect(jsonPath("$.items[0].updatedAt").value("2026-11-27T18:00:00.123456+09:00"))
 			.andExpect(jsonPath("$.items[0].retryable").value(true)).andExpect(jsonPath("$.items[0].leaseExpiresAt").isEmpty());
 		mvc.perform(get(ROOT+"/"+jobId+"/attempts").session(admin.session())).andExpect(status().isOk())
 			.andExpect(jsonPath("$.items[0].id").value(attemptId)).andExpect(jsonPath("$.items[0].state").value("FAILED"))
+			.andExpect(jsonPath("$.items[0].startedAt").value("2026-11-27T18:00:00.123456+09:00"))
+			.andExpect(jsonPath("$.items[0].finishedAt").value("2026-11-27T18:00:00.123456+09:00"))
 			.andExpect(jsonPath("$.items[0].errorCode").value("WEATHER_SERVICE_UNAVAILABLE"));
 	}
 

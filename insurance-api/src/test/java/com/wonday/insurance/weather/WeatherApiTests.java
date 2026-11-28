@@ -61,7 +61,7 @@ class WeatherApiTests {
 		Account admin=account(true);
 		String first=mvc.perform(collect(admin)).andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
 			.andExpect(jsonPath("$.state").value("RECEIVED")).andExpect(jsonPath("$.observationCount").value(1))
-			.andExpect(jsonPath("$.collectedAt").value("2026-11-27T09:00:00.123456Z")).andReturn().getResponse().getContentAsString();
+			.andExpect(jsonPath("$.collectedAt").value("2026-11-27T18:00:00.123456+09:00")).andReturn().getResponse().getContentAsString();
 		long id=number(first,"$.id");
 		mvc.perform(collect(admin)).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id));
 		assertThat(collections.count()).isEqualTo(1);
@@ -130,6 +130,7 @@ class WeatherApiTests {
 		Account worker=account(false);
 		mvc.perform(get("/api/weather/stations/nearest").session(worker.session()).param("latitude","37").param("longitude","127"))
 			.andExpect(status().isOk()).andExpect(jsonPath("$.station.stationCode").value("011104F031"))
+			.andExpect(jsonPath("$.station.metadataSyncedAt").value("2026-11-28T15:51:38.072115+09:00"))
 			.andExpect(jsonPath("$.distanceMeters").value(0)).andExpect(jsonPath("$.selectionRule").value("nearest-gyeonggi-haversine-v1"));
 		verifyNoInteractions(provider);
 	}

@@ -76,11 +76,11 @@ class AdminClaimQueryTests {
 		var claim=claim(one,"REVIEWING");
 		mvc.perform(get(ROOT+"/"+claim.id()).session(admin.session())).andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
 			.andExpect(jsonPath("$.claim.memberId").value(one.id())).andExpect(jsonPath("$.claim.productVersionNo").value(1))
-			.andExpect(jsonPath("$.claim.openedAt").value("2026-11-28T03:00:00.123456Z"))
+			.andExpect(jsonPath("$.claim.openedAt").value("2026-11-28T12:00:00.123456+09:00"))
 			.andExpect(jsonPath("$.contract.id").value(claim.contractId())).andExpect(jsonPath("$.contract.termsText").value("가입 당시 약관"))
-			.andExpect(jsonPath("$.contract.status").value("ACTIVE")).andExpect(jsonPath("$.contract.coverageFrom").value("2026-11-01T00:00:00Z"))
+			.andExpect(jsonPath("$.contract.status").value("ACTIVE")).andExpect(jsonPath("$.contract.coverageFrom").value("2026-11-01T09:00:00+09:00"))
 			.andExpect(jsonPath("$.intakeSource.eventId").value(claim.eventId())).andExpect(jsonPath("$.intakeSource.weatherReasonCode").value("RAIN"))
-			.andExpect(jsonPath("$.intakeSource.occurredAt").value("2026-11-24T00:00:00Z"))
+			.andExpect(jsonPath("$.intakeSource.occurredAt").value("2026-11-24T09:00:00+09:00"))
 			.andExpect(jsonPath("$.work.agreedWorkLocation").value("약정 당시 농장"))
 			.andExpect(jsonPath("$.work.agreedStartAt").value("2026-11-25T08:00:00+09:00"))
 			.andExpect(jsonPath("$.work.agreedTimeZone").value("GMT+9"));
@@ -260,6 +260,29 @@ class AdminClaimQueryTests {
 			mvc.perform(get(ROOT+"/"+claim.id()).session(admin.session())).andExpect(status().isInternalServerError()).andExpect(jsonPath("$.code").value("CLAIM_DATA_INVALID"));
 			assertThat(json.readTree(jdbc.queryForObject("select work_snapshot from claim_case where id=?",String.class,claim.id()))).isEqualTo(work);
 		}
+	}
+
+	@Test void storedUtcAndForeignOffsetWorkTimesArePresentedInGmt9WithoutRewritingEvidence() throws Exception {
+		var claim=claim(one,"REVIEWING");
+		ObjectNode work=json.readValue(claim.snapshot(),ObjectNode.class);
+		work.put("confirmedAt","2026-11-20T00:00:00Z").put("agreedStartAt","2026-11-24T18:00:00-05:00")
+			.put("agreedEndAt","2026-11-25T08:00:00Z").put("agreedBreakStartAt","2026-11-25T03:00:00.123456Z")
+			.put("agreedBreakEndAt","2026-11-24T23:30:00-05:00");
+		String original=json.writeValueAsString(work);
+		// 원문을 수정하는 테스트 설정에서도 ON UPDATE 자동 시각 대신 기대할 UTC 시각을 명시한다.
+		jdbc.update("update claim_case set work_snapshot=?,updated_at=? where id=?",original,LocalDateTime.ofInstant(NOW,ZoneOffset.UTC),claim.id());
+		var before=jdbc.queryForMap("select * from claim_case where id=?",claim.id());
+		mvc.perform(get(ROOT+"/"+claim.id()).session(admin.session())).andExpect(status().isOk())
+			.andExpect(jsonPath("$.work.confirmedAt").value("2026-11-20T09:00:00+09:00"))
+			.andExpect(jsonPath("$.work.agreedStartAt").value("2026-11-25T08:00:00+09:00"))
+			.andExpect(jsonPath("$.work.agreedEndAt").value("2026-11-25T17:00:00+09:00"))
+			.andExpect(jsonPath("$.work.agreedBreakStartAt").value("2026-11-25T12:00:00.123456+09:00"))
+			.andExpect(jsonPath("$.work.agreedBreakEndAt").value("2026-11-25T13:30:00+09:00"));
+		mvc.perform(get(ROOT).session(admin.session())).andExpect(status().isOk())
+			.andExpect(jsonPath("$.items[0].updatedAt").value("2026-11-28T12:00:00.123456+09:00"));
+		mvc.perform(get(ROOT+"/"+claim.id()+"/history").session(admin.session())).andExpect(status().isOk())
+			.andExpect(jsonPath("$.items[0].createdAt").value("2026-11-28T12:00:00.123456+09:00"));
+		assertThat(jdbc.queryForMap("select * from claim_case where id=?",claim.id())).isEqualTo(before);
 	}
 
 	private Fixture claim(Account owner,String status) throws Exception {

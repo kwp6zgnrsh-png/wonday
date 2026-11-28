@@ -53,9 +53,11 @@ POST 응답 예시(작업지 좌표가 가평 관측지와 같은 경우):
   "longitude": 127.500637,
   "distanceMeters": 0.000,
   "selectionRule": "nearest-gyeonggi-haversine-v1",
-  "selectedAt": "2026-11-28T06:51:38Z"
+  "selectedAt": "2026-11-28T15:51:38+09:00"
 }
 ```
+
+선정 시각은 DB UTC로 저장하고 응답은 GMT+9 `+09:00`이다. [시각 기준](api-time.md) 참고.
 
 `stationId`는 DB 생성 ID이므로 환경별로 다를 수 있다. 외부 기상자료는 `stationCode`로 조회한다.
 선정 후 GET은 `{"selected": true, "selection": 위_객체}`를 반환한다.

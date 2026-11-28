@@ -100,14 +100,17 @@ class ContractApiTests {
 			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true)))
 			.andExpect(status().isCreated())
 			.andExpect(header().string("Location", org.hamcrest.Matchers.matchesPattern("/api/contracts/[1-9][0-9]*")))
-			.andExpect(jsonPath("$.coverageFrom").value("2026-02-09T15:00:00"))
-			.andExpect(jsonPath("$.coverageTo").value("2026-05-09T15:00:00"))
+			.andExpect(jsonPath("$.coverageFrom").value("2026-02-10T00:00:00+09:00"))
+			.andExpect(jsonPath("$.acceptedAt").value("2026-02-10T00:00:00+09:00"))
+			.andExpect(jsonPath("$.coverageTo").value("2026-05-10T00:00:00+09:00"))
 			.andExpect(jsonPath("$.status").value("ACTIVE"))
 			.andExpect(jsonPath("$.termsText").value("시연 약관"))
 			.andExpect(jsonPath("$.residentRegistrationNumber").doesNotExist())
 			.andReturn().getResponse().getContentAsString();
 		long id = ((Number) JsonPath.read(result, "$.id")).longValue();
 		tx(() -> {
+			assertThat(entities.find(InsuranceContract.class, id).getAcceptedAt()).isEqualTo(LocalDateTime.of(2026, 2, 9, 15, 0));
+			assertThat(entities.find(InsuranceContract.class, id).getCoverageTo()).isEqualTo(LocalDateTime.of(2026, 5, 9, 15, 0));
 			assertThat(entities.createQuery("select m.phone from Member m where m.id = :id", String.class)
 				.setParameter("id", account.id()).getSingleResult()).isEqualTo("01000000000");
 			String ciphertext = entities.createQuery("select m.identityNumberCiphertext from Member m where m.id = :id", String.class)
@@ -121,9 +124,11 @@ class ContractApiTests {
 			return null;
 		});
 		mvc.perform(get("/api/contracts").session(account.session()))
-			.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+			.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+			.andExpect(jsonPath("$[0].coverageFrom").value("2026-02-10T00:00:00+09:00"));
 		mvc.perform(get("/api/contracts/{id}", id).session(account.session()))
-			.andExpect(status().isOk()).andExpect(jsonPath("$.id").value((int) id));
+			.andExpect(status().isOk()).andExpect(jsonPath("$.id").value((int) id))
+			.andExpect(jsonPath("$.acceptedAt").value("2026-02-10T00:00:00+09:00"));
 		Account other = account();
 		mvc.perform(get("/api/contracts/{id}", id).session(other.session())).andExpect(status().isNotFound());
 		mvc.perform(get("/api/contracts").session(other.session())).andExpect(jsonPath("$.length()").value(0));
@@ -371,7 +376,7 @@ class ContractApiTests {
 		mvc.perform(post("/api/contracts").session(account.session()).with(csrf())
 			.contentType(MediaType.APPLICATION_JSON).content(payload(true, true)))
 			.andExpect(status().isCreated())
-			.andExpect(jsonPath("$.coverageTo").value("2026-04-29T15:00:00"));
+			.andExpect(jsonPath("$.coverageTo").value("2026-04-30T00:00:00+09:00"));
 	}
 
 	@Test

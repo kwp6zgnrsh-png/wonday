@@ -1,5 +1,7 @@
 package com.wonday.insurance.product;
 
+import com.wonday.insurance.api.ApiTime;
+import java.time.OffsetDateTime;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.time.LocalDateTime;
@@ -43,11 +45,11 @@ class ProductQueryService {
 		InsuranceProduct product = version.getProduct();
 		return new ProductSummary(product.getId(), product.getProductCode(), product.getName(),
 			product.getDescription(), version.getId(), version.getVersionNo(),
-			version.getSalesStartAt(), version.getSalesEndAt(), json.readTree(version.getPremiumTerms()));
+			ApiTime.fromUtc(version.getSalesStartAt()), ApiTime.fromUtc(version.getSalesEndAt()), json.readTree(version.getPremiumTerms()));
 	}
 
 	record ProductSummary(long id, String productCode, String name, String description, long productVersionId,
-		int versionNo, LocalDateTime salesStartAt, LocalDateTime salesEndAt, JsonNode premiumTerms) {}
+		int versionNo, OffsetDateTime salesStartAt, OffsetDateTime salesEndAt, JsonNode premiumTerms) {}
 
 	record ProductDetail(ProductSummary product, String termsText, JsonNode eligibleWorkGroups,
 		JsonNode stationSelectionRule, JsonNode windowRule, JsonNode indexRules, JsonNode payoutRules) {}
