@@ -5,8 +5,14 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 
 interface ClaimRepository extends JpaRepository<ClaimCase, Long> {
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select c from ClaimCase c where c.id=:id")
+	Optional<ClaimCase> lockForStationSelection(long id);
+
 	Optional<ClaimCase> findByContractIdAndAssignmentId(long contractId, long assignmentId);
 
 	// 계약과 원본 이벤트의 회원 소유권을 모두 확인한다. 동의를 철회해도 본인의 과거 접수는 조회할 수 있다.

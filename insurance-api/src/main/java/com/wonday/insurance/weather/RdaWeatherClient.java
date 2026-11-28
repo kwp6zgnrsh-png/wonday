@@ -8,8 +8,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.math.BigDecimal;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -50,39 +48,6 @@ class RdaWeatherClient {
 		throw WeatherException.invalid();
 	}
 
-	List<Station> stations(Set<String> scope) {
-		var found = new java.util.TreeMap<String, Station>();
-		var seen = new HashSet<String>();
-		int total = -1, received = 0;
-		for (int number = 1; number <= 20; number++) {
-			byte[] bytes = get("/getObsrSpotList", properties.stationServiceKey(), Map.of("Page_No", number, "Page_Size", 100));
-			var page = RdaXml.page(bytes, number, 2000, false);
-			if (total != -1 && total != page.total()) throw WeatherException.invalid();
-			total = page.total();
-			for (var item : page.items()) {
-				String code = RdaXml.text(item, "Obsr_Spot_Code");
-				if (!seen.add(code)) throw WeatherException.invalid();
-				if (!scope.contains(code)) continue;
-				try {
-					var lat = new BigDecimal(RdaXml.text(item, "Instl_La"));
-					var lon = new BigDecimal(RdaXml.text(item, "Instl_Lo"));
-					StationCoordinates.validate(lat, lon);
-					String name = RdaXml.text(item, "Obsr_Spot_Nm"), address = RdaXml.text(item, "Instl_Adres");
-					if (name.isBlank() || name.length() > 150 || address.isBlank() || address.length() > 500) throw WeatherException.invalid();
-					found.put(code, new Station(code, name, address, lat, lon));
-				} catch (IllegalArgumentException | WeatherException exception) { throw WeatherException.invalid(); }
-			}
-			received += page.items().size();
-			if (received == total) {
-				if (found.size() != scope.size()) throw new WeatherException(HttpStatus.BAD_GATEWAY,
-					"INCOMPLETE_STATION_RESPONSE", "Configured station metadata is missing from the provider response");
-				return List.copyOf(found.values());
-			}
-			if (received > total) throw WeatherException.invalid();
-		}
-		throw WeatherException.invalid();
-	}
-
 	byte[] get(String path, String key, Map<String, ?> query) {
 		if (key == null || key.isBlank()) throw new WeatherException(HttpStatus.SERVICE_UNAVAILABLE,
 			"WEATHER_API_NOT_CONFIGURED", "Weather API credential is not configured");
@@ -113,5 +78,4 @@ class RdaWeatherClient {
 		throw WeatherException.unavailable();
 	}
 	record Batch(List<String> pages, int itemCount) { @Override public String toString() { return "WeatherBatch[redacted]"; } }
-	record Station(String code, String name, String address, BigDecimal latitude, BigDecimal longitude) {}
 }

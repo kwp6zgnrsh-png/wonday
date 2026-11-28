@@ -39,6 +39,28 @@ class WeatherMigrationTests {
 		return Flyway.configure().dataSource(database).locations("classpath:db/migration")
 			.javaMigrations(new V8__encrypt_legacy_member_identity()).target(target).load();
 	}
+	@Test void fixedCatalogUpgradeSeedsAll24CoordinatesOnceAndKeepsExistingStationReferences() throws Exception {
+		String schema="insurance_fixed_stations_"+UUID.randomUUID().toString().replace("-","");
+		HikariDataSource source=dataSource.unwrap(HikariDataSource.class);
+		DataSource database=new DriverManagerDataSource(source.getJdbcUrl().replaceFirst("/[^/?]+(?=\\?|$)","/"+schema),source.getUsername(),source.getPassword());
+		try {
+			migration(database,"11").migrate(); JdbcTemplate jdbc=new JdbcTemplate(database);
+			jdbc.update("insert into weather_station (provider,station_code,name,latitude,longitude) values ('RDA','477802A001','Previous value',37,127)");
+			long id=jdbc.queryForObject("select id from weather_station where station_code='477802A001'",Long.class);
+			jdbc.update("insert into weather_observation (station_id,observed_at,quality_status) values (?,'2026-11-25 00:00:00','UNKNOWN')",id);
+			var next=migration(database,"13"); assertThat(next.migrate().migrationsExecuted).isEqualTo(2);
+			assertThat(jdbc.queryForObject("select count(*) from weather_station where provider='RDA' and enabled=1 and metadata_synced_at is not null",Integer.class)).isEqualTo(24);
+			assertThat(jdbc.queryForList("select station_code from weather_station",String.class)).containsExactlyInAnyOrderElementsOf(new GyeonggiStations().names().keySet());
+			assertThat(jdbc.queryForObject("select id from weather_station where station_code='477802A001'",Long.class)).isEqualTo(id);
+			assertThat(jdbc.queryForObject("select latitude from weather_station where id=?",java.math.BigDecimal.class,id)).isEqualByComparingTo("37.846217");
+			assertThat(jdbc.queryForObject("select longitude from weather_station where id=?",java.math.BigDecimal.class,id)).isEqualByComparingTo("127.500637");
+			assertThat(jdbc.queryForObject("select count(*) from weather_observation where station_id=?",Integer.class,id)).isEqualTo(1);
+			assertThat(jdbc.queryForObject("select count(*) from claim_weather_station",Integer.class)).isZero();
+			var seeded=jdbc.queryForList("select * from weather_station order by id");
+			assertThat(next.migrate().migrationsExecuted).isZero();
+			assertThat(jdbc.queryForList("select * from weather_station order by id")).isEqualTo(seeded);
+		} finally { try(var connection=dataSource.getConnection();var statement=connection.createStatement()) { statement.execute("drop database if exists `"+schema+"`"); } }
+	}
 	@Test void upgradeFromV10PreservesOriginalsAndStartsWithoutInventedHistory() throws Exception {
 		String schema="insurance_weather_jobs_"+UUID.randomUUID().toString().replace("-","");
 		HikariDataSource source=dataSource.unwrap(HikariDataSource.class);

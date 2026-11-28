@@ -5,7 +5,6 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,7 +21,7 @@ class RdaWeatherClientTests {
 	private RdaWeatherClient client;
 	@BeforeEach void setup() {
 		var builder = RestClient.builder(); server = MockRestServiceServer.bindTo(builder).build();
-		client = new RdaWeatherClient(builder.build(), new WeatherProperties("https://weather.test", "raw+/=key", "station-key"));
+		client = new RdaWeatherClient(builder.build(), new WeatherProperties("https://weather.test", "raw+/=key"));
 	}
 	@Test void preservesEveryOriginalFieldAndMidnightWithoutInterpretingTheRainfall() {
 		String xml = page(1, 1, item(CODE, "24:00", "<rn>12.3</rn><unknown_sensor>X</unknown_sensor>"));
@@ -78,26 +77,15 @@ class RdaWeatherClientTests {
 	}
 	@Test void anEncodedKeyIsDecodedOnceAndThenEscapedAsAQueryValue() {
 		var builder=RestClient.builder(); server=MockRestServiceServer.bindTo(builder).build();
-		client=new RdaWeatherClient(builder.build(),new WeatherProperties("https://weather.test","raw%2B%2F%3Dkey",""));
+		client=new RdaWeatherClient(builder.build(),new WeatherProperties("https://weather.test","raw%2B%2F%3Dkey"));
 		server.expect(requestTo(org.hamcrest.Matchers.containsString("serviceKey=raw%2B%2F%3Dkey")))
 			.andRespond(withSuccess(page(1,1,item(CODE,"00:10","")),MediaType.APPLICATION_XML));
 		client.observations(CODE,DATE); server.verify();
 	}
 	@Test void missingKeyDoesNotMakeAnExternalRequest() {
-		client=new RdaWeatherClient(RestClient.builder().build(),new WeatherProperties("https://weather.test","",""));
+		client=new RdaWeatherClient(RestClient.builder().build(),new WeatherProperties("https://weather.test",""));
 		assertThatThrownBy(() -> client.observations(CODE,DATE)).isInstanceOfSatisfying(WeatherException.class,
 			e -> assertThat(e.getCode()).isEqualTo("WEATHER_API_NOT_CONFIGURED"));
-	}
-	@Test void officialStationMetadataIsParsedWithTheSeparateKey() {
-		String station="<item><Obsr_Spot_Code>477802A001</Obsr_Spot_Code><Obsr_Spot_Nm>Gapyeong</Obsr_Spot_Nm>"
-			+"<Instl_La>37.1234567</Instl_La><Instl_Lo>127.1234567</Instl_Lo><Instl_Adres>Gyeonggi fixture</Instl_Adres></item>";
-		server.expect(requestTo(org.hamcrest.Matchers.containsString("serviceKey=station-key"))).andRespond(withSuccess(page(1,1,station),MediaType.APPLICATION_XML));
-		assertThat(client.stations(Set.of(CODE)).getFirst().latitude()).isEqualByComparingTo("37.1234567"); server.verify();
-	}
-	@Test void anIncompleteStationScopeIsRejected() {
-		server.expect(anything()).andRespond(withSuccess(page(1,0,""),MediaType.APPLICATION_XML));
-		assertThatThrownBy(() -> client.stations(Set.of(CODE))).isInstanceOfSatisfying(WeatherException.class,
-			e -> assertThat(e.getCode()).isEqualTo("INCOMPLETE_STATION_RESPONSE")); server.verify();
 	}
 	@Test void scopeAndDistanceAreDeterministic() throws Exception {
 		var scope=new GyeonggiStations(); assertThat(scope.names()).hasSize(24).containsKey("017414F020");

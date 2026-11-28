@@ -73,6 +73,7 @@ class ClaimIntakeTests {
 	@Autowired DataSource dataSource;
 	@MockitoBean Clock clock;
 	@MockitoSpyBean ClaimHistoryRepository history;
+	@MockitoSpyBean ClaimWeatherStationRepository stationSelections;
 	private Account owner;
 	private long linkId;
 	private long contractId;
@@ -179,6 +180,7 @@ class ClaimIntakeTests {
 		assertThat(work.longitude()).isNull();
 		assertThat(work.snapshot()).isEqualTo(originalSnapshot);
 		assertThat(intake.process(eventId)).isEqualTo("RECEIVED");
+		assertThat(stationSelections.count()).isZero();
 		assertThat(claims.findAll().getFirst().getWorkSnapshot()).isEqualTo(originalSnapshot);
 		assertThat(tx(() -> entities.createQuery("select e.workSnapshot from PlatformWorkEvent e where e.id = :id", String.class)
 			.setParameter("id", eventId).getSingleResult())).isEqualTo(originalSnapshot)
@@ -192,6 +194,8 @@ class ClaimIntakeTests {
 	void laterVersionDoesNotReplaceOriginalCoordinates() {
 		long first = event(9001, "1", 7001, CANCELLED, snapshotWithCoordinates(7001, START), "CANCELLED", "WEATHER");
 		intake.process(first);
+		var firstSelection = stationSelections.selection(claims.findAll().getFirst().getId()).orElseThrow();
+		assertThat(firstSelection.getStationCode()).isNotBlank();
 		ObjectNode changedWork = snapshotWithCoordinates(7001, START)
 			.put("agreedLatitude", new BigDecimal("38.123456")).put("agreedLongitude", new BigDecimal("128.654321"));
 		long revised = event(9001, "2", 7001, CANCELLED, changedWork, "CANCELLED", "WEATHER");
@@ -203,6 +207,23 @@ class ClaimIntakeTests {
 		assertThat(saved.get("agreedLatitude").decimalValue()).isEqualByComparingTo("37.123456");
 		assertThat(saved.get("agreedLongitude").decimalValue()).isEqualByComparingTo("127.654321");
 		assertThat(claims.findAll().getFirst().getTriggerEventId()).isEqualTo(first);
+		var retained = stationSelections.selection(claims.findAll().getFirst().getId()).orElseThrow();
+		assertThat(retained.getStationId()).isEqualTo(firstSelection.getStationId());
+		assertThat(retained.getDistanceMeters()).isEqualByComparingTo(firstSelection.getDistanceMeters());
+		assertThat(retained.getSelectedAt()).isEqualTo(firstSelection.getSelectedAt());
+	}
+
+	@Test void stationSaveFailureRollsBackTheEntireIntakeAndTheSchedulerRetries() {
+		long eventId = event(9001, "1", 7001, CANCELLED, snapshotWithCoordinates(7001, START), "CANCELLED", "WEATHER");
+		doThrow(new IllegalStateException("temporary station save failure")).when(stationSelections).saveAndFlush(any());
+		scheduler.run();
+		assertThat(claims.count()).isZero(); assertThat(history.count()).isZero(); assertThat(stationSelections.count()).isZero();
+		assertThat(result(eventId)).isEqualTo("RETRY_PENDING");
+		reset(stationSelections);
+		when(clock.instant()).thenReturn(NOW.plusSeconds(61));
+		scheduler.run();
+		assertThat(claims.count()).isEqualTo(1); assertThat(history.count()).isEqualTo(1); assertThat(stationSelections.count()).isEqualTo(1);
+		assertThat(result(eventId)).isEqualTo("RECEIVED");
 	}
 
 	@ParameterizedTest

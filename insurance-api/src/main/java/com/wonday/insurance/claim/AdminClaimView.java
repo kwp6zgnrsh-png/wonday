@@ -15,7 +15,7 @@ final class AdminClaimView {
 		String status, OffsetDateTime acceptedAt, OffsetDateTime coverageFrom, OffsetDateTime coverageTo, String termsText) {}
 	record IntakeSource(long eventId, long changeId, String sourceVersion, String changeType, String reasonCode,
 		String weatherReasonCode, String reasonDetail, OffsetDateTime occurredAt, OffsetDateTime sourceUpdatedAt, OffsetDateTime receivedAt) {}
-	record Detail(Summary claim, Contract contract, IntakeSource intakeSource, Work work) {}
+	record Detail(Summary claim, Contract contract, IntakeSource intakeSource, Work work, ClaimWeatherStationView weatherStation) {}
 	record History(long id, String action, String fromStatus, String toStatus, String reason, Long actorId,
 		Long assessmentId, OffsetDateTime createdAt) {}
 

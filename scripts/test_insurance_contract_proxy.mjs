@@ -43,6 +43,16 @@ const upstream = createHttpServer((request, response) => {
     assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     response.end(JSON.stringify({ items: [{ id: 201, action: 'AUTO_RECEIVED' }], hasMore: false, nextBeforeId: null }))
+  } else if (request.method === 'GET' && request.url === '/api/admin/claims/101/weather-station') {
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ selected: true, selection: { claimCaseId: 101, stationCode: '477802A001' } }))
+  } else if (request.method === 'POST' && request.url === '/api/admin/claims/101/weather-station') {
+    request.resume()
+    assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
+    assert.equal(request.headers['x-csrf-token'], 'proxy-csrf')
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    response.end(JSON.stringify({ claimCaseId: 101, stationCode: '477802A001' }))
   } else if (request.method === 'POST' && request.url === '/api/platform/link') {
     request.resume()
     assert.equal(request.headers.cookie, 'INSURANCESESSION=proxy-test')
@@ -158,6 +168,17 @@ try {
       assert.equal(adminHistory.headers.get('cache-control'), 'no-store')
       assert.deepEqual(await adminHistory.json(), { items: [{ id: 201, action: 'AUTO_RECEIVED' }], hasMore: false, nextBeforeId: null })
       console.log('PASS ' + web + ': admin claim list/detail/history routing, query and session forwarding')
+      const selectedStation = await fetch(origin + '/api/insurance/admin/claims/101/weather-station', { headers: adminHeaders })
+      assert.equal(selectedStation.status, 200)
+      assert.deepEqual(await selectedStation.json(), { selected: true, selection: { claimCaseId: 101, stationCode: '477802A001' } })
+      const selectStation = await fetch(origin + '/api/insurance/admin/claims/101/weather-station', {
+        method: 'POST', headers: { ...adminHeaders, 'X-CSRF-TOKEN': 'proxy-csrf' },
+      })
+      assert.equal(selectStation.status, 200)
+      assert.equal(selectStation.headers.get('cache-control'), 'no-store')
+      assert.deepEqual(await selectStation.json(), { claimCaseId: 101, stationCode: '477802A001' })
+      console.log('PASS ' + web + ': claim station GET/POST routing, session and CSRF forwarding')
+
       const salary = await fetch(origin + '/api/insurance/platform/salary-account')
       assert.equal(salary.status, 200)
       assert.equal(salary.headers.get('cache-control'), 'no-store')

@@ -12,6 +12,15 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 class AdminClaimApi {
 	private final AdminClaimQueryService claims;
+	private final ClaimWeatherStationService stations;
+	@GetMapping("/{claimId}/weather-station")
+	ResponseEntity<ClaimWeatherStationService.State> station(@AuthenticationPrincipal MemberPrincipal admin, @PathVariable String claimId) {
+		return response(stations.get(admin.memberId(), claimId));
+	}
+	@PostMapping("/{claimId}/weather-station")
+	ResponseEntity<ClaimWeatherStationView> selectStation(@AuthenticationPrincipal MemberPrincipal admin, @PathVariable String claimId) {
+		return response(stations.select(admin.memberId(), claimId));
+	}
 	@GetMapping
 	ResponseEntity<AdminClaimView.Page<AdminClaimView.Summary>> list(@AuthenticationPrincipal MemberPrincipal admin,
 		@RequestParam(required=false) String status, @RequestParam(required=false) Long memberId,

@@ -22,8 +22,4 @@ class WeatherStationApi {
 			@RequestParam BigDecimal latitude, @RequestParam BigDecimal longitude) {
 		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(stations.nearest(member.memberId(), latitude, longitude));
 	}
-	@PostMapping("/api/admin/weather/stations/sync")
-	ResponseEntity<List<WeatherStationService.StationView>> sync(@AuthenticationPrincipal MemberPrincipal member) {
-		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(stations.sync(member.memberId()));
-	}
 }

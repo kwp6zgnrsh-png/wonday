@@ -27,6 +27,7 @@ class AdminClaimQueryService {
 	private final ObjectMapper json;
 	private final Validator validator;
 	private final Clock clock;
+	private final ClaimWeatherStationService stations;
 
 	public AdminClaimView.Page<AdminClaimView.Summary> list(long memberId, String status, Long ownerId, Long beforeId, int limit) {
 		members.requireAdmin(memberId); validatePage(beforeId,limit);
@@ -42,7 +43,7 @@ class AdminClaimQueryService {
 			row.getProductVersionNo(),contractStatus(row),at(row.getAcceptedAt()),at(row.getCoverageFrom()),at(row.getCoverageTo()),row.getTermsText());
 		var source=new AdminClaimView.IntakeSource(row.getEventId(),row.getChangeId(),row.getSourceVersion(),row.getChangeType(),row.getReasonCode(),
 			weatherReason(row.getSourcePayload()),row.getReasonDetail(),at(row.getOccurredAt()),at(row.getSourceUpdatedAt()),at(row.getReceivedAt()));
-		return new AdminClaimView.Detail(summary(row),contract,source,work);
+		return new AdminClaimView.Detail(summary(row),contract,source,work,stations.saved(row.getId()));
 	}
 	public AdminClaimView.Page<AdminClaimView.History> history(long memberId, String rawId, Long beforeId, int limit) {
 		members.requireAdmin(memberId); validatePage(beforeId,limit);
@@ -93,7 +94,7 @@ class AdminClaimQueryService {
 		}
 		return row.getContractStatus();
 	}
-	private static long id(String raw) {
+	static long id(String raw) {
 		try { if(raw!=null && raw.matches("[1-9][0-9]*")) return Long.parseLong(raw); }
 		catch(NumberFormatException ignored) {}
 		throw new AdminClaimQueryException(HttpStatus.BAD_REQUEST,"INVALID_CLAIM_ID","Invalid claim ID");
