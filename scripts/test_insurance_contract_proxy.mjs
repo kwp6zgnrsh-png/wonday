@@ -12,7 +12,8 @@ const { createServer } = await import(
 // Exercise the real Vite configs with an isolated upstream; no account or DB writes.
 const reward = { id: 7, result: 'ELIGIBLE', reasonCode: 'WOORI_SALARY_ACCOUNT', bankCode: '020' }
 const link = { linked: true, consentRequired: false, requiredConsentVersion: 'farm-platform-v1',
-  consentVersion: 'farm-platform-v1', consentedAt: '2026-11-27T09:00:00.123456Z' }
+  consentVersion: 'farm-platform-v1', consentedAt: '2026-11-27T18:00:00.123456+09:00' }
+const acceptedAt = '2026-02-10T00:00:00+09:00'
 const requestKey = 'be7d745b-7632-4272-afc7-dba7f829971e'
 const upstream = createHttpServer((request, response) => {
   if (request.method === 'POST' && request.url === '/api/contracts') {
@@ -21,10 +22,10 @@ const upstream = createHttpServer((request, response) => {
       'Content-Type': 'application/json',
       Location: '/api/contracts/42',
     })
-    response.end(JSON.stringify({ id: 42, status: 'ACTIVE' }))
+    response.end(JSON.stringify({ id: 42, status: 'ACTIVE', acceptedAt }))
   } else if (request.method === 'GET' && request.url === '/api/contracts/42') {
     response.writeHead(200, { 'Content-Type': 'application/json' })
-    response.end(JSON.stringify({ id: 42, status: 'ACTIVE' }))
+    response.end(JSON.stringify({ id: 42, status: 'ACTIVE', acceptedAt }))
   } else if (request.method === 'GET' && request.url === '/api/claims') {
     response.writeHead(200, { 'Content-Type': 'application/json' })
     response.end(JSON.stringify([{ id: 99, status: 'REVIEWING' }]))

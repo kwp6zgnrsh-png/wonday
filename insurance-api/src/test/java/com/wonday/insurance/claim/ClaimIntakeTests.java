@@ -720,6 +720,30 @@ class ClaimIntakeTests {
 			.setParameter("id", eventId).getSingleResult());
 	}
 
+	@Test void workerResponseNormalizesWorkTimesAndKeepsStoredUtcAndSnapshotUnchanged() throws Exception {
+		ObjectNode work=snapshotWithCoordinates(7001,START);
+		work.put("confirmedAt","2026-11-20T00:00:00.123456Z").put("agreedStartAt","2026-11-23T18:00:00-05:00")
+			.put("agreedEndAt","2026-11-24T08:00:00Z").put("agreedBreakStartAt","2026-11-24T03:00:00Z")
+			.put("agreedBreakEndAt","2026-11-24T03:30:00Z");
+		intake.process(event(9001,"1",7001,CANCELLED,work,"CANCELLED","WEATHER"));
+		var saved=claims.findAll().getFirst(); String original=saved.getWorkSnapshot();
+		var session=login(owner);
+		mvc.perform(get("/api/claims").session(session)).andExpect(status().isOk())
+			.andExpect(jsonPath("$[0].openedAt").value("2026-11-25T09:00:00+09:00"));
+		mvc.perform(get("/api/claims/"+saved.getId()).session(session)).andExpect(status().isOk())
+			.andExpect(jsonPath("$.claim.updatedAt").value("2026-11-25T09:00:00+09:00"))
+			.andExpect(jsonPath("$.intakeSource.occurredAt").value("2026-11-24T07:00:00+09:00"))
+			.andExpect(jsonPath("$.work.confirmedAt").value("2026-11-20T09:00:00.123456+09:00"))
+			.andExpect(jsonPath("$.work.agreedStartAt").value("2026-11-24T08:00:00+09:00"))
+			.andExpect(jsonPath("$.work.agreedEndAt").value("2026-11-24T17:00:00+09:00"))
+			.andExpect(jsonPath("$.work.agreedBreakStartAt").value("2026-11-24T12:00:00+09:00"))
+			.andExpect(jsonPath("$.work.agreedBreakEndAt").value("2026-11-24T12:30:00+09:00"))
+			.andExpect(jsonPath("$.work.agreedWorkDate").value("2026-11-24"));
+		var after=claims.findById(saved.getId()).orElseThrow();
+		assertThat(after.getWorkSnapshot()).isEqualTo(original);
+		assertThat(after.getOpenedAt()).isEqualTo(LocalDateTime.ofInstant(NOW,ZoneOffset.UTC));
+	}
+
 	private static LocalDateTime utc(OffsetDateTime value) {
 		return value.withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime().truncatedTo(ChronoUnit.MICROS);
 	}

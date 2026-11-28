@@ -1,5 +1,6 @@
 package com.wonday.insurance.claim;
 
+import com.wonday.insurance.api.ApiTime;
 import com.wonday.insurance.member.MemberAccessService;
 import jakarta.validation.Validator;
 import java.time.Clock;
@@ -69,7 +70,7 @@ class AdminClaimQueryService {
 			OffsetDateTime.parse(work.confirmedAt()); OffsetDateTime.parse(work.agreedStartAt()); OffsetDateTime.parse(work.agreedEndAt());
 			if (work.agreedBreakStartAt()!=null) OffsetDateTime.parse(work.agreedBreakStartAt());
 			if (work.agreedBreakEndAt()!=null) OffsetDateTime.parse(work.agreedBreakEndAt());
-			return work;
+			return work.responseTime();
 		} catch (RuntimeException invalid) {
 			// 잘못된 JSON을 예외 원인에 연결하지 않아 번호 등이 섞인 원문을 응답·로그로 내보내지 않는다.
 			throw AdminClaimQueryException.invalidData();
@@ -100,7 +101,7 @@ class AdminClaimQueryService {
 		throw new AdminClaimQueryException(HttpStatus.BAD_REQUEST,"INVALID_CLAIM_ID","Invalid claim ID");
 	}
 	private static void validatePage(Long beforeId,int limit) { if ((beforeId!=null && beforeId<=0) || limit<1 || limit>100) throw AdminClaimQueryException.invalidQuery(); }
-	private static OffsetDateTime at(LocalDateTime value) { return value==null?null:value.atOffset(ZoneOffset.UTC); }
+	private static OffsetDateTime at(LocalDateTime value) { return ApiTime.fromUtc(value); }
 	private static <T,V> AdminClaimView.Page<V> page(List<T> rows,int limit,Function<T,V> convert,Function<T,Long> id) {
 		boolean more=rows.size()>limit; var visible=rows.subList(0,Math.min(rows.size(),limit));
 		return new AdminClaimView.Page<>(visible.stream().map(convert).toList(),more,more?id.apply(visible.getLast()):null);

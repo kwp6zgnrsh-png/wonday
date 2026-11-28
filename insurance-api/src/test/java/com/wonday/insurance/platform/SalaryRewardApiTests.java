@@ -77,7 +77,8 @@ class SalaryRewardApiTests {
 			.andExpect(header().string("Cache-Control", "no-store"))
 			.andExpect(jsonPath("$.result").value(result)).andExpect(jsonPath("$.reasonCode").value(reason))
 			.andExpect(jsonPath("$.ruleVersion").value("salary-woori-v1"))
-			.andExpect(jsonPath("$.checkedAt").value("2026-11-26T12:00:00.123456Z"))
+			.andExpect(jsonPath("$.checkedAt").value("2026-11-26T21:00:00.123456+09:00"))
+			.andExpect(jsonPath("$.recordedAt").value("2026-11-26T21:00:00.123456+09:00"))
 			.andExpect(jsonPath("$.memberId").doesNotExist()).andExpect(jsonPath("$.platformWorkerId").doesNotExist())
 			.andExpect(jsonPath("$.accountNumber").doesNotExist()).andExpect(jsonPath("$.requestKey").doesNotExist())
 			.andReturn().getResponse().getContentAsString();

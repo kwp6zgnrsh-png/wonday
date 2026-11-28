@@ -1,9 +1,9 @@
 package com.wonday.insurance.weather;
 
+import com.wonday.insurance.api.ApiTime;
 import com.wonday.insurance.member.MemberAccessService;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -45,7 +45,7 @@ class WeatherStationService {
 	}
 	private static StationView view(WeatherStation value) {
 		return new StationView(value.getStationCode(), value.getName(), true, value.getAddress(), value.getLatitude(), value.getLongitude(),
-			value.getMetadataSyncedAt() == null ? null : value.getMetadataSyncedAt().atOffset(ZoneOffset.UTC));
+			value.getMetadataSyncedAt() == null ? null : ApiTime.fromUtc(value.getMetadataSyncedAt()));
 	}
 	record StationView(String stationCode, String name, boolean coordinatesAvailable, String address,
 		BigDecimal latitude, BigDecimal longitude, OffsetDateTime metadataSyncedAt) {}

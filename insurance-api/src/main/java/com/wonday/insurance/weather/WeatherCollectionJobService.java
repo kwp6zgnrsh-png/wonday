@@ -1,5 +1,6 @@
 package com.wonday.insurance.weather;
 
+import com.wonday.insurance.api.ApiTime;
 import com.wonday.insurance.member.MemberAccessService;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -53,7 +54,7 @@ class WeatherCollectionJobService {
 		return new JobView(row.getId(), row.getStationCode(), row.getObservationDate(), row.getState(), row.getAttemptCount(),
 			row.getLastErrorCode(), row.getLastCollectionId(), at(row.getLeaseExpiresAt()), row.retryable(now), at(row.getCreatedAt()), at(row.getUpdatedAt()));
 	}
-	private static OffsetDateTime at(LocalDateTime value) { return value == null ? null : value.atOffset(ZoneOffset.UTC); }
+	private static OffsetDateTime at(LocalDateTime value) { return ApiTime.fromUtc(value); }
 	private static <T,V> Page<V> page(List<T> rows, int limit, Function<T,V> convert, Function<T,Long> id) {
 		boolean more = rows.size() > limit;
 		var visible = rows.subList(0, Math.min(rows.size(), limit));

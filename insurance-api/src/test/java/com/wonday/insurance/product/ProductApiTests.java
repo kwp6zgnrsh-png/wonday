@@ -73,8 +73,11 @@ class ProductApiTests {
 			.andExpect(jsonPath("$[0].productVersionId").value(current.getId().intValue()))
 			.andExpect(jsonPath("$[0].versionNo").value(2))
 			.andExpect(jsonPath("$[0].premiumTerms.amount").value(5000))
+			.andExpect(jsonPath("$[0].salesStartAt").value("2026-11-23T09:00:00+09:00"))
+			.andExpect(jsonPath("$[0].salesEndAt").value("2026-11-25T09:00:00+09:00"))
 			.andExpect(jsonPath("$[0].termsText").doesNotExist())
-			.andExpect(jsonPath("$[1].id").value(second.getId().intValue()));
+			.andExpect(jsonPath("$[1].id").value(second.getId().intValue()))
+			.andExpect(jsonPath("$[1].salesEndAt").isEmpty());
 	}
 
 	@Test
@@ -186,8 +189,8 @@ class ProductApiTests {
 				.andExpect(jsonPath("$[0].id").value(available.getId().intValue()));
 			mvc.perform(get("/api/products/{id}", future.getId())).andExpect(status().isNotFound());
 			mvc.perform(get("/api/products/{id}", available.getId())).andExpect(status().isOk())
-				.andExpect(jsonPath("$.product.salesStartAt").value("2026-03-08T02:00:00"))
-				.andExpect(jsonPath("$.product.salesEndAt").value("2026-03-08T02:45:00"));
+				.andExpect(jsonPath("$.product.salesStartAt").value("2026-03-08T11:00:00+09:00"))
+				.andExpect(jsonPath("$.product.salesEndAt").value("2026-03-08T11:45:00+09:00"));
 		} finally {
 			TimeZone.setDefault(original);
 		}

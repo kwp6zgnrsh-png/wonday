@@ -52,8 +52,8 @@ GET /api/admin/claims?status=REVIEWING&memberId=3&limit=20
     "assignmentId": 7001,
     "status": "REVIEWING",
     "openedVia": "AUTO",
-    "openedAt": "2026-11-28T03:00:00.123456Z",
-    "updatedAt": "2026-11-28T03:00:00.123456Z"
+    "openedAt": "2026-11-28T12:00:00.123456+09:00",
+    "updatedAt": "2026-11-28T12:00:00.123456+09:00"
   }],
   "hasMore": false,
   "nextBeforeId": null
@@ -76,8 +76,8 @@ GET /api/admin/claims?status=REVIEWING&memberId=3&limit=20
 
 - 접수의 최초 `trigger_event_id`와 `claim_case.work_snapshot`을 기준으로 읽는다. 나중에 받은 변경 버전으로 바꾸지 않는다.
 - 현재 농업 서버나 현재 구인 공고를 다시 조회하지 않는다. 농업 서버의 가용성과 무관하게 저장된 근거를 확인한다.
-- DB의 접수·계약·이벤트·이력 시각은 UTC `Z`로 반환한다.
-- `work`의 날짜·시간대·시각은 저장된 약정 형식을 유지한다. 예: `GMT+9`, `2026-11-25T08:00:00+09:00`.
+- DB의 접수·계약·이벤트·이력 시각은 UTC로 유지하고, 응답에서는 GMT+9 `+09:00`으로 변환한다.
+- `work`의 날짜·약정 업무 시간대는 유지하고, 알려진 약정 일시는 응답용 객체에서만 `+09:00`으로 변환한다. DB 원문은 변경하지 않는다. [시각 기준](api-time.md) 참고.
 - 좌표가 없는 이전 약정은 위도·경도를 null로 반환한다. 현재 주소나 다른 좌표로 보완하지 않는다.
 - 원본 JSON이 없는 이전 이벤트의 `weatherReasonCode`는 null이다. 미확보 사유를 `OTHER` 등으로 추측하지 않는다.
 - 동의 철회·계약 만료 후에도 과거 접수를 조회한다. 계약과 이벤트 소유자가 일치하지 않는 접수는 조합해서 반환하지 않는다.
