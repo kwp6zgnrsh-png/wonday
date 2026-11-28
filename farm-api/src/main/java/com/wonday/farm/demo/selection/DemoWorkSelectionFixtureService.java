@@ -77,7 +77,8 @@ public class DemoWorkSelectionFixtureService {
     @Transactional(readOnly=true, isolation=Isolation.READ_COMMITTED)
     public FixtureResponse list(long actorId) {
         requireActor(actorId);
-        return response(actorId, false, null);
+        var today=LocalDate.ofInstant(clock.instant(),ZoneOffset.ofHours(9));
+        return response(actorId, false, null, today);
     }
 
     @Transactional(isolation=Isolation.READ_COMMITTED)
@@ -94,7 +95,7 @@ public class DemoWorkSelectionFixtureService {
         var today=LocalDate.ofInstant(instant,ZoneOffset.ofHours(9));
         String marker="[WORK-02 시연·고용주 "+employer.getId()+"·근로자 "+worker.getId()+"·"+today+"]";
         var existing=lookup.findFixturePosting(employer.getId(),marker);
-        if(existing.isPresent())return response(actorId,false,existing.get());
+        if(existing.isPresent())return response(actorId,false,existing.get(),today);
 
         var dates=new ArrayList<CreateJobPostingRequest.Schedule>();
         for(int i=0;i<TYPES.size();i++){
@@ -134,7 +135,7 @@ public class DemoWorkSelectionFixtureService {
                 assignments.saveAndFlush(new WorkAssignment(occupied.getId(),schedule,now.minusDays(4)));
             }
         }
-        return response(actorId,true,posting.getId());
+        return response(actorId,true,posting.getId(),today);
     }
     private void changeTime(WorkSchedule schedule,long actorId,LocalDateTime now) {
         revisions.save(WorkScheduleRevision.baseline(schedule,now));
@@ -150,10 +151,10 @@ public class DemoWorkSelectionFixtureService {
         return members.findByLoginId(login).filter(m->m.memberRole().orElse(null)==role).orElseThrow(()->
             WorkSelectionException.conflict("DEMO_ACCOUNT_UNAVAILABLE","farm-demo의 demo-employer·demo-worker 계정을 확인해 주세요."));
     }
-    private FixtureResponse response(long actorId,boolean created,Long postingId) {
-        var today=LocalDate.ofInstant(clock.instant(),ZoneOffset.ofHours(9));
+    // 같은 준비 요청은 생성·재사용에 쓴 기준 날짜로 끝까지 조회한다. 응답 직전에 시계를 다시 읽지 않는다.
+    private FixtureResponse response(long actorId,boolean created,Long postingId,LocalDate basisDate) {
         Map<Long,Integer> indexes=new HashMap<>();
-        var cases=fixtures.findCases(actorId,today).stream().map(row->{
+        var cases=fixtures.findCases(actorId,basisDate).stream().map(row->{
             int index=indexes.merge(row.getJobPostingId(),1,Integer::sum)-1;
             if(index>=TYPES.size())throw WorkSelectionException.unavailable();
             return new Case(TYPES.get(index),LABELS.get(index),row.getJobPostingId(),row.getWorkScheduleId(),row.getApplicationId(),

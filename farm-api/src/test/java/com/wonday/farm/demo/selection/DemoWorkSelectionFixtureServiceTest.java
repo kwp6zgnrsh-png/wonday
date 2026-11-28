@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.wonday.farm.application.entity.JobApplication;
 import com.wonday.farm.application.repository.ApplicationRequestLockRepository;
@@ -473,14 +474,76 @@ class DemoWorkSelectionFixtureServiceTest {
 		}
 
 		@Test
-		@DisplayName("[관찰] 준비 중 GMT+9 자정이 지나면 표식은 전날, 사례 조회는 다음 날로 수행된다 (시계 두 번 읽음)")
-		void midnight() {
+		@DisplayName("신규 준비 중 자정이 지나도 생성 기준 날짜의 공고·지원 11건을 응답한다")
+		void midnightCreationKeepsBasisDate() {
+			var beforeMidnight = Instant.parse("2026-11-28T14:59:59.999999Z");
+			var afterMidnight = Instant.parse("2026-11-28T15:00:00Z");
+			var current = new AtomicReference<>(beforeMidnight);
 			var clock = mock(Clock.class);
-			given(clock.instant()).willReturn(Instant.parse("2026-11-28T14:59:59.999999Z"), Instant.parse("2026-11-28T15:00:00Z"));
+			given(clock.instant()).willAnswer(call -> current.get());
+			// 마지막 정원 충족 사례의 비밀번호 인코딩 중 실제로 날짜가 넘어간 상황을 만든다.
+			given(passwords.encode(anyString())).willAnswer(call -> {
+				current.set(afterMidnight);
+				return "{bcrypt}ENCODED-RANDOM";
+			});
+			// 이 준비에서 저장한 본인 지원만 반환한다. 다음 날 조회의 기본 반환값은 빈 목록이다.
+			given(fixtures.findCases(EMPLOYER, TODAY)).willAnswer(call -> savedApplications.stream()
+				.filter(app -> app.getWorkerId() == WORKER)
+				.map(app -> caseRow(4201L, app.getWorkScheduleId(), app.getId(), app.getStatus(),
+					"SELECTED".equals(app.getStatus()) ? "CONFIRMED" : "PENDING"))
+				.toList());
+
 			var response = service(clock).prepare(EMPLOYER);
+
+			assertThat(current.get()).isEqualTo(afterMidnight);
 			assertThat(response.created()).isTrue();
+			assertThat(response.preparedJobPostingId()).isEqualTo(4201L);
+			assertThat(response.cases()).hasSize(11).allMatch(item -> item.jobPostingId() == 4201L);
+			assertThat(response.cases()).extracting(DemoWorkSelectionFixtureService.Case::applicationId)
+				.containsExactlyElementsOf(savedApplications.stream().filter(app -> app.getWorkerId() == WORKER)
+					.map(JobApplication::getId).toList());
+			assertThat(response.cases()).extracting(DemoWorkSelectionFixtureService.Case::scenario)
+				.containsExactlyElementsOf(TYPES);
+			var postingCaptor = ArgumentCaptor.forClass(JobPosting.class);
+			verify(postings).saveAndFlush(postingCaptor.capture());
+			assertThat(postingCaptor.getValue().getTitle()).isEqualTo(MARKER);
 			verify(lookup).findFixturePosting(EMPLOYER, MARKER);
-			verify(fixtures).findCases(EMPLOYER, LocalDate.parse("2026-11-29"));
+			verify(fixtures).findCases(EMPLOYER, TODAY);
+			verify(fixtures, never()).findCases(EMPLOYER, TODAY.plusDays(1));
+			verify(clock, times(1)).instant();
+		}
+
+		@Test
+		@DisplayName("재사용 조회 중 자정이 지나도 같은 기준 날짜의 기존 사례 11건을 반환하고 저장하지 않는다")
+		void midnightReuseKeepsBasisDate() {
+			var beforeMidnight = Instant.parse("2026-11-28T14:59:59.999999Z");
+			var afterMidnight = Instant.parse("2026-11-28T15:00:00Z");
+			var current = new AtomicReference<>(beforeMidnight);
+			var clock = mock(Clock.class);
+			given(clock.instant()).willAnswer(call -> current.get());
+			given(lookup.findFixturePosting(EMPLOYER, MARKER)).willAnswer(call -> {
+				current.set(afterMidnight);
+				return Optional.of(4101L);
+			});
+			given(fixtures.findCases(EMPLOYER, TODAY)).willReturn(rows(4101L, 11, 501));
+
+			var response = service(clock).prepare(EMPLOYER);
+
+			assertThat(current.get()).isEqualTo(afterMidnight);
+			assertThat(response.created()).isFalse();
+			assertThat(response.preparedJobPostingId()).isEqualTo(4101L);
+			assertThat(response.cases()).hasSize(11).allMatch(item -> item.jobPostingId() == 4101L);
+			assertThat(response.cases()).extracting(DemoWorkSelectionFixtureService.Case::applicationId)
+				.containsExactlyElementsOf(java.util.stream.LongStream.range(501L, 512L).boxed().toList());
+			assertThat(response.cases()).extracting(DemoWorkSelectionFixtureService.Case::scenario)
+				.containsExactlyElementsOf(TYPES);
+			verify(lookup).findFixturePosting(EMPLOYER, MARKER);
+			verify(fixtures).findCases(EMPLOYER, TODAY);
+			verify(fixtures, never()).findCases(EMPLOYER, TODAY.plusDays(1));
+			verify(clock, times(1)).instant();
+			verifyNoInteractions(postings, schedules, revisions, applications, assignments, statuses,
+				changes, completion, passwords);
+			verify(members, never()).saveAndFlush(any());
 		}
 	}
 }

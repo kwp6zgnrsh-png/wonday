@@ -70,9 +70,10 @@ class ApplicationEntityTest {
 	}
 
 	@Test
-	@DisplayName("지원 엔티티의 공개 변경 메서드는 retireForReapplication 하나 (상태 변경·삭제 메서드 없음)")
-	void onlyRetireMutator() {
-		assertThat(publicNonGetters(JobApplication.class)).containsExactly("retireForReapplication");
+	@DisplayName("지원 엔티티의 공개 변경 메서드는 재지원 해제와 선정")
+	void allowedMutators() {
+		assertThat(publicNonGetters(JobApplication.class))
+			.containsExactlyInAnyOrder("retireForReapplication", "select");
 	}
 
 	@Test

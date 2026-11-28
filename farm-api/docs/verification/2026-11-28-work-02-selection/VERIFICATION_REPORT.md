@@ -451,3 +451,114 @@ JDK 21(`jdk-21.0.12.1+1`) 환경에서 실행했다. 다른 클래스·Node 화�
 
 - 이 보고서에 10절만 추가했다. 기존 1~9절은 수정하지 않았다.
 - 테스트 파일·운영 코드는 수정하지 않았다. 커밋·푸시 없음.
+
+## 11. 시연 준비 자정 경계(O-2) 수정 후 재검증 (2026-11-28, 검증자)
+
+> 이 절은 `DemoWorkSelectionFixtureServiceTest` 한 클래스만 따로 실행한 기록이다.
+> 4절(176개)·10절(37개) 결과와 합산하지 않는다. mock 기반 단위 테스트이며, 실제 MySQL 조회·트랜잭션은 검증하지 않았다.
+
+### 11.1 상태
+
+- 브랜치 `work-selection`, HEAD `e3c094e feat(farm): 지원자 선정·확정 및 조건 재확인 API 구현`. 10절 이후 사용자가 커밋했다.
+- AGENTS.md 없음. 원래 wonday 폴더에서 작업했다.
+- 10절 실행 후 sha256과 비교한 결과, 바뀐 파일은 다음 두 개뿐이다.
+  - `src/main/java/com/wonday/farm/demo/selection/DemoWorkSelectionFixtureService.java`
+  - `src/test/java/com/wonday/farm/demo/selection/DemoWorkSelectionFixtureServiceTest.java`
+
+### 11.2 소스 대조
+
+- `prepare()`는 시계를 한 번 읽어 `today`(GMT+9)를 정한다. 표식 생성·기존 공고 조회·응답 사례 조회(`response(…, today)`)에 같은 날짜를 쓴다. `response()`는 더 이상 시계를 읽지 않는다.
+- `list()`는 요청마다 시계를 한 번 읽어 그 날짜로 조회한다.
+- 테스트 변경
+  - 6절 O-2를 기록하던 `[관찰]` 테스트 1건이 회귀 테스트 2건으로 바뀌었다. 이전 관찰 테스트는 다음 날로 조회하는 옛 동작을 단언하던 것이었다.
+  - 나머지 테스트의 검증과 기대값은 바뀌지 않았다(diff 확인).
+
+### 11.3 실행
+
+```
+cd C:\Users\HCB\Desktop\wonday\farm-api
+./gradlew unitTest --tests "com.wonday.farm.demo.selection.DemoWorkSelectionFixtureServiceTest*" --console=plain
+```
+
+JDK 21. `unitTest` 태스크(`build.gradle` 62행, integration·knownDefect 태그 제외)를 사용했다.
+
+| 묶음 | 실행 | 성공 | 실패 | 건너뜀 |
+|---|---:|---:|---:|---:|
+| 최상위(프로필 선언) | 1 | 1 | 0 | 0 |
+| 역할·상대 계정·잠금·재사용 | 5 | 5 | 0 | 0 |
+| 신규 준비 구성 | 8 | 8 | 0 | 0 |
+| 실패 시 성공 응답 없음 | 2 | 2 | 0 | 0 |
+| 사례 조회·매핑 (자정 경계 2건 포함) | 7 | 7 | 0 | 0 |
+| 합계 | **23** | **23** | **0** | **0** |
+
+- 선택된 테스트는 0개가 아니다. XML 5개는 모두 이 클래스와 중첩 클래스의 것이고, 이번 실행에서 새로 생성됐다. `BUILD SUCCESSFUL`.
+- 23개 = 이전 22개 − 관찰 1 + 회귀 2.
+- 테스트 실패는 없다. 커버리지(JaCoCo) 태스크는 실행되지 않았으므로, 커버리지 기준 실패도 해당하지 않는다.
+
+### 11.4 자정 경계 시나리오
+
+- **신규 생성 중 자정 통과: 통과**
+  - 상황: 23:59:59.999999(GMT+9)에 시작하고, 정원 충족용 비밀번호 인코딩 중 시각을 다음 날 00:00으로 바꿨다.
+  - 결과: created=true, 공고 4201, 사례 11건, 사례 종류 11종이 순서대로 나왔다.
+  - 지원 ID는 이번 준비에서 저장한 본인 지원 11건과 일치한다.
+  - 공고 제목은 전날 표식이고, 사례는 전날(11-28)로 조회한다. 다음 날(11-29) 조회는 없고, 시계는 한 번만 읽는다.
+- **재사용 중 자정 통과: 통과**
+  - 상황: 기존 공고를 조회하는 중에 시각을 다음 날로 바꿨다.
+  - 결과: created=false, 공고 4101, 사례 11건(지원 501~511)이 나왔다.
+  - 전날 날짜로 조회하고, 다음 날 조회는 없으며, 시계는 한 번만 읽는다.
+  - 공고·일정·지원·확정 근무·상태·변경·완료·비밀번호·회원 저장 호출이 없다.
+- 두 테스트에서 다음 날 조회의 기본 mock 반환값은 빈 목록이다. 그래서 옛 동작(응답 직전에 시계를 다시 읽음)이면 사례 11건·`times(1)` 단언이 실패한다.
+  - 옛 코드가 다음 날로 조회한다는 것은 수정 전 `[관찰]` 테스트로 확인한 적이 있다.
+  - 수정 전 코드로 이번 테스트를 다시 돌려 보지는 않았다. 운영 파일을 바꿔야 하기 때문이다.
+- `list()`의 자정 경계는 별도 테스트가 없다. 시계를 한 번만 읽는다는 것은 소스로만 확인했다.
+
+### 11.5 결과
+
+- 6절 O-2는 해소됐다(단위 테스트 기준).
+- 추가 결함·수정 요청은 없다.
+- 이번 재검증에서는 이 보고서에 11절만 추가했다. 운영 코드·테스트 파일은 수정하지 않았다. 커밋·푸시 없음.
+- 한계
+  - 실제 MySQL에서의 표식 비교(`cast(:today as char)`)·트랜잭션·근로자 잠금은 검증하지 않았다.
+  - 실제 PasswordEncoder 처리 시간도 검증하지 않았다.
+
+## 12. 기존 ApplicationEntityTest 기대값 갱신 재검증 (2026-11-28, 검증자)
+
+> 이 절은 `ApplicationEntityTest` 한 클래스만 따로 실행한 기록이다. 4·10·11절과 합산하지 않는다. 이 클래스의 통과는 전체 CI 통과를 뜻하지 않는다.
+
+### 12.1 상태와 변경
+
+- 브랜치 `work-selection`, HEAD `e3c094e`, AGENTS.md 없음.
+- 미커밋 변경: 이 보고서, 11절의 서비스·테스트, 그리고 `ApplicationEntityTest.java`. 모두 보존했다.
+- 변경 내용
+  - 이전: `onlyRetireMutator` → `containsExactly("retireForReapplication")`
+  - 이후: `allowedMutators` → `containsExactlyInAnyOrder("retireForReapplication", "select")`
+  - 표시명도 바뀌었다. 다른 테스트는 바뀌지 않았다(diff 확인).
+- 배경: WORK-02에서 `JobApplication.select()`가 추가됐다. 그래서 기존 기대값은 현재 기능과 맞지 않았다.
+  - 4절 실행 범위에는 이 기존 클래스가 없었다(새 기능 클래스만 선택).
+  - 이 불일치는 그때 실행으로 확인되지 않았다.
+
+### 12.2 검증 결과
+
+- 현재 `JobApplication`(Lombok `@Getter`)의 public 비정적 선언 메서드 중 `get`·`is`로 시작하지 않는 것은 `select`와 `retireForReapplication` 두 개다. 생성자는 `getDeclaredMethods`에 포함되지 않는다. 기대값과 일치한다.
+- 검증은 약화되지 않았다. `containsExactlyInAnyOrder`는 순서만 허용하고, 다음 경우에는 실패한다.
+  - 다른 메서드가 추가된 경우
+  - 둘 중 하나가 빠진 경우
+  - 같은 이름이 중복된 경우(오버로드)
+- 기존 한계는 그대로다: 도우미 `publicNonGetters`는 `get`·`is`로 시작하는 public 메서드를 변경 메서드로 보지 않는다. 이번 수정과 무관하다.
+
+### 12.3 실행
+
+```
+cd C:\Users\HCB\Desktop\wonday\farm-api
+./gradlew unitTest --tests "com.wonday.farm.application.entity.ApplicationEntityTest" --console=plain
+```
+
+| 클래스 | 실행 | 성공 | 실패 | 건너뜀 |
+|---|---:|---:|---:|---:|
+| ApplicationEntityTest | **7** | **7** | **0** | **0** |
+
+- JDK 21. `unitTest` 태스크(`build.gradle` 62행, integration·knownDefect 태그 제외)를 사용했다.
+- 이번 실행에서 새로 생성된 XML 1개(이 클래스)의 결과다. 선택된 테스트는 0개가 아니다. `BUILD SUCCESSFUL`.
+- 테스트 실패는 없다. 커버리지(JaCoCo) 태스크는 실행되지 않았으므로, 커버리지 기준 실패도 해당하지 않는다.
+- 추가 결함·수정 요청은 없다.
+- 이번에는 이 보고서에 12절만 추가했다. 운영 코드·테스트는 수정하지 않았다. 커밋·푸시 없음.
