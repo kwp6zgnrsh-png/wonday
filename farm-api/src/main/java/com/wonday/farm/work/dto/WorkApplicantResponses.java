@@ -16,13 +16,23 @@ public final class WorkApplicantResponses {
 		int applicationRound, String status,
 		@JsonFormat(shape = JsonFormat.Shape.STRING, without = JsonFormat.Feature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE) OffsetDateTime appliedAt,
 		LocalDateTime legacyAppliedAt, String appliedTimeBasis, Integer appliedTermsVersion, int latestTermsVersion,
-		String conditionComparisonStatus, boolean canViewContact, Long assignmentId, String workStatus) {}
+		String conditionComparisonStatus, boolean canViewContact, Long assignmentId, String workStatus,
+        com.wonday.farm.application.dto.ConditionConfirmation conditionConfirmation) {
+        public Item(long applicationId, long workerId, String name, String maskedPhone, String phoneState, int applicationRound, String status, OffsetDateTime appliedAt, LocalDateTime legacyAppliedAt, String appliedTimeBasis, Integer appliedTermsVersion, int latestTermsVersion, String conditionComparisonStatus, boolean canViewContact, Long assignmentId, String workStatus) {
+            this(applicationId, workerId, name, maskedPhone, phoneState, applicationRound, status, appliedAt, legacyAppliedAt, appliedTimeBasis, appliedTermsVersion, latestTermsVersion, conditionComparisonStatus, canViewContact, assignmentId, workStatus, null);
+        }
+    }
 	public record Detail(long applicationId, long workerId, String name, String maskedPhone, String phoneState,
 		int applicationRound, String status, boolean canViewContact,
 		@JsonFormat(shape = JsonFormat.Shape.STRING, without = JsonFormat.Feature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE) OffsetDateTime appliedAt,
 		LocalDateTime legacyAppliedAt, String appliedTimeBasis, Integer appliedTermsVersion, int latestTermsVersion,
 		String conditionComparisonStatus, MyApplicationResponses.Conditions appliedConditions,
 		MyApplicationResponses.Conditions latestConditions, List<String> changedFields,
-		List<String> unavailableComparisonFields, boolean comparisonComplete, MyApplicationResponses.Assignment assignment) {}
+		List<String> unavailableComparisonFields, boolean comparisonComplete, MyApplicationResponses.Assignment assignment,
+        com.wonday.farm.application.dto.ConditionConfirmation conditionConfirmation) {
+        public Detail(long applicationId, long workerId, String name, String maskedPhone, String phoneState, int applicationRound, String status, boolean canViewContact, OffsetDateTime appliedAt, LocalDateTime legacyAppliedAt, String appliedTimeBasis, Integer appliedTermsVersion, int latestTermsVersion, String conditionComparisonStatus, MyApplicationResponses.Conditions appliedConditions, MyApplicationResponses.Conditions latestConditions, List<String> changedFields, List<String> unavailableComparisonFields, boolean comparisonComplete, MyApplicationResponses.Assignment assignment) {
+            this(applicationId, workerId, name, maskedPhone, phoneState, applicationRound, status, canViewContact, appliedAt, legacyAppliedAt, appliedTimeBasis, appliedTermsVersion, latestTermsVersion, conditionComparisonStatus, appliedConditions, latestConditions, changedFields, unavailableComparisonFields, comparisonComplete, assignment, null);
+        }
+    }
 	public record Contact(long applicationId, long workerId, String name, String phone, String phoneState) {}
 }

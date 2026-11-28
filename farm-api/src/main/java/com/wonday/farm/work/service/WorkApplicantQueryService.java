@@ -59,7 +59,7 @@ public class WorkApplicantQueryService {
 			item.maskedPhone(), item.phoneState(), item.applicationRound(), item.status(), item.canViewContact(),
 			item.appliedAt(), item.legacyAppliedAt(), item.appliedTimeBasis(), item.appliedTermsVersion(), item.latestTermsVersion(),
 			item.conditionComparisonStatus(), detail.appliedConditions(), detail.latestConditions(), detail.changedFields(),
-			detail.unavailableComparisonFields(), detail.comparisonComplete(), detail.assignment());
+			detail.unavailableComparisonFields(), detail.comparisonComplete(), detail.assignment(), item.conditionConfirmation());
 	}
 
 	// 목록에서 받은 허용 여부를 신뢰하지 않고 요청 시점의 상태와 최신 회원 연락처를 다시 읽는다.
@@ -88,7 +88,7 @@ public class WorkApplicantQueryService {
 			row.getMaskedPhone(), row.getPhoneState(), row.getApplicationRound(), row.getApplicationStatus(),
 			base.appliedAt(), base.legacyAppliedAt(), base.appliedTimeBasis(), base.appliedTermsVersion(), base.latestTermsVersion(),
 			base.conditionComparisonStatus(), row.getCurrentFlag() == 1 && contactStatus(row.getApplicationStatus()),
-			row.getAssignmentId(), row.getDisplayStatus());
+			row.getAssignmentId(), row.getDisplayStatus(), base.conditionConfirmation());
 	}
 	private static boolean contactStatus(String status) { return "PENDING".equals(status) || "SELECTED".equals(status); }
 	private static int size(String value) {

@@ -51,6 +51,13 @@ public class JobApplication {
 		current = true;
 	}
 
+
+    // 선정만 바꾼다. 최초 지원 버전·시각·회차는 재확인이나 선정으로 덮어쓰지 않는다.
+    public void select() {
+        if (!current || !"PENDING".equals(status)) throw new IllegalStateException("Application is not pending");
+        status = "SELECTED";
+    }
+
 	// 과거 상태·시각·약정 연결은 보존하고 현재 회차 표시만 해제한다.
 	public void retireForReapplication() { current = false; }
 }

@@ -24,6 +24,11 @@ public class WorkAssignment {
 	private Long id;
 	@Column(name = "application_id", nullable = false, unique = true)
 	private long applicationId;
+    // 신규 확정은 기존 컬럼에도 같은 UTC 시각을 넣는다. 과거 행의 기존 시각은 변경하지 않는다.
+    @Column(name = "confirmed_at")
+    private LocalDateTime confirmedAt;
+    @Column(name = "agreed_terms_version")
+    private Integer agreedTermsVersion;
 	@Column(name = "confirmed_at_utc")
 	private LocalDateTime confirmedAtUtc;
 	// 완료 처리는 최초 한 번만 기록한다. 종료 시각 경과나 급여 지급 여부로 채우지 않는다.
@@ -56,6 +61,29 @@ public class WorkAssignment {
 	private LocalDateTime agreedBreakEndAt;
 	@Column(name = "agreed_daily_wage", nullable = false)
 	private long agreedDailyWage;
+
+
+    // 같은 트랜잭션에서 잠근 일정·공고의 값만 복사한다. 이후 공고 수정으로 약정을 갱신하지 않는다.
+    public WorkAssignment(long applicationId, com.wonday.farm.job.entity.WorkSchedule schedule, LocalDateTime nowUtc) {
+        if (applicationId <= 0 || schedule == null || nowUtc == null) throw new IllegalArgumentException("Invalid assignment");
+        var posting = schedule.getJobPosting();
+        this.applicationId = applicationId;
+        confirmedAt = nowUtc;
+        confirmedAtUtc = nowUtc;
+        agreedTermsVersion = schedule.getTermsVersion();
+        agreedWorkDate = schedule.getWorkDate();
+        agreedTimeZone = posting.getTimeZone();
+        agreedWorkLocation = posting.getWorkLocation();
+        agreedLatitude = posting.getLatitude();
+        agreedLongitude = posting.getLongitude();
+        agreedCropCode = posting.getCropCode();
+        agreedWorkTypeCode = posting.getWorkTypeCode();
+        agreedStartAt = schedule.getPlannedStartAt();
+        agreedEndAt = schedule.getPlannedEndAt();
+        agreedBreakStartAt = schedule.getBreakStartAt();
+        agreedBreakEndAt = schedule.getBreakEndAt();
+        agreedDailyWage = posting.getDailyWage();
+    }
 
 	// 취소·정정용 메서드는 제공하지 않는다. 재요청은 서비스에서 최초 결과를 반환한다.
 	public void complete(LocalDateTime completedAtUtc, long employerId) {

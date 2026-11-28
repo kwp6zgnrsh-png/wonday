@@ -36,7 +36,7 @@ public class ApplicationConditionMapper {
 			utc(row.getAppliedAtUtc()), row.getAppliedAtUtc() == null ? row.getLegacyAppliedAt() : null,
 			row.getAppliedAtUtc() == null ? "LEGACY_LOCAL_UNKNOWN_ZONE" : "UTC",
 			row.getApplicationStatus(), row.getDisplayStatus(), cancellationType(row), row.getAssignmentId(),
-			utc(row.getCompletedAtUtc()), row.getAppliedTermsVersion(), row.getLatestTermsVersion(), comparisonStatus(row));
+			utc(row.getCompletedAtUtc()), row.getAppliedTermsVersion(), row.getLatestTermsVersion(), comparisonStatus(row), ConditionConfirmationMapper.from(row));
 	}
 
 	public MyApplicationResponses.Detail detail(Row row) {
@@ -55,7 +55,7 @@ public class ApplicationConditionMapper {
 			item.jobPostingId(), item.title(), item.workScheduleId(), item.applicationStatus(), item.displayStatus(),
 			item.cancellationType(), item.appliedAt(), item.legacyAppliedAt(), item.appliedTimeBasis(),
 			item.appliedTermsVersion(), item.latestTermsVersion(), item.conditionComparisonStatus(),
-			applied, latest, List.copyOf(changed), List.copyOf(unavailable), unavailable.isEmpty(), assignment(row));
+			applied, latest, List.copyOf(changed), List.copyOf(unavailable), unavailable.isEmpty(), assignment(row), item.conditionConfirmation());
 	}
 
 	private Conditions latest(Row row) {

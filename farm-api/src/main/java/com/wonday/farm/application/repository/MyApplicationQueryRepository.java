@@ -30,6 +30,8 @@ public interface MyApplicationQueryRepository extends Repository<JobApplication,
 		 app.status as applicationStatus, app.applied_at as legacyAppliedAt, app.applied_at_utc as appliedAtUtc,
 		 coalesce(app.applied_at_utc, app.applied_at) as sortAppliedAt,
 		 app.applied_terms_version as appliedTermsVersion,
+         acknowledgement.id as acknowledgementId, acknowledgement.terms_version as acknowledgedTermsVersion,
+         acknowledgement.acknowledged_at_utc as acknowledgedAtUtc,
 		 posting.id as jobPostingId, posting.title as title, posting.description as description,
 		 posting.time_zone as timeZone, posting.work_location as workLocation,
 		 posting.latitude as latitude, posting.longitude as longitude,
@@ -62,6 +64,9 @@ public interface MyApplicationQueryRepository extends Repository<JobApplication,
 		from application app
 		join work_schedule schedule on schedule.id = app.work_schedule_id
 		join job_posting posting on posting.id = schedule.job_posting_id
+        left join application_condition_acknowledgement acknowledgement on acknowledgement.application_id = app.id
+         and acknowledgement.terms_version = (select max(saved.terms_version)
+             from application_condition_acknowledgement saved where saved.application_id = app.id)
 		left join work_assignment assignment on assignment.application_id = app.id
 		left join work_change change_record on change_record.assignment_id = assignment.id
 		left join work_schedule_revision revision on revision.work_schedule_id = schedule.id
@@ -104,7 +109,8 @@ public interface MyApplicationQueryRepository extends Repository<JobApplication,
 	interface Row {
 		long getApplicationId(); long getWorkScheduleId(); int getApplicationRound(); int getCurrentFlag();
 		String getApplicationStatus(); LocalDateTime getLegacyAppliedAt(); LocalDateTime getAppliedAtUtc();
-		LocalDateTime getSortAppliedAt(); Integer getAppliedTermsVersion(); long getJobPostingId();
+		LocalDateTime getSortAppliedAt(); Long getAcknowledgementId(); Integer getAcknowledgedTermsVersion(); LocalDateTime getAcknowledgedAtUtc();
+        Integer getAppliedTermsVersion(); long getJobPostingId();
 		String getTitle(); String getDescription(); String getTimeZone(); String getWorkLocation();
 		BigDecimal getLatitude(); BigDecimal getLongitude(); String getCropCode(); String getWorkTypeCode();
 		int getHeadcount(); long getDailyWage(); LocalDate getWorkDate(); LocalDateTime getPlannedStartAt();

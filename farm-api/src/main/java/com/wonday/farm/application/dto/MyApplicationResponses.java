@@ -20,7 +20,12 @@ public final class MyApplicationResponses {
 		LocalDateTime legacyAppliedAt, String appliedTimeBasis, String applicationStatus, String displayStatus,
 		String cancellationType, Long assignmentId,
 		@JsonFormat(shape = JsonFormat.Shape.STRING, without = JsonFormat.Feature.ADJUST_DATES_TO_CONTEXT_TIME_ZONE) OffsetDateTime completedAt,
-		Integer appliedTermsVersion, int latestTermsVersion, String conditionComparisonStatus) {}
+		Integer appliedTermsVersion, int latestTermsVersion, String conditionComparisonStatus,
+        com.wonday.farm.application.dto.ConditionConfirmation conditionConfirmation) {
+        public Item(long applicationId, int applicationRound, boolean current, long jobPostingId, String title, long workScheduleId, LocalDate workDate, OffsetDateTime appliedAt, LocalDateTime legacyAppliedAt, String appliedTimeBasis, String applicationStatus, String displayStatus, String cancellationType, Long assignmentId, OffsetDateTime completedAt, Integer appliedTermsVersion, int latestTermsVersion, String conditionComparisonStatus) {
+            this(applicationId, applicationRound, current, jobPostingId, title, workScheduleId, workDate, appliedAt, legacyAppliedAt, appliedTimeBasis, applicationStatus, displayStatus, cancellationType, assignmentId, completedAt, appliedTermsVersion, latestTermsVersion, conditionComparisonStatus, null);
+        }
+    }
 
 	public record Detail(long applicationId, int applicationRound, boolean current, long jobPostingId,
 		String title, long workScheduleId, String applicationStatus, String displayStatus, String cancellationType,
@@ -28,7 +33,12 @@ public final class MyApplicationResponses {
 		LocalDateTime legacyAppliedAt, String appliedTimeBasis, Integer appliedTermsVersion,
 		int latestTermsVersion, String conditionComparisonStatus, Conditions appliedConditions,
 		Conditions latestConditions, List<String> changedFields, List<String> unavailableComparisonFields,
-		boolean comparisonComplete, Assignment assignment) {}
+		boolean comparisonComplete, Assignment assignment,
+        com.wonday.farm.application.dto.ConditionConfirmation conditionConfirmation) {
+        public Detail(long applicationId, int applicationRound, boolean current, long jobPostingId, String title, long workScheduleId, String applicationStatus, String displayStatus, String cancellationType, OffsetDateTime appliedAt, LocalDateTime legacyAppliedAt, String appliedTimeBasis, Integer appliedTermsVersion, int latestTermsVersion, String conditionComparisonStatus, Conditions appliedConditions, Conditions latestConditions, List<String> changedFields, List<String> unavailableComparisonFields, boolean comparisonComplete, Assignment assignment) {
+            this(applicationId, applicationRound, current, jobPostingId, title, workScheduleId, applicationStatus, displayStatus, cancellationType, appliedAt, legacyAppliedAt, appliedTimeBasis, appliedTermsVersion, latestTermsVersion, conditionComparisonStatus, appliedConditions, latestConditions, changedFields, unavailableComparisonFields, comparisonComplete, assignment, null);
+        }
+    }
 
 	// AVAILABLE / PARTIAL / UNAVAILABLE로 '휴게 없음'과 '과거 기록 없음'을 구분한다.
 	public record Conditions(String availability, Integer termsVersion, LocalDate workDate, String timeZone,
