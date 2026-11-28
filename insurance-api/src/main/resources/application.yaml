@@ -9,6 +9,7 @@ server:
 
 insurance:
   weather:
+    collection-run-timeout: ${WEATHER_COLLECTION_RUN_TIMEOUT:15m}
     base-url: ${WEATHER_API_BASE_URL:https://apis.data.go.kr/1390802/AgriWeather}
     service-key: ${WEATHER_API_SERVICE_KEY:}
     station-service-key: ${WEATHER_STATION_API_SERVICE_KEY:${WEATHER_API_SERVICE_KEY:}}

@@ -29,6 +29,9 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.GET, "/api/weather/stations", "/api/weather/stations/nearest").hasAnyRole("WORKER", "ADMIN")
 				.requestMatchers(HttpMethod.GET, "/api/admin/weather/collections", "/api/admin/weather/collections/*").hasRole("ADMIN")
 				.requestMatchers(HttpMethod.POST, "/api/admin/weather/collections", "/api/admin/weather/stations/sync").hasRole("ADMIN")
+				.requestMatchers(HttpMethod.GET, "/api/admin/weather/collection-jobs", "/api/admin/weather/collection-jobs/*",
+					"/api/admin/weather/collection-jobs/*/attempts").hasRole("ADMIN")
+				.requestMatchers(HttpMethod.POST, "/api/admin/weather/collection-jobs/*/retry").hasRole("ADMIN")
 				.requestMatchers(HttpMethod.POST, "/api/contracts").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/contracts", "/api/contracts/*").hasRole("WORKER")
 				.requestMatchers(HttpMethod.GET, "/api/claims", "/api/claims/*").hasRole("WORKER")
